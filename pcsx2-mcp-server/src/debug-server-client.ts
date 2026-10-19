@@ -18,6 +18,7 @@
  */
 
 import * as net from 'node:net';
+import { parseScreenshot, type Screenshot } from './screenshot.js';
 
 export interface DebugRegister {
   name: string;
@@ -88,6 +89,7 @@ export class DebugServerClient {
   private responseBuffer = '';
   private pendingResolve: ((data: any) => void) | null = null;
   private pendingReject: ((err: Error) => void) | null = null;
+  private commandQueue: Promise<void> = Promise.resolve();
 
   constructor(host = '127.0.0.1', port = 21512) {
     this.host = host;
@@ -111,6 +113,16 @@ export class DebugServerClient {
       });
 
       this.socket.on('data', (data: string) => {
+        // The largest supported PNG is 6 MiB (8 MiB base64 plus JSON).
+        if (this.responseBuffer.length + data.length > 9 * 1024 * 1024) {
+          this.pendingReject?.(new Error('DebugServer response exceeds 9 MiB limit'));
+          this.pendingResolve = null;
+          this.pendingReject = null;
+          this.responseBuffer = '';
+          this.connected = false;
+          this.socket?.destroy();
+          return;
+        }
         this.responseBuffer += data;
         this.processBuffer();
       });
@@ -129,6 +141,9 @@ export class DebugServerClient {
 
       this.socket.on('close', () => {
         this.connected = false;
+        this.pendingReject?.(new Error('DebugServer connection closed'));
+        this.pendingResolve = null;
+        this.pendingReject = null;
       });
     });
   }
@@ -153,25 +168,32 @@ export class DebugServerClient {
   }
 
   private async send(cmd: Record<string, any>): Promise<any> {
+    // The newline protocol has no request IDs, so replies must stay in order.
+    const result = this.commandQueue.then(() => this.sendCommand(cmd));
+    this.commandQueue = result.then(() => {}, () => {});
+    return result;
+  }
+
+  private async sendCommand(cmd: Record<string, any>): Promise<any> {
     if (!this.connected || !this.socket) {
       throw new Error('Not connected to PCSX2 Debug Server');
     }
 
     return new Promise((resolve, reject) => {
-      this.pendingResolve = resolve;
-      this.pendingReject = reject;
-
-      const json = JSON.stringify(cmd) + '\n';
-      this.socket!.write(json);
-
-      // Timeout
-      setTimeout(() => {
-        if (this.pendingReject === reject) {
+      const onError = (err: Error) => { clearTimeout(timeout); reject(err); };
+      const timeout = setTimeout(() => {
+        if (this.pendingReject === onError) {
           this.pendingResolve = null;
           this.pendingReject = null;
+          // A late reply cannot be matched safely to the next command.
+          this.connected = false;
+          this.socket?.destroy();
           reject(new Error(`Command timeout: ${cmd.cmd}`));
         }
       }, 10000);
+      this.pendingResolve = (data) => { clearTimeout(timeout); resolve(data); };
+      this.pendingReject = onError;
+      this.socket!.write(JSON.stringify(cmd) + '\n');
     });
   }
 
@@ -189,6 +211,23 @@ export class DebugServerClient {
     const resp = await this.send({ cmd: 'status', cpu });
     if (!resp.ok) throw new Error(resp.error);
     return resp.data;
+  }
+
+  // ===== Screenshots =====
+
+  /** Capture the current GS frame. Requires a rebuilt DebugServer with screenshot support. */
+  async captureScreenshot(width = 640, height = 480): Promise<Screenshot> {
+    if (!Number.isInteger(width) || width < 1 || width > 1280 ||
+        !Number.isInteger(height) || height < 1 || height > 1024) {
+      throw new Error('Screenshot width must be 1-1280 and height 1-1024');
+    }
+    const resp = await this.send({ cmd: 'screenshot', width, height });
+    if (!resp.ok) throw new Error(`Screenshot failed: ${resp.error}. Rebuild PCSX2 with the updated DebugServer if the command is unknown.`);
+    const screenshot = parseScreenshot(resp);
+    if (screenshot.width > width || screenshot.height > height) {
+      throw new Error('Screenshot exceeds requested dimensions');
+    }
+    return screenshot;
   }
 
   // ===== Registers =====

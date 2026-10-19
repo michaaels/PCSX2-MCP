@@ -58,7 +58,10 @@ Run `setup-mcp.bat` — it checks Node.js and writes the MCP config for you.
 3. Restart your AI assistant (Antigravity / Claude Desktop)
 4. Ask: *"Connect to PCSX2 and show me the thread list"*
 
-That's it! Your AI assistant now has **30 debugging tools** for PS2.
+That's it! Your AI assistant now has **31 debugging tools** for PS2 when using the updated DebugServer build.
+
+> `pcsx2_screenshot` requires rebuilding PCSX2 with the current `pcsx2-plugin/DebugServer.cpp`.
+> The v1.0.0 pre-built release does not include this command. Updating only the Node.js server is insufficient.
 
 ---
 
@@ -136,7 +139,7 @@ Translates MCP tool calls into DebugServer TCP commands. Also supports **Pine IP
 
 ---
 
-## All 30 Tools
+## All 31 Tools
 
 ### Connection & Status
 | Tool | Description |
@@ -194,6 +197,20 @@ Translates MCP tool calls into DebugServer TCP commands. Also supports **Pine IP
 | `pcsx2_save_state` | Save state to slot 0-9 (Pine) |
 | `pcsx2_load_state` | Load state from slot (Pine) |
 
+### Screenshots
+| Tool | Description |
+|---|---|
+| `pcsx2_screenshot` | Return the current rendered PS2 frame as a PNG image (updated DebugServer required) |
+
+The tool returns MCP `image` content (`image/png`, base64) and a text description of the actual dimensions.
+It captures the GS output without desktop windows, PCSX2 menus, or the OSD. Nothing is written to disk.
+The VM can be running or paused, provided the renderer still has a frame available.
+
+Optional `width` (default 640, range 1–1280) and `height` (default 480, range 1–1024) specify the maximum
+output dimensions. PCSX2 preserves the configured aspect ratio and crops letterbox borders, so the returned
+image can be smaller than the requested bounds. PNG data is limited to 6 MiB. Pine-only connections and
+old DebugServer builds return a tool error with setup guidance.
+
 ### PS2Recomp Integration
 | Tool | Description |
 |---|---|
@@ -203,6 +220,18 @@ Translates MCP tool calls into DebugServer TCP commands. Also supports **Pine IP
 ---
 
 ## Example Workflows
+
+### Inspecting the rendered game
+```
+> "Connect to PCSX2"
+> "Take a screenshot of the current game"
+> "Take another screenshot with width 1280 and height 720"
+```
+
+MCP arguments for the last request:
+```json
+{"width": 1280, "height": 720}
+```
 
 ### Reverse engineering a function
 ```
@@ -321,6 +350,42 @@ npm install
 npm run build
 ```
 
+### Screenshot protocol and validation
+
+The updated DebugServer accepts a newline-terminated request:
+```json
+{"cmd":"screenshot","width":640,"height":480}
+```
+
+Success response (the `data` field below is abbreviated):
+```json
+{"ok":true,"width":640,"height":480,"mime_type":"image/png","data":"<base64 PNG>"}
+```
+
+Failure responses use the existing `{"ok":false,"error":"..."}` envelope. Capture work is queued onto
+the CPU thread using `Host::RunOnCPUThread`, then synchronized with the GS through
+`MTGS::SaveMemorySnapshot`. PNG encoding uses PCSX2's `RGBA8Image::SaveToBuffer`. These APIs are present in
+[PCSX2 v2.6.3](https://github.com/PCSX2/pcsx2/tree/v2.6.3) (`pcsx2/Host.h`, `pcsx2/MTGS.h`, `common/Image.h`).
+The CPU/GS capture wait is limited to five seconds; callbacks that finish late retain their own storage.
+The Node client serializes requests because the TCP protocol has no request IDs, handles fragmented replies,
+and drops the connection on timeout to prevent a late image being mistaken for the next reply.
+
+Run the automated bridge and MCP stdio tests from `pcsx2-mcp-server/`:
+```bash
+npm ci
+npm test
+```
+
+These tests use a mock DebugServer and real PNG fixtures; they do not validate PCSX2's renderer or compile
+the C++ plugin. Before releasing a new emulator binary, build PCSX2 with the updated patch and check:
+
+- Running game: the MCP returns an image matching the displayed frame, with correct colors and orientation.
+- Paused game: capture returns the current frame without resuming execution.
+- Aspect ratios: 4:3 and 16:9 frames fit both the default bounds and 1280 × 720 bounds.
+- No rendered frame / null renderer: a clear tool error is returned.
+- Repeated captures and VM shutdown during a request: no crash, hang, or response mix-up.
+- Old DebugServer and Pine-only connections: a clear unsupported-command / connection error is returned.
+
 </details>
 
 ---
@@ -333,6 +398,8 @@ npm run build
 | DebugServer not listening | Check PCSX2 console for `[DebugServer] Listening on 127.0.0.1:21512` |
 | "No connection" from tools | Call `pcsx2_connect` first |
 | Pine tools fail | Enable Pine IPC: PCSX2 Settings → Advanced → Enable Pine IPC |
+| Screenshot reports unknown command | Rebuild PCSX2 with the updated DebugServer patch; v1.0.0 binaries do not support screenshots |
+| Screenshot has no rendered frame | Boot a game, render at least one frame, and select an active graphics renderer |
 | Breakpoints don't trigger | Game must be running (not in BIOS/menu) |
 
 ---

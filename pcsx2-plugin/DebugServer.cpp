@@ -42,6 +42,10 @@ typedef int socket_t;
 #include "DebugInterface.h"
 #include "Breakpoints.h"
 #include "MipsStackWalk.h"
+#include "Host.h"
+#include "MTGS.h"
+#include "VMManager.h"
+#include "common/Image.h"
 
 #include <cstring>
 #include <cstdio>
@@ -53,6 +57,9 @@ typedef int socket_t;
 #include <condition_variable>
 #include <sstream>
 #include <algorithm>
+#include <chrono>
+#include <memory>
+#include <cerrno>
 
 // Forward declarations — these are PCSX2 globals
 extern R5900DebugInterface r5900Debug;
@@ -295,6 +302,104 @@ namespace DebugServer
 	// Command Handlers
 	// ============================================================
 
+	static std::string encodeBase64(const std::vector<u8>& bytes)
+	{
+		static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+		std::string result;
+		result.reserve(((bytes.size() + 2) / 3) * 4);
+		for (size_t i = 0; i < bytes.size(); i += 3)
+		{
+			const u32 value = (static_cast<u32>(bytes[i]) << 16) |
+				((i + 1 < bytes.size()) ? (static_cast<u32>(bytes[i + 1]) << 8) : 0) |
+				((i + 2 < bytes.size()) ? bytes[i + 2] : 0);
+			result += alphabet[(value >> 18) & 63];
+			result += alphabet[(value >> 12) & 63];
+			result += (i + 1 < bytes.size()) ? alphabet[(value >> 6) & 63] : '=';
+			result += (i + 2 < bytes.size()) ? alphabet[value & 63] : '=';
+		}
+		return result;
+	}
+
+	static std::string captureScreenshot(u32 requestedWidth, u32 requestedHeight)
+	{
+		struct Capture
+		{
+			std::mutex mutex;
+			std::condition_variable ready;
+			bool done = false;
+			bool cancelled = false;
+			bool success = false;
+			u32 width = 0;
+			u32 height = 0;
+			std::vector<u32> pixels;
+		};
+		auto capture = std::make_shared<Capture>();
+		// MTGS has a single producer: queue the capture from the CPU thread,
+		// never from this TCP worker. Shared ownership also covers a late callback.
+		Host::RunOnCPUThread([capture, requestedWidth, requestedHeight]() {
+			{
+				std::lock_guard lock(capture->mutex);
+				if (capture->cancelled)
+					return;
+			}
+			u32 width = 0, height = 0;
+			std::vector<u32> pixels;
+			bool success = false;
+			const VMState state = VMManager::GetState();
+			if ((state == VMState::Running || state == VMState::Paused) && MTGS::IsOpen())
+			{
+				success = MTGS::SaveMemorySnapshot(requestedWidth, requestedHeight, true, true,
+					&width, &height, &pixels);
+			}
+			std::lock_guard lock(capture->mutex);
+			if (capture->cancelled)
+				return;
+			capture->success = success;
+			capture->width = width;
+			capture->height = height;
+			capture->pixels = std::move(pixels);
+			capture->done = true;
+			capture->ready.notify_one();
+		});
+
+		JsonBuilder j;
+		j.startObject();
+		std::unique_lock lock(capture->mutex);
+		if (!capture->ready.wait_for(lock, std::chrono::seconds(5), [&capture]() { return capture->done; }))
+		{
+			capture->cancelled = true;
+			j.kv("ok", false);
+			j.kv("error", "Screenshot timed out waiting for CPU/GS threads");
+		}
+		else if (!capture->success || capture->width == 0 || capture->height == 0 ||
+			capture->width > requestedWidth || capture->height > requestedHeight ||
+			capture->pixels.size() != static_cast<size_t>(capture->width) * capture->height)
+		{
+			j.kv("ok", false);
+			j.kv("error", "No rendered frame available. Boot a game and use an active graphics renderer.");
+		}
+		else
+		{
+			RGBA8Image image(capture->width, capture->height, std::move(capture->pixels));
+			const auto png = image.SaveToBuffer("screenshot.png");
+			if (!png || png->empty() || png->size() > 6 * 1024 * 1024)
+			{
+				j.kv("ok", false);
+				j.kv("error", "Failed to encode screenshot within the 6 MiB PNG limit");
+			}
+			else
+			{
+				j.kv("ok", true);
+				j.kv("width", static_cast<int64_t>(capture->width));
+				j.kv("height", static_cast<int64_t>(capture->height));
+				j.kv("mime_type", "image/png");
+				j.kv("data", encodeBase64(*png));
+			}
+		}
+		j.endObject();
+		return j.str();
+	}
+
 	static std::string handleCommand(const std::string& jsonLine)
 	{
 		auto params = parseJsonObject(jsonLine);
@@ -303,6 +408,21 @@ namespace DebugServer
 		DebugInterface* cpu = getCpu(cpuName);
 
 		JsonBuilder j;
+
+		if (cmd == "screenshot")
+		{
+			const int64_t width = getNum(params, "width", 640);
+			const int64_t height = getNum(params, "height", 480);
+			if (width < 1 || width > 1280 || height < 1 || height > 1024)
+			{
+				j.startObject();
+				j.kv("ok", false);
+				j.kv("error", "Screenshot width must be 1-1280 and height 1-1024");
+				j.endObject();
+				return j.str();
+			}
+			return captureScreenshot(static_cast<u32>(width), static_cast<u32>(height));
+		}
 
 		// ----- STATUS -----
 		if (cmd == "status")
@@ -849,7 +969,7 @@ namespace DebugServer
 			j.kv("error", "Unknown command: " + cmd);
 			j.key("available_commands"); j.startArray();
 			const char* cmds[] = {
-				"status", "read_registers", "write_register", "set_pc",
+				"status", "screenshot", "read_registers", "write_register", "set_pc",
 				"read_memory", "write_memory", "read_string",
 				"disassemble", "evaluate",
 				"set_breakpoint", "remove_breakpoint", "list_breakpoints",
@@ -902,7 +1022,30 @@ namespace DebugServer
 				std::string response = handleCommand(line);
 				response += "\n";
 
-				send(clientSock, response.c_str(), (int)response.size(), 0);
+				// A PNG response can exceed the socket's send buffer.
+				size_t sent = 0;
+				int sendFlags = 0;
+#ifdef MSG_NOSIGNAL
+				sendFlags = MSG_NOSIGNAL;
+#endif
+				while (sent < response.size())
+				{
+					const int count = send(clientSock, response.data() + sent, static_cast<int>(response.size() - sent), sendFlags);
+					if (count < 0)
+					{
+#ifdef _WIN32
+						if (WSAGetLastError() == WSAEINTR) continue;
+#else
+						if (errno == EINTR) continue;
+#endif
+					}
+					if (count <= 0)
+					{
+						CLOSE_SOCKET(clientSock);
+						return;
+					}
+					sent += static_cast<size_t>(count);
+				}
 			}
 		}
 

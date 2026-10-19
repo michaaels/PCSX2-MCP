@@ -10,7 +10,7 @@
  * 30+ tools across categories:
  *   Connection, Memory, Registers, Disassembly, Expression Eval,
  *   Breakpoints, Watchpoints, Stepping, Threads, Game Info,
- *   Save States, Pattern Search, Memory Diff, PS2Recomp Integration
+ *   Save States, Screenshots, Pattern Search, Memory Diff, PS2Recomp Integration
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -123,6 +123,27 @@ server.tool('pcsx2_status', 'Get connection + emulator status.', {},
       try { const t = await pine!.getTitle(); const id = await pine!.getID(); p.push(`Game: ${t} (${id})`); } catch {}
     }
     return { content: [{ type: 'text' as const, text: p.join('\n') }] };
+  }
+);
+
+// ==========================================================
+//  TOOL: pcsx2_screenshot
+// ==========================================================
+server.tool('pcsx2_screenshot',
+  'Capture the current rendered PS2 frame as a PNG image. Requires DebugServer with screenshot support; Pine alone is not supported. Preserves aspect ratio and crops letterbox borders. Does not capture the desktop or PCSX2 menus.',
+  {
+    width: z.number().int().min(1).max(1280).default(640).describe('Maximum image width'),
+    height: z.number().int().min(1).max(1024).default(480).describe('Maximum image height'),
+  },
+  async ({ width, height }) => {
+    if (!hasDebug()) return { content: [{ type: 'text' as const, text: 'Error: Screenshot requires DebugServer. Use pcsx2_connect with a rebuilt PCSX2 containing the updated DebugServer patch.' }], isError: true };
+    try {
+      const screenshot = await debugServer!.captureScreenshot(width, height);
+      return { content: [
+        { type: 'image' as const, mimeType: 'image/png', data: screenshot.data },
+        { type: 'text' as const, text: `PS2 screenshot (${screenshot.width} x ${screenshot.height})` },
+      ] };
+    } catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
   }
 );
 
@@ -592,7 +613,7 @@ server.resource('ps2_memory_map', 'ps2://memory_map', async () => ({
 }));
 
 server.resource('debug_protocol', 'ps2://debug_protocol', async () => ({
-  contents: [{ uri: 'ps2://debug_protocol', mimeType: 'text/plain', text: `PCSX2 Debug Server Protocol (port 21512)\nNewline-delimited JSON over TCP\n\nCommands: status, read_registers, write_register, set_pc, read_memory, write_memory, read_string, disassemble, evaluate, set_breakpoint, remove_breakpoint, list_breakpoints, set_memcheck, remove_memcheck, list_memchecks, pause, resume, step, step_over, get_threads, get_modules, is_valid_address, clear_breakpoints\n\nRequest:  {"cmd":"read_registers","cpu":"ee","category":0}\\n\nResponse: {"ok":true,"data":{...}}\\n` }]
+  contents: [{ uri: 'ps2://debug_protocol', mimeType: 'text/plain', text: `PCSX2 Debug Server Protocol (port 21512)\nNewline-delimited JSON over TCP\n\nCommands: status, screenshot, read_registers, write_register, set_pc, read_memory, write_memory, read_string, disassemble, evaluate, set_breakpoint, remove_breakpoint, list_breakpoints, set_memcheck, remove_memcheck, list_memchecks, pause, resume, step, step_over, get_threads, get_modules, is_valid_address, clear_breakpoints\n\nRequest:  {"cmd":"read_registers","cpu":"ee","category":0}\\n\nResponse: {"ok":true,"data":{...}}\\n\nScreenshot request: {"cmd":"screenshot","width":640,"height":480}\\n\nScreenshot response: {"ok":true,"width":640,"height":480,"mime_type":"image/png","data":"<base64 PNG>"}\\n\nScreenshot requires the updated DebugServer. Width: 1-1280; height: 1-1024; maximum PNG size: 6 MiB.\n` }]
 }));
 
 // ===== MAIN =====
