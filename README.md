@@ -323,17 +323,13 @@ PCSX2-MCP-v1.0.0-win64/          ← ready to run, everything pre-built
 
 ```powershell
 # 1. Clone the upstream PCSX2 source (we don't include it in this repo to save space)
-git clone https://github.com/PCSX2/pcsx2.git pcsx2-src
+git clone --depth 1 --branch v2.6.3 https://github.com/PCSX2/pcsx2.git pcsx2-src
+
+# 2. Integrate the DebugServer source, CMake target and VM lifecycle hooks
+python tools/apply-debug-server.py pcsx2-src
 cd pcsx2-src
 
-# 2. Copy our DebugServer patch into the PCSX2 source tree
-cp ../pcsx2-plugin/DebugServer.cpp pcsx2/DebugTools/
-cp ../pcsx2-plugin/DebugServer.h pcsx2/DebugTools/
-
-# 3. Add to CMakeLists.txt (in pcsx2/DebugTools/)
-# Add DebugServer.cpp and DebugServer.h to the source list
-
-# 4. Build with CMake + Ninja + MSVC
+# 3. Install the upstream build dependencies, then build with CMake + Ninja + MSVC
 cmake -G Ninja -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target pcsx2-qt
 ```
@@ -377,7 +373,9 @@ npm test
 ```
 
 These tests use a mock DebugServer and real PNG fixtures; they do not validate PCSX2's renderer or compile
-the C++ plugin. Before releasing a new emulator binary, build PCSX2 with the updated patch and check:
+the C++ plugin. The complete Linux/WSL build and real MCP screenshot checks are recorded in
+[Screenshot validation](docs/screenshot-validation.md), including a reusable live-test command and the
+remaining platform checks. Before releasing a new emulator binary, build PCSX2 with the updated patch and check:
 
 - Running game: the MCP returns an image matching the displayed frame, with correct colors and orientation.
 - Paused game: capture returns the current frame without resuming execution.

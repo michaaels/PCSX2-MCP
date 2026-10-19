@@ -222,7 +222,11 @@ export class DebugServerClient {
       throw new Error('Screenshot width must be 1-1280 and height 1-1024');
     }
     const resp = await this.send({ cmd: 'screenshot', width, height });
-    if (!resp.ok) throw new Error(`Screenshot failed: ${resp.error}. Rebuild PCSX2 with the updated DebugServer if the command is unknown.`);
+    if (!resp.ok) {
+      const hint = typeof resp.error === 'string' && resp.error.startsWith('Unknown command')
+        ? ' Rebuild PCSX2 with the updated DebugServer.' : '';
+      throw new Error(`Screenshot failed: ${resp.error}${hint}`);
+    }
     const screenshot = parseScreenshot(resp);
     if (screenshot.width > width || screenshot.height > height) {
       throw new Error('Screenshot exceeds requested dimensions');
