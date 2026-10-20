@@ -22,7 +22,8 @@ The GNU output contract is documented in the [addr2line manual](https://www.sour
 Keep a **linked ELF32 little-endian MIPS executable with debug information**. Compile
 with `-g` and retain the ELF before stripping or linking with `-s`. A linker map alone
 cannot restore DWARF source lines. Optimization can produce several inline frames or
-non-sequential source locations; it does not provide source stepping or local values.
+non-sequential source locations. Execution control is documented in
+[source stepping](source-stepping.md); local values remain unsupported.
 
 By default the server searches PATH, in order, for:
 
@@ -88,7 +89,8 @@ Concurrent UI/native clients can still reset or otherwise affect the VM.
 
 - These address-to-source tools do not install breakpoints. Separate
   [source breakpoint tools](source-breakpoints.md) now support exact file/line
-  groups. Source stepping, local-variable evaluation and DWARF expressions remain pending.
+  groups. [Source stepping](source-stepping.md) is available separately;
+  local-variable evaluation and DWARF expressions remain pending.
 - No source-file reads, path remapping or automatic source-file existence checks.
   Returned paths are compiler-recorded paths, which may be Linux paths on Windows.
 - No address rebasing or automatic alias normalization. Supply the ELF's linked virtual

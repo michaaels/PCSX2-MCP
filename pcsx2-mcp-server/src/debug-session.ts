@@ -21,6 +21,7 @@ export const logsResponse = history.extend({ logs: z.array(log).max(200) });
 export const capabilitiesResponse = z.object({
   ok: z.literal(true), protocol_version: z.number().int(), session: cursor,
   process_id: z.number().int().positive().optional(),
+  execution_epoch: cursor.optional(),
   elf: z.string(), elf_crc: z.string(), features: z.array(z.string()),
 });
 export type Events = z.infer<typeof eventsResponse>;

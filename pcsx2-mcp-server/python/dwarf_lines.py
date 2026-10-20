@@ -35,7 +35,7 @@ def source_path(program, index, comp_dir):
     return posixpath.normpath(result.replace('\\', '/'))
 
 
-def read_locations(filename, requested_line):
+def read_locations(filename, requested_line, *, pc=None, all_rows=False):
     import elftools
     from elftools.elf.elffile import ELFFile
     if elftools.__version__ != '0.33':
@@ -81,8 +81,9 @@ def read_locations(filename, requested_line):
                 if previous is not None:
                     prior, prior_file = previous
                     # A row has instructions only until the next address in its sequence.
-                    if state.address > prior.address and prior.line == requested_line and prior.is_stmt and 0 <= prior.address <= 0xffffffff:
-                        locations.add((prior_file, prior.address, prior.column, prior.discriminator))
+                    matches = prior.address <= pc < state.address if pc is not None else prior.line == requested_line
+                    if state.address > prior.address and matches and (prior.is_stmt or all_rows) and prior.line and 0 <= prior.address < state.address <= 0x100000000:
+                        locations.add((prior_file, prior.address, prior.column, prior.discriminator, prior.line, state.address))
                         if len(locations) > 4096:
                             raise ValueError('Too many locations at this source line')
                 if state.end_sequence:
@@ -95,16 +96,32 @@ def read_locations(filename, requested_line):
         if (stat.st_size, stat.st_mtime_ns, stat.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
             raise ValueError('ELF changed while reading DWARF')
         return {'format_version': 1, 'sha256': digest, 'dwarf_versions': sorted(versions), 'files': sorted(files),
-                'locations': [{'file': file, 'address': f'0x{address:08x}', 'line': requested_line,
-                               'column': column, 'discriminator': discriminator}
-                              for file, address, column, discriminator in sorted(locations)]}
+                'locations': [{'file': file, 'address': f'0x{address:08x}', 'line': line,
+                               'column': column, 'discriminator': discriminator, 'end': end}
+                              for file, address, column, discriminator, line, end in sorted(locations)]}
 
 
 if __name__ == '__main__':
     try:
-        if len(sys.argv) != 3 or not 1 <= int(sys.argv[2]) <= 2147483647:
-            raise ValueError('Usage: dwarf_lines.py <ELF> <line 1..2147483647>')
-        result = json.dumps(read_locations(sys.argv[1], int(sys.argv[2])), ensure_ascii=True)
+        if len(sys.argv) == 4 and sys.argv[2] == '--pc':
+            pc = int(sys.argv[3], 16)
+            if not 0 <= pc <= 0xffffffff:
+                raise ValueError('PC must be unsigned 32-bit')
+            current = read_locations(sys.argv[1], None, pc=pc, all_rows=True)
+            keys = {(row['file'], row['line']) for row in current['locations']}
+            if len(keys) != 1:
+                raise ValueError('PC has missing/ambiguous DWARF line information')
+            file, line = next(iter(keys))
+            result = read_locations(sys.argv[1], line, all_rows=True)
+            if result['sha256'] != current['sha256']:
+                raise ValueError('ELF changed between line-table queries')
+            result['locations'] = [row for row in result['locations'] if row['file'] == file]
+            result['current'] = {'file': file, 'line': line}
+        else:
+            if len(sys.argv) != 3 or not 1 <= int(sys.argv[2]) <= 2147483647:
+                raise ValueError('Usage: dwarf_lines.py <ELF> <line> or <ELF> --pc <hex PC>')
+            result = read_locations(sys.argv[1], int(sys.argv[2]))
+        result = json.dumps(result, ensure_ascii=True)
         if len(result) > 1024 * 1024:
             raise ValueError('DWARF lookup output exceeds 1 MiB')
         print(result)

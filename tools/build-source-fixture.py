@@ -9,6 +9,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('output', type=Path)
 parser.add_argument('--wsl', action='store_true', help='Use Clang/LLD in the default WSL distribution')
 parser.add_argument('--dwarf-version', type=int, choices=(4, 5), default=4)
+parser.add_argument('--stepping', action='store_true', help='Build the call/loop/branch fixture')
 parser.add_argument('--clang', default='clang-18')
 parser.add_argument('--linker', default='ld.lld-18')
 args = parser.parse_args()
@@ -18,7 +19,7 @@ if output.exists():
 output.mkdir(parents=True)
 source = Path(__file__).resolve().parent.parent / 'pcsx2-mcp-server/test/fixtures'
 for name in ('source-debug.c', 'source-debug.ld'):
-    shutil.copyfile(source / name, output / name)
+    shutil.copyfile(source / ('source-step.c' if args.stepping and name.endswith('.c') else name), output / name)
 
 
 def tool_path(filename):

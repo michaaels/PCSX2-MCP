@@ -84,6 +84,16 @@ def main() -> None:
         '\t\tDebugServer::OnVMStateChanged(static_cast<int>(state));\n}\n\n', str(vm))
 
     breakpoint_files = {}
+    ee = source / 'pcsx2/R5900.cpp'
+    ee_text = replace_once(ee.read_text(encoding='utf-8'), '#include "R5900.h"',
+        '#include "R5900.h"\n#include "DebugTools/DebugServer.h"', str(ee))
+    start = ee_text.index('__ri void cpuException(u32 code, u32 bd)')
+    end = ee_text.index('\n}', start) + 2
+    block = ee_text[start:end]
+    if 'DebugServer::OnEEException();' not in block:
+        block = block.replace('cpuUpdateOperationMode();', 'cpuUpdateOperationMode();\n\tDebugServer::OnEEException();')
+    ee_text = ee_text[:start] + block + ee_text[end:]
+    breakpoint_files[ee] = ee_text
     for filename, functions in {
         'pcsx2/Interpreter.cpp': [('void intBreakpoint(bool memcheck)', False, 'memcheck')],
         'pcsx2/R3000AInterpreter.cpp': [('void psxBreakpoint(bool memcheck)', True, 'memcheck')],
@@ -94,6 +104,12 @@ def main() -> None:
         text = target.read_text(encoding='utf-8')
         text = replace_once(text, '#include "VMManager.h"',
             '#include "VMManager.h"\n#include "DebugTools/DebugServer.h"', filename)
+        if filename == 'pcsx2/x86/ix86-32/iR5900.cpp':
+            text = replace_once(text, '\t\tif(encodeBreakpoint() || encodeMemcheck())',
+                '\t\t// Emit both checks: an execute breakpoint must not hide a watchpoint.\n'
+                '\t\tconst bool executeCheck = encodeBreakpoint();\n'
+                '\t\tconst bool memoryCheck = encodeMemcheck();\n'
+                '\t\tif (executeCheck || memoryCheck)', filename)
         for signature, iop, watch in functions:
             # Accept extra arguments on the dynarec functions, while keeping the
             # replacement confined to the correct function body.
@@ -103,6 +119,14 @@ def main() -> None:
             if start < 0 or end < 2:
                 raise SystemExit(f'{filename}: breakpoint handler not found: {signature}')
             block = text[start:end]
+            if filename == 'pcsx2/Interpreter.cpp':
+                block = replace_once(block,
+                    'if (CBreakPoints::CheckSkipFirst(BREAKPOINT_EE, pc) != 0)',
+                    'if ((!memcheck || !DebugServer::PreserveStepWatchpoints()) && CBreakPoints::CheckSkipFirst(BREAKPOINT_EE, pc) != 0)', filename)
+            elif filename == 'pcsx2/x86/ix86-32/iR5900.cpp' and watch == 'true':
+                block = replace_once(block,
+                    'if (CBreakPoints::CheckSkipFirst(BREAKPOINT_EE, pc) != 0)',
+                    'if (!DebugServer::PreserveStepWatchpoints() && CBreakPoints::CheckSkipFirst(BREAKPOINT_EE, pc) != 0)', filename)
             hook = '\tVMManager::SetPaused(true);\n\tDebugServer::OnBreakpointHit(' + ('true' if iop else 'false') + ', ' + watch + ');'
             block = replace_once(block, '\tVMManager::SetPaused(true);', hook, filename)
             text = text[:start] + block + text[end:]

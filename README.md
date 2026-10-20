@@ -58,7 +58,8 @@ Run `setup-mcp.bat` — it checks Node.js and writes the MCP config for you.
 3. Restart your AI assistant (Antigravity / Claude Desktop)
 4. Ask: *"Connect to PCSX2 and show me the thread list"*
 
-That's it! Your AI assistant now has **31 debugging tools** for PS2 when using the updated DebugServer build.
+Your AI assistant can now use the core PS2 debugging tools. The extensions below
+require the corresponding updated DebugServer build.
 
 > `pcsx2_screenshot` requires rebuilding PCSX2 with the current `pcsx2-plugin/DebugServer.cpp`.
 > The v1.0.0 pre-built release does not include this command. Updating only the Node.js server is insufficient.
@@ -139,7 +140,7 @@ Translates MCP tool calls into DebugServer TCP commands. Also supports **Pine IP
 
 ---
 
-## All 31 Tools
+## Core debugging tools
 
 ### Connection & Status
 | Tool | Description |
@@ -319,6 +320,7 @@ Windows can use the existing WSL installation.
 For exact file/line breakpoints and explicit source snapshot mappings, see
 [source breakpoints](docs/source-breakpoints.md). The optional inverse-lookup
 backend uses an isolated Python environment and the rebuilt native patch.
+For bounded EE into/over/out execution, see [source stepping](docs/source-stepping.md).
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>

@@ -3,6 +3,7 @@ import { DebugServerClient } from './debug-server-client.js';
 import { SourceResolver, sourceOptions } from './source-debug.js';
 import { SourceLineResolver, lineOptions } from './source-lines.js';
 import { z } from 'zod';
+import { SourceStepper, sourceStepOptions } from './source-stepping.js';
 
 export function registerSourceTools(server: McpServer, getClient: () => DebugServerClient | null) {
   async function run(operation: () => Promise<unknown>) {
@@ -10,9 +11,15 @@ export function registerSourceTools(server: McpServer, getClient: () => DebugSer
     catch (error) { return { content: [{ type: 'text' as const, text: JSON.stringify({ error: error instanceof Error ? error.message : String(error),
       ...(error instanceof Error && 'cleanup' in error ? { cleanup: error.cleanup } : {}) }) }], isError: true }; }
   }
+  server.tool('pcsx2_source_step', 'Bounded EE source stepping while paused: into stops at another file/line, over executes physical calls and stops on another line, out executes until a physical JR $ra return. Requires matching loaded DWARF ELF and native guarded_step. Counts decoded instruction units (branch + delay slot = 2), not frames; executes callees within the same budget. Stops on interruption, timeout or unsupported instructions. Preserves foreign breakpoints; does not cross conflicting successor/delay-slot breakpoints. Inline out is unsupported; inline over follows line changes. Returns explicit completed/reason, stopped PC, source and last 32 instruction steps.',
+    sourceStepOptions.shape, (options, extra) => run(async () => {
+      const client = getClient();
+      if (!client?.isConnected()) throw new Error('Connect to DebugServer first');
+      return new SourceStepper().run(client, options, extra.signal);
+    }));
   server.tool('pcsx2_source_addresses', 'Resolve an exact file/line to all aligned executable statement addresses in a local ELF (up to 64). Offline; optional pinned Python/pyelftools backend required. Explicit from=DWARF/to=local path mappings, or a unique relative filename. Rejects ambiguous files; never moves to another line. No source files are opened and no VM changes.',
     lineOptions.shape, (options, extra) => run(() => new SourceLineResolver().resolve(options, extra.signal)));
-  server.tool('pcsx2_breakpoint_source', 'Install an owned group of non-temporary EE breakpoints at every exact-line statement address. Requires paused VM, matching local ELF/path/CRC, and updated native source_breakpoints capability. Does not resume. Rejects existing breakpoints without changing them; returns group_id for removal. No source stepping or locals.',
+  server.tool('pcsx2_breakpoint_source', 'Install an owned group of non-temporary EE breakpoints at every exact-line statement address. Requires paused VM, matching local ELF/path/CRC, and updated native source_breakpoints capability. Does not resume. Rejects existing breakpoints without changing them; returns group_id for removal. Use pcsx2_source_step separately for source stepping.',
     lineOptions.shape, (options, extra) => run(async () => {
       const client = getClient();
       if (!client?.isConnected()) throw new Error('Connect to DebugServer first');

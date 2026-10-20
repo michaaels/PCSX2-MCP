@@ -25,6 +25,7 @@ import { automationResponse, controllerResponse, inputOptions, buttons, type Inp
 import { setTimeout as delay } from 'node:timers/promises';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { address, symbolOptions, symbolsResponse, resolvedResponse, symbolBreakpointResponse, type SymbolOptions } from './symbols.js';
+import { guardedStepResponse, type StepIdentity } from './guarded-step.js';
 
 export interface DebugRegister {
   name: string;
@@ -239,6 +240,26 @@ export class DebugServerClient {
         Number(parsed.elf_crc) !== Number(expected.elf_crc) || parsed.addresses.length !== addresses.length ||
         parsed.addresses.some((value, index) => Number(value) !== Number(addresses[index]))) throw new Error('Unexpected native source breakpoint identity/addresses');
     return parsed;
+  }
+
+  async startGuardedStep(expected: StepIdentity, pc: string, instructionBudget = 2, timeoutMs = 500) {
+    address.parse(pc);
+    z.number().int().min(1).max(2).parse(instructionBudget);
+    z.number().int().min(10).max(1000).parse(timeoutMs);
+    const response = await this.send({ cmd: 'guarded_step', cpu: 'ee', expected_pc: pc,
+      expected_process_id: expected.process_id, expected_session: expected.session, expected_elf: expected.elf,
+      expected_elf_crc: expected.elf_crc, expected_execution_epoch: expected.execution_epoch,
+      instruction_budget: instructionBudget, timeout_ms: timeoutMs });
+    if (!response.ok) throw Object.assign(new Error(response.error ?? 'Guarded step rejected'), { native_rejected: true });
+    try { return guardedStepResponse.parse(response); }
+    catch (error) { throw Object.assign(new Error(`Invalid guarded step response: ${String(error)}`), { operation_id: response.operation_id }); }
+  }
+
+  async guardedStepStatus(operationId: number, cancel = false) {
+    z.number().int().positive().safe().parse(operationId);
+    const result = guardedStepResponse.parse(await this.sessionCommand({ cmd: cancel ? 'guarded_step_cancel' : 'guarded_step_status', operation_id: operationId }));
+    if (result.operation_id !== operationId) throw new Error('Unexpected guarded step operation ID');
+    return result;
   }
 
   async removeSourceBreakpoints(groupId: string) {

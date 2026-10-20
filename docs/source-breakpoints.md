@@ -1,7 +1,8 @@
 # Breakpoints by source file and line
 
 This extension adds three MCP tools and requires the updated native PCSX2 patch
-for installation/removal. It does not implement source stepping or local variables.
+for installation/removal. For execution control see [source stepping](source-stepping.md).
+Local variables remain a separate stage.
 
 | Tool | Behavior |
 |---|---|
@@ -145,4 +146,5 @@ and the optimized GCC 3.2.3 DWARF2 SMS client. The project driver also validates
 explicit snapshot mappings. DWARF3 is
 accepted but not exercised by these live fixtures. Linux-host execution, IOP/IRX,
 compressed/split DWARF, commercial games and physical hardware are not validated
-for this extension. Source stepping and locals remain separate roadmap stages.
+for this extension. [Source stepping](source-stepping.md) is available separately;
+locals remain a later stage.

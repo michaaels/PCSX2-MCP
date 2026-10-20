@@ -42,5 +42,7 @@ namespace DebugServer
 	void OnVSync();
 	void OnInputPoll();
 	void OnVMReset();
+	void OnEEException();
+	bool PreserveStepWatchpoints();
 
 } // namespace DebugServer

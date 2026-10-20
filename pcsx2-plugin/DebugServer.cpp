@@ -47,6 +47,8 @@ typedef int socket_t;
 #include "DebugInterface.h"
 #include "Breakpoints.h"
 #include "MipsStackWalk.h"
+#include "MIPSAnalyst.h"
+#include "R5900.h"
 #include "SymbolGuardian.h"
 #include "SymbolImporter.h"
 #include "Host.h"
@@ -118,6 +120,18 @@ namespace DebugServer
 		std::chrono::steady_clock::time_point deadline;
 	};
 	static FrameOperation s_operation;
+	// CPU-thread state; only the watchdog deadline crosses threads.
+	static uint64_t s_executionEpoch = 1, s_stepSequence = 0;
+	struct GuardedStep
+	{
+		uint64_t id = 0, epoch = 0;
+		u32 start = 0, target = 0, opcode = 0, units = 0;
+		bool active = false, owned = false, cleanup = true, call = false, ret = false;
+		std::string marker, reason;
+	};
+	static GuardedStep s_step;
+	static std::atomic<int64_t> s_stepDeadline{0};
+	static std::atomic<uint64_t> s_stepWatchId{0};
 
 	static int64_t timestampMillis()
 	{
@@ -556,6 +570,102 @@ namespace DebugServer
 
 	static std::string handleCommand(const std::string& jsonLine);
 
+	static void finishGuardedStep(const char* reason)
+	{
+		if (!s_step.active) return;
+		s_step.reason = reason;
+		s_stepDeadline.store(0);
+		if (s_step.owned && s_step.epoch == s_executionEpoch)
+		{
+			const auto points = CBreakPoints::GetBreakpoints(BREAKPOINT_EE, true);
+			const auto count = std::count_if(points.begin(), points.end(), [](const BreakPoint& bp) { return bp.addr == s_step.target; });
+			const auto own = std::find_if(points.begin(), points.end(), [](const BreakPoint& bp) {
+				return bp.addr == s_step.target && bp.description == s_step.marker && bp.enabled && !bp.temporary && !bp.stepping && !bp.hasCond;
+			});
+			if (count == 1 && own != points.end()) CBreakPoints::RemoveBreakPoint(BREAKPOINT_EE, s_step.target);
+			else if (count) s_step.cleanup = false; // Never remove a replacement/overlap.
+		}
+		else if (s_step.owned) s_step.cleanup = false;
+		s_step.active = false;
+	}
+
+	static std::string guardedStepStatus()
+	{
+		if (s_step.active && VMManager::GetState() == VMState::Paused)
+			finishGuardedStep(s_step.reason.empty() ? "paused" : s_step.reason.c_str());
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("operation_id", s_step.id);
+		j.kv("active", s_step.active); j.kv("reason", s_step.reason); j.kv("cleanup_complete", s_step.cleanup);
+		j.kv("execution_epoch", s_executionEpoch); j.kv("paused", VMManager::GetState() == VMState::Paused);
+		j.key("old_pc"); j.valHex32(s_step.start); j.key("pc"); j.valHex32(r5900Debug.getPC());
+		j.key("target"); j.valHex32(s_step.target); j.key("opcode"); j.valHex32(s_step.opcode);
+		j.kv("instruction_units", s_step.units); j.kv("is_call", s_step.call); j.kv("is_return", s_step.ret);
+		j.key("cause"); j.valHex32(cpuRegs.CP0.n.Cause); j.key("epc"); j.valHex32(cpuRegs.CP0.n.EPC);
+		j.endObject(); return j.str();
+	}
+
+	static std::string startGuardedStep(const std::unordered_map<std::string, JsonValue>& params)
+	{
+#ifdef _WIN32
+		const uint64_t process = GetCurrentProcessId();
+#else
+		const uint64_t process = getpid();
+#endif
+		if (s_step.active || s_operation.active) return failure("Another native execution operation is active");
+		if (getStr(params, "cpu", "ee") != "ee" || !VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused)
+			return failure("Guarded instruction stepping requires a paused EE VM");
+		if (!CHECK_EEREC) return failure("Guarded stepping requires the EE recompiler; the Release interpreter has no instruction breakpoint instrumentation");
+		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
+			getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+			getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC() ||
+			getNum(params, "expected_pc", -1) != r5900Debug.getPC()) return failure("VM/ELF/PC identity changed before guarded step");
+		const auto timeout = getNum(params, "timeout_ms", 500);
+		const auto budget = getNum(params, "instruction_budget", 2);
+		if (timeout < 10 || timeout > 1000 || budget < 1 || budget > 2) return failure("Invalid guarded step timeout/budget");
+		const u32 pc = r5900Debug.getPC();
+		if ((pc & 3) || pc != standardizeBreakpointAddress(pc) || !r5900Debug.isValidAddress(pc)) return failure("EE PC must be aligned, valid and canonical");
+		const auto info = MIPSAnalyst::GetOpcodeInfo(&r5900Debug, pc);
+		// Do not guess exception/ERET successors or support branch-in-delay-slot code.
+		if (info.isSyscall || info.encodedOpcode == 0x42000018) return failure("Syscall/ERET stepping is not supported; VM remains paused");
+		bool taken = info.isBranch && (!info.isConditional || info.conditionMet);
+		const u32 op = info.encodedOpcode >> 26;
+		// Analyst treats comparisons of identical registers as unconditional, including BNE.
+		if ((op == 5 || op == 21) && ((info.encodedOpcode >> 21) & 31) == ((info.encodedOpcode >> 16) & 31)) taken = false;
+		const u32 units = info.isBranch && !(info.isLikelyBranch && !taken) ? 2 : 1;
+		if (budget < units) return failure("Insufficient instruction budget for branch plus delay slot");
+		const u32 target = info.isBranch ? (taken ? info.branchTarget : pc + 8) : pc + 4;
+		if ((target & 3) || target != standardizeBreakpointAddress(target) || !r5900Debug.isValidAddress(target)) return failure("Invalid guarded step successor");
+		if (info.isBranch)
+		{
+			const auto delay = MIPSAnalyst::GetOpcodeInfo(&r5900Debug, pc + 4);
+			if (!r5900Debug.isValidAddress(pc + 4) || delay.isBranch || delay.isSyscall || delay.encodedOpcode == 0x42000018)
+				return failure("Unsupported branch/delay-slot instruction; VM remains paused");
+		}
+		const auto points = CBreakPoints::GetBreakpoints(BREAKPOINT_EE, true);
+		for (const auto& bp : points)
+			if (bp.addr == target || (info.isBranch && bp.addr == pc + 4))
+				return failure("Existing breakpoint at successor/delay slot; VM remains paused and breakpoint is preserved");
+		s_step = {}; s_step.id = ++s_stepSequence; s_step.epoch = s_executionEpoch;
+		s_step.start = pc; s_step.target = target; s_step.opcode = info.encodedOpcode; s_step.units = units;
+		s_step.call = taken && info.isLinkedBranch;
+		s_step.ret = info.encodedOpcode == 0x03e00008; // Physical JR $ra only; no heuristic unwinding.
+		s_step.marker = "MCP guarded step " + std::to_string(s_step.id);
+		// Ordinary private breakpoint: Qt may clear ALL temporary breakpoints when pausing.
+		CBreakPoints::AddBreakPoint(BREAKPOINT_EE, target, false, true, false);
+		CBreakPoints::ChangeBreakPointDescription(BREAKPOINT_EE, target, s_step.marker);
+		s_step.active = s_step.owned = true;
+		// Skip only an actual execute breakpoint at the starting PC. Setting this
+		// unconditionally also suppresses a memory watchpoint on that instruction.
+		CBreakPoints::SetSkipFirst(BREAKPOINT_EE, target == pc || std::any_of(points.begin(), points.end(), [pc](const BreakPoint& bp) {
+			return bp.addr == pc && bp.enabled;
+		}) ? pc : 0);
+		s_stepWatchId.store(s_step.id);
+		s_stepDeadline.store(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count() + timeout);
+		VMManager::SetPaused(false);
+		return guardedStepStatus();
+	}
+
 	struct SourceBreakpointGroup
 	{
 		uint64_t session;
@@ -847,6 +957,18 @@ namespace DebugServer
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
+		if (cmd == "guarded_step") return startGuardedStep(params);
+		if (cmd == "guarded_step_status" || cmd == "guarded_step_cancel")
+		{
+			if (!s_step.id || getNum(params, "operation_id", -1) != static_cast<int64_t>(s_step.id)) return failure("Unknown guarded step operation");
+			if (cmd == "guarded_step_cancel" && s_step.active)
+			{
+				VMManager::SetPaused(true); finishGuardedStep("cancelled");
+			}
+			return guardedStepStatus();
+		}
+		if (s_step.active && cmd != "status" && cmd != "capabilities" && cmd != "read_events" && cmd != "read_logs")
+			return failure("A guarded instruction operation owns execution; poll or cancel it first");
 		std::string cpuName = getStr(params, "cpu", "ee");
 		DebugInterface* cpu = getCpu(cpuName);
 		if (cpuName != "ee" && cpuName != "iop") return failure("cpu must be ee or iop");
@@ -945,9 +1067,10 @@ namespace DebugServer
 				j.kv("process_id", static_cast<uint64_t>(getpid()));
 #endif
 				j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
+				j.kv("execution_epoch", s_executionEpoch);
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -1720,7 +1843,28 @@ namespace DebugServer
 	{
 		if (s_running.exchange(true)) return;
 		s_sourceGroups.clear();
+		s_step = {}; s_stepDeadline.store(0); ++s_executionEpoch;
 		++s_session;
+		const uint64_t watchdogSession = s_session.load();
+		std::thread([watchdogSession]() {
+			uint64_t queuedOperation = 0;
+			while (s_running.load() && s_session.load() == watchdogSession)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(10));
+				const auto operationId = s_stepWatchId.load();
+				const auto deadline = s_stepDeadline.load();
+				const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+				if (!deadline || now < deadline || queuedOperation == operationId) continue;
+				queuedOperation = operationId;
+				Host::RunOnCPUThread([watchdogSession, deadline, operationId]() {
+					if (s_session.load() != watchdogSession || !s_step.active || s_step.id != operationId) return;
+					// A newer step may have started while this callback was queued.
+					if (s_stepDeadline.load() != deadline) return;
+					if (VMManager::GetState() == VMState::Paused) { guardedStepStatus(); return; }
+					VMManager::SetPaused(true); finishGuardedStep("timeout");
+				});
+			}
+		}).detach();
 		Log::SetObserver(&recordLog);
 		recordEvent("vm_started");
 		s_serverThread = std::thread(serverLoop, port);
@@ -1729,6 +1873,7 @@ namespace DebugServer
 
 	void Stop()
 	{
+		finishGuardedStep("vm_stopping");
 		finishOperation("vm_stopping");
 		recordEvent("vm_stopping");
 		Log::SetObserver(nullptr);
@@ -1749,6 +1894,7 @@ namespace DebugServer
 	void OnBreakpointHit(bool iop, bool watchpoint)
 	{
 		if (!s_running.load()) return;
+		if (s_step.active) s_step.reason = !iop && !watchpoint && r5900Debug.getPC() == s_step.target ? "completed" : (watchpoint ? "watchpoint" : "breakpoint");
 		recordEvent(watchpoint ? "watchpoint" : "breakpoint", iop ? "iop" : "ee",
 			iop ? r3000Debug.getPC() : r5900Debug.getPC());
 	}
@@ -1796,7 +1942,22 @@ namespace DebugServer
 
 	void OnVMReset()
 	{
+		finishGuardedStep("vm_reset"); ++s_executionEpoch;
 		finishOperation("vm_reset");
+	}
+
+	void OnEEException()
+	{
+		if (!s_step.active) return;
+		s_step.reason = "exception";
+		VMManager::SetPaused(true);
+		// The normal CPU safe-exit hook defers exit during cpuEventTest.
+		Cpu->ExitExecution();
+	}
+
+	bool PreserveStepWatchpoints()
+	{
+		return s_step.active;
 	}
 
 } // namespace DebugServer
