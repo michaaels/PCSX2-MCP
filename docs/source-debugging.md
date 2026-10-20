@@ -2,6 +2,8 @@
 
 This extension adds two Node MCP tools. It uses a GNU/LLVM `addr2line` executable;
 the existing native PCSX2 patch does not need another rebuild.
+For the subsequent inverse lookup and owned file/line breakpoint extension, see
+[Source breakpoints](source-breakpoints.md); that extension requires a native rebuild.
 
 | Tool | Behavior |
 |---|---|
@@ -84,7 +86,9 @@ Concurrent UI/native clients can still reset or otherwise affect the VM.
 
 ## Limits
 
-- No line breakpoints, source stepping, local-variable evaluation or DWARF expressions.
+- These address-to-source tools do not install breakpoints. Separate
+  [source breakpoint tools](source-breakpoints.md) now support exact file/line
+  groups. Source stepping, local-variable evaluation and DWARF expressions remain pending.
 - No source-file reads, path remapping or automatic source-file existence checks.
   Returned paths are compiler-recorded paths, which may be Linux paths on Windows.
 - No address rebasing or automatic alias normalization. Supply the ELF's linked virtual

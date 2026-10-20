@@ -61,6 +61,7 @@ typedef int socket_t;
 #include "common/FileSystem.h"
 
 #include <cstring>
+#include <cstdlib>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -555,6 +556,104 @@ namespace DebugServer
 
 	static std::string handleCommand(const std::string& jsonLine);
 
+	struct SourceBreakpointGroup
+	{
+		uint64_t session;
+		std::string elf;
+		u32 crc;
+		std::vector<u32> addresses, relinquished;
+	};
+	// CPU-thread only. Descriptions plus explicit legacy-command invalidation guard ownership.
+	static std::unordered_map<std::string, SourceBreakpointGroup> s_sourceGroups;
+	static void relinquishSourceBreakpoint(BreakPointCpu cpu, u32 address)
+	{
+		if (cpu != BREAKPOINT_EE) return;
+		address = standardizeBreakpointAddress(address);
+		for (auto& [id, group] : s_sourceGroups)
+			if (std::find(group.addresses.begin(), group.addresses.end(), address) != group.addresses.end() &&
+				std::find(group.relinquished.begin(), group.relinquished.end(), address) == group.relinquished.end())
+				group.relinquished.push_back(address);
+	}
+
+	static std::string sourceBreakpoints(const std::unordered_map<std::string, JsonValue>& params, bool install)
+	{
+		if (getStr(params, "cpu", "ee") != "ee") return failure("Source breakpoint groups support EE only");
+		if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused)
+			return failure("Pause the active VM before changing source breakpoint groups");
+		const auto id = getStr(params, "group_id");
+		if (id.size() != 32 || !std::all_of(id.begin(), id.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }))
+			return failure("Invalid source breakpoint group ID");
+		const std::string marker = "MCP source group " + id;
+		if (!install)
+		{
+			const auto found = s_sourceGroups.find(id);
+			if (found == s_sourceGroups.end()) return failure("Unknown source breakpoint group");
+			const auto& group = found->second;
+			if (group.session != s_session.load() || group.elf != VMManager::GetCurrentELF() || group.crc != VMManager::GetCurrentCRC())
+				return failure("VM/ELF identity changed; source breakpoints were not removed");
+			const auto current = CBreakPoints::GetBreakpoints(BREAKPOINT_EE, true);
+			std::vector<u32> removed, preserved;
+			for (u32 address : group.addresses)
+			{
+				const auto bp = std::find_if(current.begin(), current.end(), [address](const BreakPoint& value) { return value.addr == address; });
+				if (bp == current.end()) continue;
+				if (std::find(group.relinquished.begin(), group.relinquished.end(), address) != group.relinquished.end() ||
+					bp->description != marker || !bp->enabled || bp->temporary || bp->stepping || bp->hasCond)
+				{ preserved.push_back(address); continue; }
+				CBreakPoints::RemoveBreakPoint(BREAKPOINT_EE, address); removed.push_back(address);
+			}
+			s_sourceGroups.erase(found);
+			JsonBuilder result; result.startObject(); result.kv("ok", true); result.kv("group_id", id);
+			result.kv("complete", preserved.empty()); result.key("removed_addresses"); result.startArray();
+			for (u32 address : removed) result.valHex32(address);
+			result.endArray(); result.key("preserved_addresses"); result.startArray();
+			for (u32 address : preserved) result.valHex32(address);
+			result.endArray(); result.endObject(); return result.str();
+		}
+#ifdef _WIN32
+		const uint64_t process = GetCurrentProcessId();
+#else
+		const uint64_t process = getpid();
+#endif
+		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+			getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+			getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			return failure("VM/ELF identity changed; source breakpoints were not installed");
+		if (s_sourceGroups.size() >= 256 || s_sourceGroups.contains(id)) return failure("Source breakpoint group limit reached or ID already exists");
+		const auto encoded = getStr(params, "addresses");
+		if (encoded.empty() || encoded.size() > 703 || encoded.back() == ',') return failure("Expected 1-64 canonical hexadecimal addresses");
+		std::vector<u32> addresses;
+		std::istringstream stream(encoded); std::string item;
+		while (std::getline(stream, item, ','))
+		{
+			if (item.size() != 10 || item.substr(0, 2) != "0x" || !std::all_of(item.begin() + 2, item.end(), [](char c) {
+				return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'); }))
+				return failure("Malformed source breakpoint address");
+			const u32 address = static_cast<u32>(std::strtoul(item.c_str() + 2, nullptr, 16));
+			if ((address & 3) || address != standardizeBreakpointAddress(address) || !r5900Debug.isValidAddress(address))
+				return failure("Source breakpoint address must be valid, aligned and canonical");
+			if (std::find(addresses.begin(), addresses.end(), address) != addresses.end()) return failure("Duplicate source breakpoint address");
+			addresses.push_back(address);
+			if (addresses.size() > 64) return failure("Source breakpoint address limit exceeded");
+		}
+		for (const auto& bp : CBreakPoints::GetBreakpoints(BREAKPOINT_EE, true))
+			if (std::find(addresses.begin(), addresses.end(), bp.addr) != addresses.end())
+				return failure("An existing breakpoint occupies a source target; no breakpoints changed");
+		// Validation and installation share one CPU-thread operation, so ELF reset cannot interleave.
+		for (u32 address : addresses)
+		{
+			CBreakPoints::AddBreakPoint(BREAKPOINT_EE, address, false, true);
+			CBreakPoints::ChangeBreakPointDescription(BREAKPOINT_EE, address, marker);
+		}
+		s_sourceGroups.emplace(id, SourceBreakpointGroup{s_session.load(), VMManager::GetCurrentELF(), VMManager::GetCurrentCRC(), addresses, {}});
+		JsonBuilder result; result.startObject(); result.kv("ok", true); result.kv("group_id", id);
+		result.kv("session", s_session.load()); result.kv("elf", VMManager::GetCurrentELF());
+		result.key("elf_crc"); result.valHex32(VMManager::GetCurrentCRC()); result.key("addresses"); result.startArray();
+		for (u32 address : addresses) result.valHex32(address);
+		result.endArray(); result.endObject(); return result.str();
+	}
+
 	static void appendSymbol(JsonBuilder& j, const ccc::Symbol& symbol, const char* kind, const std::string& source)
 	{
 		j.startObject(); j.kv("name", symbol.name()); j.kv("kind", kind);
@@ -752,6 +851,8 @@ namespace DebugServer
 		DebugInterface* cpu = getCpu(cpuName);
 		if (cpuName != "ee" && cpuName != "iop") return failure("cpu must be ee or iop");
 		if (cmd == "lookup_symbols") return lookupSymbols(cpu, params);
+		if (cmd == "install_source_breakpoints" || cmd == "remove_source_breakpoints")
+			return sourceBreakpoints(params, cmd == "install_source_breakpoints");
 		if (cmd == "import_symbols")
 		{
 			auto* importer = cpu->GetSymbolImporter();
@@ -846,7 +947,7 @@ namespace DebugServer
 				j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -1083,6 +1184,7 @@ namespace DebugServer
 			std::string desc = getStr(params, "description", "");
 			auto bpCpu = getBpCpu(cpuName);
 
+			relinquishSourceBreakpoint(bpCpu, addr);
 			CBreakPoints::AddBreakPoint(bpCpu, addr, temp, enabled);
 
 			if (!desc.empty())
@@ -1109,6 +1211,7 @@ namespace DebugServer
 		else if (cmd == "remove_breakpoint")
 		{
 			u32 addr = (u32)getNum(params, "address", 0);
+			relinquishSourceBreakpoint(getBpCpu(cpuName), addr);
 			CBreakPoints::RemoveBreakPoint(getBpCpu(cpuName), addr);
 			j.startObject();
 			j.kv("ok", true);
@@ -1425,6 +1528,7 @@ namespace DebugServer
 		// ----- CLEAR ALL BREAKPOINTS -----
 		else if (cmd == "clear_breakpoints")
 		{
+			for (auto& [id, group] : s_sourceGroups) group.relinquished = group.addresses;
 			CBreakPoints::ClearAllBreakPoints();
 			CBreakPoints::ClearAllMemChecks();
 			j.startObject();
@@ -1442,6 +1546,7 @@ namespace DebugServer
 				"status", "capabilities", "read_events", "read_logs", "capture_context", "load_elf",
 				"frame_advance", "input_frames", "automation_status", "automation_cancel", "controller_state",
 				"lookup_symbols", "resolve_address", "breakpoint_symbol", "import_symbols",
+				"install_source_breakpoints", "remove_source_breakpoints",
 				"screenshot", "read_registers", "write_register", "set_pc",
 				"read_memory", "write_memory", "read_string",
 				"disassemble", "evaluate",
@@ -1614,6 +1719,7 @@ namespace DebugServer
 	void Start(int port)
 	{
 		if (s_running.exchange(true)) return;
+		s_sourceGroups.clear();
 		++s_session;
 		Log::SetObserver(&recordLog);
 		recordEvent("vm_started");

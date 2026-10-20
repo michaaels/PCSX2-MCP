@@ -227,6 +227,30 @@ export class DebugServerClient {
     } finally { this.exclusiveToken = undefined; }
   }
 
+  async installSourceBreakpoints(groupId: string, addresses: string[], expected: { session: number; process_id: number; elf: string; elf_crc: string }) {
+    const response = await this.send({ cmd: 'install_source_breakpoints', cpu: 'ee', group_id: groupId,
+      addresses: addresses.join(','), expected_session: expected.session, expected_process_id: expected.process_id,
+      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc });
+    if (!response.ok) throw Object.assign(new Error(response.error ?? 'Native source breakpoint request rejected'), { native_rejected: true });
+    const parsed = z.object({ ok: z.literal(true), group_id: z.string().regex(/^[\da-f]{32}$/),
+      session: z.number().int().nonnegative(), elf: z.string(), elf_crc: address,
+      addresses: z.array(address).min(1).max(64) }).parse(response);
+    if (parsed.group_id !== groupId || parsed.session !== expected.session || parsed.elf !== expected.elf ||
+        Number(parsed.elf_crc) !== Number(expected.elf_crc) || parsed.addresses.length !== addresses.length ||
+        parsed.addresses.some((value, index) => Number(value) !== Number(addresses[index]))) throw new Error('Unexpected native source breakpoint identity/addresses');
+    return parsed;
+  }
+
+  async removeSourceBreakpoints(groupId: string) {
+    if (!/^[\da-f]{32}$/.test(groupId)) throw new Error('Invalid source breakpoint group ID');
+    const response = await this.send({ cmd: 'remove_source_breakpoints', cpu: 'ee', group_id: groupId });
+    if (!response.ok) throw new Error(response.error ?? 'Source breakpoint removal failed');
+    const parsed = z.object({ ok: z.literal(true), group_id: z.string(), complete: z.boolean(),
+      removed_addresses: z.array(address).max(64), preserved_addresses: z.array(address).max(64) }).parse(response);
+    if (parsed.group_id !== groupId || parsed.complete !== (parsed.preserved_addresses.length === 0)) throw new Error('Unexpected native source breakpoint cleanup response');
+    return parsed;
+  }
+
   async lookupSymbols(options: SymbolOptions = {}) {
     return symbolsResponse.parse(await this.sessionCommand({ cmd: 'lookup_symbols', ...symbolOptions.parse(options) }));
   }

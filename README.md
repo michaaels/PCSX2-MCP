@@ -316,6 +316,9 @@ For name-based breakpoints and repeatable assertions/captures, see
 For file/line and inline-frame lookup from a debug ELF, including the current EE PC,
 see [source locations](docs/source-debugging.md). These tools use GNU/LLVM addr2line;
 Windows can use the existing WSL installation.
+For exact file/line breakpoints and explicit source snapshot mappings, see
+[source breakpoints](docs/source-breakpoints.md). The optional inverse-lookup
+backend uses an isolated Python environment and the rebuilt native patch.
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>
