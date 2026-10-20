@@ -313,6 +313,9 @@ and PCSX2 with `tools/apply-debug-server.py`; the original release binary does n
 The next extension adds [emulator launch and frame/controller automation](docs/automation.md).
 For name-based breakpoints and repeatable assertions/captures, see
 [symbols and debug scenarios](docs/workflows.md).
+For file/line and inline-frame lookup from a debug ELF, including the current EE PC,
+see [source locations](docs/source-debugging.md). These tools use GNU/LLVM addr2line;
+Windows can use the existing WSL installation.
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>

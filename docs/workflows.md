@@ -45,8 +45,9 @@ cannot change the symbol target.
 Address resolution returns up to 100 overlaps. It does not guess a nearest function
 when the address lies outside its declared range. Zero-size symbols match only their
 starting address. `source_file` is populated only when the database has that information.
-**Source line numbers, DWARF evaluation, local variables and source stepping are not
-implemented.** Stripped release ELFs may contain no names; retain an unstripped debug
+Source line numbers are available through the separate [source tools](source-debugging.md)
+using addr2line and a matching debug ELF. Local variables and source stepping are not
+implemented. Stripped release ELFs may contain no names; retain an unstripped debug
 ELF or configure a matching external symbol file in PCSX2.
 
 ## Scenario workflow
@@ -167,6 +168,6 @@ Prefer retaining an original unstripped ELF in a normal project build pipeline.
 
 Native ambiguity handling, IOP symbol queries and optional source filenames compile
 but were not exercised by this live fixture. Linux, other graphics renderers, commercial
-games and physical PS2 hardware remain unvalidated for this extension. Full source-line
-debugging, richer visual assertions, GS/audio/performance diagnostics and hardware
+games and physical PS2 hardware remain unvalidated for this extension. Source stepping
+and local variables, richer visual assertions, GS/audio/performance diagnostics and hardware
 backends remain separate work.

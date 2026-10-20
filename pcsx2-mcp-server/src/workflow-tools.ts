@@ -17,7 +17,7 @@ export function registerWorkflowTools(server: McpServer, getClient: () => DebugS
   }
   server.resource('debug_workflows', 'ps2://debug_workflows', async () => ({
     contents: [{ uri: 'ps2://debug_workflows', mimeType: 'text/plain', text:
-      'Symbol tools read PCSX2\'s imported/analysed symbol database, with optional source filenames. They do not parse DWARF or provide source lines/locals.\n' +
+      'Symbol tools read PCSX2\'s imported/analysed symbol database, with optional source filenames. Separate source tools use addr2line and matching ELF debug information for file/line and inline frames; locals/source stepping are not implemented.\n' +
       'Lookup names are case-sensitive substrings unless exact=true. Paginate with next_offset; database imports may change between calls.\n' +
       'Run scenarios only after the ELF is booted. The runner pauses the VM, checks its identity between steps, and leaves it paused.\n' +
       'Scenarios support frames, input, assertions (memory/expression/new logs/controller), run-to-symbol/address, screenshots and contexts.\n' +

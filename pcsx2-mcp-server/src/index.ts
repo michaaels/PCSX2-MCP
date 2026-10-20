@@ -21,6 +21,7 @@ import { PineClient, EmuStatus } from './pine-client.js';
 import { registerSessionTools } from './session-tools.js';
 import { registerAutomationTools } from './automation-tools.js';
 import { registerWorkflowTools } from './workflow-tools.js';
+import { registerSourceTools } from './source-tools.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -70,6 +71,7 @@ async function writeMem(addr: number, data: Buffer): Promise<void> {
 const server = new McpServer({ name: 'pcsx2-ultimate-debugger', version: '2.0.0' }, { capabilities: { tools: {}, resources: {} } });
 registerSessionTools(server, () => debugServer);
 registerWorkflowTools(server, () => debugServer);
+registerSourceTools(server, () => debugServer);
 registerAutomationTools(server, () => debugServer, client => { debugServer?.disconnect(); debugServer = client; });
 process.stdin.once('end', () => { debugServer?.disconnect(); pine?.disconnect(); });
 
