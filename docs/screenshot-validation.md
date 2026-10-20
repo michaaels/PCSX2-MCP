@@ -56,10 +56,27 @@ The script waits for connection/first-frame readiness, captures two sizes, check
 rejects invalid dimensions and restores the emulator's initial running state. PNGs and `results.json` are
 written to the specified directory (ignored by Git when under `release/`).
 
+## Additional native Windows validation
+
+The same upstream version was also built natively for Windows x64 with MSVC 19.51 (Visual Studio Build
+Tools 2026) and the official PCSX2 Windows dependencies bundle published on 2026-10-07. The dependency
+archive SHA-256 was `a3133c7841e8fbdab6f4d1d5ad8efec31fb1ecda95ffed39f4d1f36bb7eb0007` and included Qt 6.12.0.
+OpenGL, Direct3D and Vulkan support were compiled. The DebugServer defines `NOMINMAX` before including
+Winsock headers so Windows macros do not break PCSX2's `SmallString` headers.
+
+Native Windows Direct3D 11 captures passed through the same real MCP stdio live test:
+
+- BIOS: 640 × 480 and 960 × 720 PNGs.
+- SMS/Jellyfin homebrew: 640 × 480 and 960 × 720 PNGs.
+- Both scenarios: capture while running, capture while paused, identical repeated paused images, and invalid-size rejection.
+- Resulting PNGs were opened and inspected visually.
+
+The Windows executable SHA-256 was `82168771b7eb89926aca2542aba2ade67af4b674170809ab2b53fdc95b7d2ea7`.
+
 ## Limits of this validation
 
-This validates the Linux/WSL emulator and its OpenGL capture path. It is not a Windows/MSVC build, a
-Direct3D/Vulkan test, a commercial-game compatibility test or a physical PS2 test. The homebrew was offline;
+This validates Linux/WSL OpenGL and native Windows Direct3D 11 capture paths. Direct3D 12, Vulkan,
+commercial-game compatibility and physical PS2 debugging were not tested. The homebrew was offline;
 Jellyfin networking, audio and video playback were not part of these screenshot checks. Shutdown during an
 in-flight GPU capture remains a manual test. PCSX2's existing pause/resume debug commands emitted a Qt timer
 thread warning in this environment; capture itself completed, and paused-frame equality checks passed.
