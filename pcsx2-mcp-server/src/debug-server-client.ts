@@ -19,6 +19,8 @@
 
 import * as net from 'node:net';
 import { parseScreenshot, type Screenshot } from './screenshot.js';
+import { capabilitiesResponse, eventsResponse, logsResponse, parseContext, type DebugEventType } from './debug-session.js';
+import { z } from 'zod';
 
 export interface DebugRegister {
   name: string;
@@ -204,6 +206,72 @@ export class DebugServerClient {
   }
 
   isConnected(): boolean { return this.connected; }
+
+  private async sessionCommand(command: Record<string, unknown>): Promise<any> {
+    const response = await this.send(command);
+    if (!response.ok) {
+      const hint = typeof response.error === 'string' && response.error.startsWith('Unknown command')
+        ? ' Rebuild PCSX2 with the updated DebugServer.' : '';
+      throw new Error(`${response.error}${hint}`);
+    }
+    return response;
+  }
+
+  async getCapabilities() {
+    return capabilitiesResponse.parse(await this.sessionCommand({ cmd: 'capabilities' }));
+  }
+
+  async readEvents(after = 0, limit = 100, waitMs = 0) {
+    z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).parse(after);
+    z.number().int().min(1).max(200).parse(limit);
+    z.number().int().min(0).max(1000).parse(waitMs);
+    return eventsResponse.parse(await this.sessionCommand({ cmd: 'read_events', after, limit, wait_ms: waitMs }));
+  }
+
+  async waitEvent(options: { after?: number; type?: DebugEventType; timeoutMs?: number; signal?: AbortSignal } = {}) {
+    let after = options.after ?? 0;
+    const timeout = z.number().int().min(0).max(30000).parse(options.timeoutMs ?? 10000);
+    const deadline = performance.now() + timeout;
+    let dropped = false;
+    do {
+      options.signal?.throwIfAborted();
+      // Small native long-polls leave room for resume/other commands on this connection.
+      const batch = await this.readEvents(after, 200, Math.max(0, Math.min(250, Math.floor(deadline - performance.now()))));
+      options.signal?.throwIfAborted();
+      dropped ||= batch.dropped;
+      after = batch.next_cursor;
+      const matches = batch.events.filter(event => !options.type || event.type === options.type);
+      if (matches.length) return { ...batch, events: matches, dropped, timed_out: false };
+      if (performance.now() >= deadline) return { ...batch, events: [], dropped, timed_out: true };
+    } while (true);
+  }
+
+  async readLogs(after = 0, limit = 100) {
+    z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).parse(after);
+    z.number().int().min(1).max(200).parse(limit);
+    return logsResponse.parse(await this.sessionCommand({ cmd: 'read_logs', after, limit }));
+  }
+
+  async loadElf(filename: string) {
+    z.string().min(1).max(4096)
+      .refine(value => /^(?:[a-zA-Z]:[\\/]|[\\/]{2}|\/)/.test(value), 'ELF path must be absolute on the emulator host')
+      .refine(value => !/[\x00-\x1f]/.test(value), 'ELF path contains control characters').parse(filename);
+    return z.object({ ok: z.literal(true), path: z.string(), reset_requested: z.literal(true) })
+      .parse(await this.sessionCommand({ cmd: 'load_elf', path: filename }));
+  }
+
+  async captureContext(options: { cpu?: CpuTarget; width?: number; height?: number; memoryAddress?: string; memoryLength?: number } = {}) {
+    const width = z.number().int().min(1).max(1280).parse(options.width ?? 640);
+    const height = z.number().int().min(1).max(1024).parse(options.height ?? 480);
+    const memoryLength = z.number().int().min(0).max(4096).parse(options.memoryLength ?? 0);
+    const memoryAddress = z.string().regex(/^(?:0x)?[\da-fA-F]{1,8}$/).parse(options.memoryAddress ?? '0x0');
+    const result = parseContext(await this.sessionCommand({ cmd: 'capture_context', cpu: options.cpu ?? 'ee',
+      width, height, memory_address: `0x${memoryAddress.replace(/^0x/, '')}`, memory_length: memoryLength }));
+    if (result.screenshot.ok && (result.screenshot.width > width || result.screenshot.height > height)) {
+      throw new Error('Context screenshot exceeds requested dimensions');
+    }
+    return result;
+  }
 
   // ===== Status =====
 

@@ -13,6 +13,11 @@ def replace_once(text: str, before: str, after: str, filename: str) -> str:
     return text.replace(before, after, 1)
 
 
+def write_if_changed(target: Path, text: str) -> None:
+    if target.read_text(encoding='utf-8') != text:
+        target.write_text(text, encoding='utf-8')
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('source', type=Path, help='Full upstream PCSX2 source checkout')
@@ -35,10 +40,72 @@ def main() -> None:
     vm_text = replace_once(vm_text, 'void VMManager::Shutdown(bool save_resume_state)\n{',
         'void VMManager::Shutdown(bool save_resume_state)\n{\n\tDebugServer::Stop();', str(vm))
 
+    # Preserve the GUI/file logging sinks. This independent atomic observer only
+    # receives INFO-or-higher console messages while the MCP server is active.
+    console_h = source / 'common/Console.h'
+    console_cpp = source / 'common/Console.cpp'
+    console_h_text = replace_once(console_h.read_text(encoding='utf-8'),
+        '\t// adds host output',
+        '\t// Independent diagnostic observer, called on the logging thread.\n'
+        '\tvoid SetObserver(HostCallbackType callback);\n\n\t// adds host output', str(console_h))
+    console_text = replace_once(console_cpp.read_text(encoding='utf-8'),
+        '#include <mutex>', '#include <atomic>\n#include <mutex>', str(console_cpp))
+    console_text = replace_once(console_text, '\tstatic HostCallbackType s_host_callback;',
+        '\tstatic HostCallbackType s_host_callback;\n\tstatic std::atomic<HostCallbackType> s_observer{nullptr};', str(console_cpp))
+    console_text = replace_once(console_text, 'LOGLEVEL Log::GetMaxLevel()\n{\n\treturn s_max_level;\n}',
+        'void Log::SetObserver(HostCallbackType callback)\n{\n\ts_observer.store(callback);\n}\n\n'
+        'LOGLEVEL Log::GetMaxLevel()\n{\n\treturn std::max(s_max_level, s_observer.load() ? LOGLEVEL_INFO : LOGLEVEL_NONE);\n}', str(console_cpp))
+    # Three write entry points bypass GetMaxLevel() in upstream.
+    if '\tif (level > s_max_level)' in console_text:
+        if console_text.count('\tif (level > s_max_level)') != 3:
+            raise SystemExit(f'{console_cpp}: unexpected log filter count')
+        console_text = console_text.replace('\tif (level > s_max_level)', '\tif (level > GetMaxLevel())')
+    console_text = replace_once(console_text, '\tpxAssert(level > LOGLEVEL_NONE);',
+        '\tif (level <= LOGLEVEL_INFO)\n\t{\n\t\tif (const auto observer = s_observer.load())\n'
+        '\t\t\tobserver(level, color, message);\n\t}\n\n\tpxAssert(level > LOGLEVEL_NONE);', str(console_cpp))
+
+    # State transitions are emitted after CPU/GS synchronization.
+    vm_text = replace_once(vm_text,
+        '\t\tCpu->ExitExecution();\n\t}\n}\n\n',
+        '\t\tCpu->ExitExecution();\n\t}\n\tif (state != old_state)\n'
+        '\t\tDebugServer::OnVMStateChanged(static_cast<int>(state));\n}\n\n', str(vm))
+
+    breakpoint_files = {}
+    for filename, functions in {
+        'pcsx2/Interpreter.cpp': [('void intBreakpoint(bool memcheck)', False, 'memcheck')],
+        'pcsx2/R3000AInterpreter.cpp': [('void psxBreakpoint(bool memcheck)', True, 'memcheck')],
+        'pcsx2/x86/iR3000A.cpp': [('bool psxDynarecCheckBreakpoint()', True, 'false'), ('bool psxDynarecMemcheck()', True, 'true')],
+        'pcsx2/x86/ix86-32/iR5900.cpp': [('void dynarecCheckBreakpoint()', False, 'false'), ('void dynarecMemcheck()', False, 'true')],
+    }.items():
+        target = source / filename
+        text = target.read_text(encoding='utf-8')
+        text = replace_once(text, '#include "VMManager.h"',
+            '#include "VMManager.h"\n#include "DebugTools/DebugServer.h"', filename)
+        for signature, iop, watch in functions:
+            # Accept extra arguments on the dynarec functions, while keeping the
+            # replacement confined to the correct function body.
+            prefix = signature.split('(')[0] + '('
+            start = text.find(prefix)
+            end = text.find('\n}', start) + 2
+            if start < 0 or end < 2:
+                raise SystemExit(f'{filename}: breakpoint handler not found: {signature}')
+            block = text[start:end]
+            hook = '\tVMManager::SetPaused(true);\n\tDebugServer::OnBreakpointHit(' + ('true' if iop else 'false') + ', ' + watch + ');'
+            block = replace_once(block, '\tVMManager::SetPaused(true);', hook, filename)
+            text = text[:start] + block + text[end:]
+        breakpoint_files[target] = text
+
     for name in ('DebugServer.cpp', 'DebugServer.h'):
-        shutil.copy2(repo / 'pcsx2-plugin' / name, source / 'pcsx2/DebugTools' / name)
-    cmake.write_text(cmake_text, encoding='utf-8')
-    vm.write_text(vm_text, encoding='utf-8')
+        original = repo / 'pcsx2-plugin' / name
+        target = source / 'pcsx2/DebugTools' / name
+        if not target.exists() or target.read_bytes() != original.read_bytes():
+            shutil.copy2(original, target)
+    write_if_changed(cmake, cmake_text)
+    write_if_changed(vm, vm_text)
+    write_if_changed(console_h, console_h_text)
+    write_if_changed(console_cpp, console_text)
+    for target, text in breakpoint_files.items():
+        write_if_changed(target, text)
     print(f'Integrated DebugServer sources, CMake target and VM lifecycle into {source}')
 
 

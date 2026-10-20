@@ -273,7 +273,7 @@ MCP arguments for the last request:
 ```
 PCSX2-MCP/                       ← source code only, lightweight
 ├── pcsx2-plugin/
-│   ├── DebugServer.cpp          ← our custom patch for PCSX2 (this is the only PCSX2 modification)
+│   ├── DebugServer.cpp          ← custom DebugInterface bridge and session history
 │   └── DebugServer.h
 ├── pcsx2-mcp-server/
 │   ├── src/index.ts             ← MCP server source (TypeScript)
@@ -306,6 +306,10 @@ PCSX2-MCP-v1.0.0-win64/          ← ready to run, everything pre-built
 ---
 
 ## Building from Source
+
+For the new session tools (events, console logs, ELF reload and context reports), see
+[Debug sessions](docs/debug-sessions.md). They require rebuilding both the MCP server
+and PCSX2 with `tools/apply-debug-server.py`; the original release binary does not contain them.
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>
@@ -408,4 +412,4 @@ remaining platform checks. Before releasing a new emulator binary, build PCSX2 w
 - **DebugServer plugin**: GPL-3.0 (derivative work)
 - **MCP Server**: MIT
 
-The GitHub Release includes a pre-built PCSX2 binary (GPL-3.0). Full source for our modifications is provided in `pcsx2-plugin/` (this repo) and also bundled in the release zip under `source/`. The unmodified PCSX2 source is available at [github.com/PCSX2/pcsx2](https://github.com/PCSX2/pcsx2).
+The GitHub Release includes a pre-built PCSX2 binary (GPL-3.0). Source for our modifications is provided in `pcsx2-plugin/` and `tools/apply-debug-server.py` in this repo; releases must include the matching source and integration script. The upstream PCSX2 source is available at [github.com/PCSX2/pcsx2](https://github.com/PCSX2/pcsx2).

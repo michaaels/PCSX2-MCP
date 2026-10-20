@@ -34,7 +34,10 @@ namespace DebugServer
 	// Check if server is running
 	bool IsRunning();
 
-	// Called when a breakpoint is hit — wakes up any waiting step/continue
-	void OnBreakpointHit();
+	// Called on a real instruction breakpoint or memory watchpoint hit.
+	void OnBreakpointHit(bool iop, bool watchpoint);
+
+	// Called on the CPU thread after an actual VM state transition.
+	void OnVMStateChanged(int state);
 
 } // namespace DebugServer

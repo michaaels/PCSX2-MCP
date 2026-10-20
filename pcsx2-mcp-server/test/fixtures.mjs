@@ -33,6 +33,19 @@ export function screenshot(width = 1, height = 1) {
   return { ok: true, width, height, mime_type: 'image/png', data: png.toString('base64') };
 }
 
+export function history(key, entries = [], next = entries.at(-1)?.sequence ?? 0) {
+  return { ok: true, session: 1, oldest_sequence: 1, dropped: false, next_cursor: next, [key]: entries };
+}
+
+export function contextResponse(image = screenshot()) {
+  return {
+    ok: true, timestamp_ms: 1, session: 1, cpu: 'ee', was_running: true, elf: 'test.elf', elf_crc: '0x12345678',
+    status: { ok: true, data: { alive: true, paused: true, pc: '0x00100000', cycles: 10 } },
+    read_registers: { ok: true, data: { pc: '0x00100000' } },
+    get_backtrace: { ok: true, frames: [] }, recent_logs: history('logs'), screenshot: image,
+  };
+}
+
 export async function debugServer(t, reply) {
   const requests = [];
   const sockets = new Set();

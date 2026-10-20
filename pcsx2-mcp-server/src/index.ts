@@ -18,6 +18,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { DebugServerClient } from './debug-server-client.js';
 import { PineClient, EmuStatus } from './pine-client.js';
+import { registerSessionTools } from './session-tools.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -65,6 +66,7 @@ async function writeMem(addr: number, data: Buffer): Promise<void> {
 
 // ===== MCP Server =====
 const server = new McpServer({ name: 'pcsx2-ultimate-debugger', version: '2.0.0' }, { capabilities: { tools: {}, resources: {} } });
+registerSessionTools(server, () => debugServer);
 
 // ==========================================================
 //  TOOL: pcsx2_connect
@@ -77,12 +79,14 @@ server.tool('pcsx2_connect',
     // Try DebugServer
     if (mode === 'auto' || mode === 'debug') {
       try {
+        debugServer?.disconnect();
         debugServer = new DebugServerClient('127.0.0.1', debug_port);
         await debugServer.connect();
         const st = await debugServer.getStatus();
         results.push(`✅ DebugServer: connected (PC=0x${st.pc}, paused=${st.paused})`);
         results.push('   → 128-bit registers, native disasm, expressions, conditional BP, step-over, threads');
       } catch (e: any) {
+        debugServer?.disconnect();
         debugServer = null;
         results.push(`❌ DebugServer (port ${debug_port}): ${e.message}`);
       }
@@ -90,11 +94,13 @@ server.tool('pcsx2_connect',
     // Try Pine
     if (mode === 'auto' || mode === 'pine') {
       try {
+        pine?.disconnect();
         pine = new PineClient('127.0.0.1', pine_port);
         await pine.connect();
         const title = await pine.getTitle();
         results.push(`✅ Pine IPC: connected (${title})`);
       } catch (e: any) {
+        pine?.disconnect();
         pine = null;
         results.push(`❌ Pine (port ${pine_port}): ${e.message}`);
       }

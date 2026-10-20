@@ -12,7 +12,7 @@
 //   2. Add to CMakeLists.txt
 //   3. Call DebugServer::Start() from VMManager::Initialize()
 //   4. Call DebugServer::Stop() from VMManager::Shutdown()
-//   5. Call DebugServer::OnBreakpointHit() from breakpoint handler
+//   5. Integrate breakpoint, state and console hooks with tools/apply-debug-server.py
 
 // ============================================================
 // NOTE: This file uses a minimal inline JSON builder to avoid
@@ -51,6 +51,8 @@ typedef int socket_t;
 #include "MTGS.h"
 #include "VMManager.h"
 #include "common/Image.h"
+#include "common/Console.h"
+#include "common/FileSystem.h"
 
 #include <cstring>
 #include <cstdio>
@@ -65,6 +67,8 @@ typedef int socket_t;
 #include <chrono>
 #include <memory>
 #include <cerrno>
+#include <deque>
+#include <future>
 
 // Forward declarations — these are PCSX2 globals
 extern R5900DebugInterface r5900Debug;
@@ -72,6 +76,49 @@ extern R3000DebugInterface r3000Debug;
 
 namespace DebugServer
 {
+	static std::atomic<bool> s_running{false};
+	struct HistoryEntry
+	{
+		uint64_t sequence;
+		int64_t timestamp;
+		std::string kind;
+		std::string detail;
+		std::string cpu;
+		u32 pc = 0;
+		int level = 0;
+		bool truncated = false;
+	};
+	static std::mutex s_historyMutex;
+	static std::condition_variable s_eventReady;
+	static std::deque<HistoryEntry> s_events, s_logs;
+	static uint64_t s_eventSequence = 0, s_logSequence = 0;
+	static std::atomic<uint64_t> s_session{0};
+
+	static int64_t timestampMillis()
+	{
+		return std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::system_clock::now().time_since_epoch()).count();
+	}
+
+	static void recordEvent(const char* kind, const char* cpu = "", u32 pc = 0, std::string detail = {})
+	{
+		std::lock_guard lock(s_historyMutex);
+		s_events.push_back({++s_eventSequence, timestampMillis(), kind, std::move(detail), cpu, pc});
+		if (s_events.size() > 512) s_events.pop_front();
+		s_eventReady.notify_all();
+	}
+
+	static void recordLog(LOGLEVEL level, ConsoleColors color, std::string_view message)
+	{
+		if (!s_running.load()) return;
+		// Colors alone are not reliable CPU attribution; preserve a console source.
+		std::string text(message.substr(0, 2048));
+		std::lock_guard lock(s_historyMutex);
+		s_logs.push_back({++s_logSequence, timestampMillis(), "console", std::move(text), "", 0,
+			static_cast<int>(level), message.size() > 2048});
+		if (s_logs.size() > 2048) s_logs.pop_front();
+	}
+
 	// ============================================================
 	// Minimal JSON Builder
 	// ============================================================
@@ -98,6 +145,8 @@ namespace DebugServer
 		void valUint(uint64_t v) { comma(); m_buf += std::to_string(v); m_needComma.back() = true; }
 		void valBool(bool v) { comma(); m_buf += v ? "true" : "false"; m_needComma.back() = true; }
 		void valNull() { comma(); m_buf += "null"; m_needComma.back() = true; }
+		// Only for JSON produced by this server, never untrusted request text.
+		void valJson(const std::string& value) { comma(); m_buf += value; m_needComma.back() = true; }
 
 		void valHex32(uint32_t v)
 		{
@@ -151,7 +200,15 @@ namespace DebugServer
 					case '\n': m_buf += "\\n"; break;
 					case '\r': m_buf += "\\r"; break;
 					case '\t': m_buf += "\\t"; break;
-					default: m_buf += *s; break;
+					default:
+						if (static_cast<unsigned char>(*s) < 0x20)
+						{
+							char escaped[7];
+							snprintf(escaped, sizeof(escaped), "\\u%04x", static_cast<unsigned char>(*s));
+							m_buf += escaped;
+						}
+						else m_buf += *s;
+						break;
 				}
 			}
 		}
@@ -405,12 +462,178 @@ namespace DebugServer
 		return j.str();
 	}
 
+	static std::string failure(const std::string& error)
+	{
+		JsonBuilder j; j.startObject(); j.kv("ok", false); j.kv("error", error); j.endObject();
+		return j.str();
+	}
+
+	// Only short CPU operations belong here. A queued operation which hasn't
+	// started by its deadline is cancelled, so a late callback cannot reset a VM.
+	static std::string onCPU(std::function<std::string()> operation)
+	{
+		struct Work
+		{
+			std::atomic<int> state{0}; // queued, started, cancelled
+			std::promise<std::string> result;
+		};
+		auto work = std::make_shared<Work>();
+		auto result = work->result.get_future();
+		Host::RunOnCPUThread([work, operation = std::move(operation)]() {
+			int queued = 0;
+			if (!work->state.compare_exchange_strong(queued, 1)) return;
+			try { work->result.set_value(operation()); }
+			catch (const std::exception& e) { work->result.set_value(failure(e.what())); }
+		});
+		if (result.wait_for(std::chrono::seconds(8)) != std::future_status::ready)
+		{
+			int queued = 0;
+			const bool cancelled = work->state.compare_exchange_strong(queued, 2);
+			return failure(cancelled ? "CPU operation timed out and was cancelled" :
+				"CPU operation timed out after starting; query VM state before retrying");
+		}
+		return result.get();
+	}
+
+	static std::string readHistory(bool events, uint64_t after, size_t limit, int waitMs = 0)
+	{
+		std::unique_lock lock(s_historyMutex);
+		auto& entries = events ? s_events : s_logs;
+		if (events && waitMs > 0)
+			s_eventReady.wait_for(lock, std::chrono::milliseconds(waitMs), [&]() {
+				return !s_running.load() || (!entries.empty() && entries.back().sequence > after);
+			});
+		JsonBuilder j; j.startObject(); j.kv("ok", true);
+		j.kv("session", s_session.load());
+		j.kv("oldest_sequence", entries.empty() ? after + 1 : entries.front().sequence);
+		j.kv("dropped", !entries.empty() && after < entries.front().sequence - 1);
+		uint64_t cursor = after;
+		j.key(events ? "events" : "logs"); j.startArray();
+		for (const auto& entry : entries)
+		{
+			if (entry.sequence <= after) continue;
+			if (limit-- == 0) break;
+			j.startObject(); j.kv("sequence", entry.sequence); j.kv("timestamp_ms", entry.timestamp);
+			if (events)
+			{
+				j.kv("type", entry.kind); j.kv("cpu", entry.cpu);
+				j.key("pc"); j.valHex32(entry.pc); j.kv("detail", entry.detail);
+			}
+			else
+			{
+				j.kv("source", entry.kind); j.kv("level", entry.level);
+				j.kv("message", entry.detail); j.kv("truncated", entry.truncated);
+			}
+			j.endObject(); cursor = entry.sequence;
+		}
+		j.endArray(); j.kv("next_cursor", cursor); j.endObject(); return j.str();
+	}
+
+	static std::string handleCommand(const std::string& jsonLine);
+
+	static std::string captureContext(const std::unordered_map<std::string, JsonValue>& params)
+	{
+		const std::string cpuName = getStr(params, "cpu", "ee");
+		const int64_t width = getNum(params, "width", 640), height = getNum(params, "height", 480);
+		const int64_t length = getNum(params, "memory_length", 0);
+		if (width < 1 || width > 1280 || height < 1 || height > 1024 || length < 0 || length > 4096)
+			return failure("Invalid context dimensions or memory length (maximum 4096)");
+		const auto state = VMManager::GetState();
+		if (state != VMState::Running && state != VMState::Paused) return failure("No active VM");
+		const bool wasRunning = state == VMState::Running;
+		if (wasRunning) VMManager::SetPaused(true);
+		struct Restore
+		{
+			bool running;
+			~Restore() { if (running && VMManager::GetState() == VMState::Paused) VMManager::SetPaused(false); }
+		} restore{wasRunning};
+
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("timestamp_ms", timestampMillis());
+		j.kv("session", s_session.load()); j.kv("cpu", cpuName); j.kv("was_running", wasRunning);
+		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		for (const char* cmd : {"status", "read_registers", "get_backtrace"})
+		{
+			j.key(cmd);
+			j.valJson(handleCommand(std::string("{\"cmd\":\"") + cmd + "\",\"cpu\":\"" + cpuName + "\"}"));
+		}
+		if (length > 0)
+		{
+			const u32 address = static_cast<u32>(getNum(params, "memory_address"));
+			j.key("memory");
+			j.valJson(handleCommand("{\"cmd\":\"read_memory\",\"cpu\":\"" + cpuName +
+				"\",\"address\":" + std::to_string(address) + ",\"length\":" + std::to_string(length) + "}"));
+		}
+		uint64_t after;
+		{ std::lock_guard lock(s_historyMutex); after = s_logSequence > 100 ? s_logSequence - 100 : 0; }
+		j.key("recent_logs"); j.valJson(readHistory(false, after, 100));
+		j.key("screenshot");
+		u32 actualWidth = 0, actualHeight = 0;
+		std::vector<u32> pixels;
+		if (MTGS::IsOpen() && MTGS::SaveMemorySnapshot(static_cast<u32>(width), static_cast<u32>(height),
+			true, true, &actualWidth, &actualHeight, &pixels) && actualWidth && actualHeight &&
+			actualWidth <= width && actualHeight <= height && pixels.size() == static_cast<size_t>(actualWidth) * actualHeight)
+		{
+			RGBA8Image image(actualWidth, actualHeight, std::move(pixels));
+			const auto png = image.SaveToBuffer("context.png");
+			if (png && !png->empty() && png->size() <= 6 * 1024 * 1024)
+			{
+				j.startObject(); j.kv("ok", true); j.kv("width", actualWidth); j.kv("height", actualHeight);
+				j.kv("mime_type", "image/png"); j.kv("data", encodeBase64(*png)); j.endObject();
+			}
+			else j.valJson(failure("Could not encode context screenshot within 6 MiB"));
+		}
+		else j.valJson(failure("No rendered frame available"));
+		j.endObject(); return j.str();
+	}
+
 	static std::string handleCommand(const std::string& jsonLine)
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
 		std::string cpuName = getStr(params, "cpu", "ee");
 		DebugInterface* cpu = getCpu(cpuName);
+		if (cpuName != "ee" && cpuName != "iop") return failure("cpu must be ee or iop");
+
+		if (cmd == "read_events" || cmd == "read_logs")
+		{
+			const int64_t after = getNum(params, "after", 0), limit = getNum(params, "limit", 100);
+			const int64_t wait = getNum(params, "wait_ms", 0);
+			if (after < 0 || limit < 1 || limit > 200 || wait < 0 || wait > 1000)
+				return failure("Invalid history cursor, limit (1-200), or wait_ms (0-1000)");
+			return readHistory(cmd == "read_events", static_cast<uint64_t>(after), static_cast<size_t>(limit), static_cast<int>(wait));
+		}
+		if (cmd == "capture_context") return onCPU([params]() { return captureContext(params); });
+		if (cmd == "capabilities")
+		{
+			return onCPU([]() {
+				JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("protocol_version", 2);
+				j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
+				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+				j.key("features"); j.startArray();
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf"}) j.valStr(feature);
+				j.endArray(); j.endObject(); return j.str();
+			});
+		}
+		if (cmd == "load_elf")
+		{
+			const std::string filename = getStr(params, "path");
+			if (filename.empty() || filename.size() > 4096) return failure("ELF path is required (maximum 4096 bytes)");
+			return onCPU([filename]() {
+				if (!VMManager::HasValidVM()) return failure("Start a VM before loading an ELF");
+				if (!VMManager::IsElfFileName(filename) || !FileSystem::FileExists(filename.c_str()))
+					return failure("ELF file does not exist on the emulator host, or has an unsupported extension");
+				const auto file = FileSystem::OpenManagedCFile(filename.c_str(), "rb");
+				unsigned char header[52] = {};
+				if (!file || std::fread(header, 1, sizeof(header), file.get()) != sizeof(header) ||
+					std::memcmp(header, "\x7f" "ELF", 4) != 0 || header[4] != 1 || header[5] != 1 ||
+					header[18] != 8 || header[19] != 0)
+					return failure("Expected a readable 32-bit little-endian MIPS ELF; VM was not reset");
+				if (!VMManager::SetELFOverride(filename)) return failure("PCSX2 rejected the ELF override");
+				recordEvent("elf_load_requested", "ee", 0, filename);
+				JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("path", filename);
+				j.kv("reset_requested", true); j.endObject(); return j.str();
+			});
+		}
 
 		JsonBuilder j;
 
@@ -749,21 +972,21 @@ namespace DebugServer
 		// ----- PAUSE -----
 		else if (cmd == "pause")
 		{
-			cpu->pauseCpu();
-			j.startObject();
-			j.kv("ok", true);
-			j.key("pc"); j.valHex32(cpu->getPC());
-			j.endObject();
+			return onCPU([cpu]() {
+				cpu->pauseCpu();
+				JsonBuilder result; result.startObject(); result.kv("ok", true);
+				result.key("pc"); result.valHex32(cpu->getPC()); result.endObject(); return result.str();
+			});
 		}
 		// ----- RESUME -----
 		else if (cmd == "resume")
 		{
 			// Skip current BP if we're sitting on one (matches PCSX2 GUI behavior)
-			CBreakPoints::SetSkipFirst(getBpCpu(cpuName), cpu->getPC());
-			cpu->resumeCpu();
-			j.startObject();
-			j.kv("ok", true);
-			j.endObject();
+			return onCPU([cpu, cpuName]() {
+				CBreakPoints::SetSkipFirst(getBpCpu(cpuName), cpu->getPC());
+				cpu->resumeCpu();
+				JsonBuilder result; result.startObject(); result.kv("ok", true); result.endObject(); return result.str();
+			});
 		}
 		// ----- STEP -----
 		else if (cmd == "step")
@@ -974,7 +1197,8 @@ namespace DebugServer
 			j.kv("error", "Unknown command: " + cmd);
 			j.key("available_commands"); j.startArray();
 			const char* cmds[] = {
-				"status", "screenshot", "read_registers", "write_register", "set_pc",
+				"status", "capabilities", "read_events", "read_logs", "capture_context", "load_elf",
+				"screenshot", "read_registers", "write_register", "set_pc",
 				"read_memory", "write_memory", "read_string",
 				"disassemble", "evaluate",
 				"set_breakpoint", "remove_breakpoint", "list_breakpoints",
@@ -994,9 +1218,23 @@ namespace DebugServer
 	// ============================================================
 	// TCP Server
 	// ============================================================
-	static std::atomic<bool> s_running{false};
 	static std::thread s_serverThread;
 	static socket_t s_listenSocket = SOCKET_INVALID;
+	static std::mutex s_commandMutex;
+
+	static std::string executeCommand(const std::string& line)
+	{
+		const auto params = parseJsonObject(line);
+		const std::string cmd = getStr(params, "cmd");
+		// Event long-polls must not prevent a different client from resuming.
+		if (cmd == "read_events" || cmd == "read_logs") return handleCommand(line);
+		std::lock_guard lock(s_commandMutex);
+		if (cmd == "screenshot" || cmd == "capture_context" || cmd == "capabilities" ||
+			cmd == "load_elf" || cmd == "pause" || cmd == "resume" || cmd == "step" || cmd == "step_over")
+			return handleCommand(line);
+		// Register/memory/breakpoint operations share the CPU thread with snapshots.
+		return onCPU([line]() { return handleCommand(line); });
+	}
 
 	static void clientHandler(socket_t clientSock)
 	{
@@ -1010,6 +1248,7 @@ namespace DebugServer
 
 			recvBuf[bytes] = '\0';
 			buffer += recvBuf;
+			if (buffer.size() > 65536) break; // bounded requests, including unterminated lines
 
 			// Process complete lines
 			size_t newlinePos;
@@ -1024,7 +1263,7 @@ namespace DebugServer
 
 				if (line.empty()) continue;
 
-				std::string response = handleCommand(line);
+				std::string response = executeCommand(line);
 				response += "\n";
 
 				// A PNG response can exceed the socket's send buffer.
@@ -1130,15 +1369,20 @@ namespace DebugServer
 
 	void Start(int port)
 	{
-		if (s_running.load()) return;
-		s_running.store(true);
+		if (s_running.exchange(true)) return;
+		++s_session;
+		Log::SetObserver(&recordLog);
+		recordEvent("vm_started");
 		s_serverThread = std::thread(serverLoop, port);
 		s_serverThread.detach();
 	}
 
 	void Stop()
 	{
+		recordEvent("vm_stopping");
+		Log::SetObserver(nullptr);
 		s_running.store(false);
+		s_eventReady.notify_all();
 		if (s_listenSocket != SOCKET_INVALID)
 		{
 			CLOSE_SOCKET(s_listenSocket);
@@ -1151,9 +1395,18 @@ namespace DebugServer
 		return s_running.load();
 	}
 
-	void OnBreakpointHit()
+	void OnBreakpointHit(bool iop, bool watchpoint)
 	{
-		// Future: notify connected clients of breakpoint events
+		if (!s_running.load()) return;
+		recordEvent(watchpoint ? "watchpoint" : "breakpoint", iop ? "iop" : "ee",
+			iop ? r3000Debug.getPC() : r5900Debug.getPC());
+	}
+
+	void OnVMStateChanged(int state)
+	{
+		if (!s_running.load()) return;
+		if (state == static_cast<int>(VMState::Paused)) recordEvent("paused", "ee", r5900Debug.getPC());
+		else if (state == static_cast<int>(VMState::Running)) recordEvent("resumed", "ee", r5900Debug.getPC());
 	}
 
 } // namespace DebugServer
