@@ -23,6 +23,8 @@ import { capabilitiesResponse, eventsResponse, logsResponse, parseContext, type 
 import { z } from 'zod';
 import { automationResponse, controllerResponse, inputOptions, buttons, type InputOptions } from './automation.js';
 import { setTimeout as delay } from 'node:timers/promises';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { address, symbolOptions, symbolsResponse, resolvedResponse, symbolBreakpointResponse, type SymbolOptions } from './symbols.js';
 
 export interface DebugRegister {
   name: string;
@@ -95,6 +97,8 @@ export class DebugServerClient {
   private pendingReject: ((err: Error) => void) | null = null;
   private commandQueue: Promise<void> = Promise.resolve();
   private automationBusy = false;
+  private exclusiveToken?: symbol;
+  private sessionScope = new AsyncLocalStorage<symbol>();
 
   constructor(host = '127.0.0.1', port = 21512) {
     this.host = host;
@@ -173,6 +177,9 @@ export class DebugServerClient {
   }
 
   private async send(cmd: Record<string, any>): Promise<any> {
+    if (this.exclusiveToken && this.sessionScope.getStore() !== this.exclusiveToken) {
+      throw new Error('A scenario owns this DebugServer connection; wait or cancel that scenario first');
+    }
     // The newline protocol has no request IDs, so replies must stay in order.
     const result = this.commandQueue.then(() => this.sendCommand(cmd));
     this.commandQueue = result.then(() => {}, () => {});
@@ -209,6 +216,46 @@ export class DebugServerClient {
   }
 
   isConnected(): boolean { return this.connected; }
+
+  async withExclusiveSession<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.exclusiveToken || this.automationBusy) throw new Error('Another scenario or frame/input operation is active');
+    const token = Symbol('debug-session');
+    this.exclusiveToken = token;
+    try {
+      await this.commandQueue;
+      return await this.sessionScope.run(token, operation);
+    } finally { this.exclusiveToken = undefined; }
+  }
+
+  async lookupSymbols(options: SymbolOptions = {}) {
+    return symbolsResponse.parse(await this.sessionCommand({ cmd: 'lookup_symbols', ...symbolOptions.parse(options) }));
+  }
+
+  async importSymbols() {
+    return z.object({ ok: z.literal(true), requested: z.literal(true), session: z.number().int(), elf: z.string(), elf_crc: address })
+      .parse(await this.sessionCommand({ cmd: 'import_symbols', cpu: 'ee' }));
+  }
+
+  async readMemoryStrict(value: string, length: number, cpu: CpuTarget = 'ee') {
+    address.parse(value);
+    z.number().int().min(1).max(4096).parse(length);
+    const response = z.object({ ok: z.literal(true), hex: z.string().regex(/^(?:[\da-fA-F]{2})+$/), invalid_bytes: z.literal(0) })
+      .parse(await this.sessionCommand({ cmd: 'read_memory', address: '0x' + value.replace(/^0x/, ''), length, cpu, strict: true }));
+    if (response.hex.length !== length * 2) throw new Error('Strict memory read returned an unexpected byte count');
+    return response.hex;
+  }
+
+  async resolveAddress(value: string, cpu: CpuTarget = 'ee') {
+    address.parse(value);
+    const result = resolvedResponse.parse(await this.sessionCommand({ cmd: 'resolve_address', address: '0x' + value.replace(/^0x/, ''), cpu }));
+    const numeric = Number.parseInt(value.replace(/^0x/, ''), 16);
+    return { ...result, symbols: result.symbols.map(symbol => ({ ...symbol, offset: numeric - Number.parseInt(symbol.address.replace(/^0x/, ''), 16) })) };
+  }
+
+  async setSymbolBreakpoint(name: string, cpu: CpuTarget = 'ee', temporary = false) {
+    z.string().min(1).max(256).parse(name);
+    return symbolBreakpointResponse.parse(await this.sessionCommand({ cmd: 'breakpoint_symbol', name, cpu, temporary }));
+  }
 
   private async sessionCommand(command: Record<string, unknown>): Promise<any> {
     const response = await this.send(command);

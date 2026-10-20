@@ -142,4 +142,5 @@ Guest button reads/reactions are not separately instrumented by this test; it ve
 the virtual device's state and actual CPU/video execution. Hardcore/recording rejection
 and controller replacement handling compile but have not been exercised live. Linux,
 other renderers, commercial games and physical PS2 hardware remain unvalidated for this
-extension. Symbols/source lookup and scenario runners remain separate future work.
+extension. [Symbol lookup and scenario runners](workflows.md) are available in the next
+extension; full source-line debugging remains separate work.

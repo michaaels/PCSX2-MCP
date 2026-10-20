@@ -47,6 +47,8 @@ typedef int socket_t;
 #include "DebugInterface.h"
 #include "Breakpoints.h"
 #include "MipsStackWalk.h"
+#include "SymbolGuardian.h"
+#include "SymbolImporter.h"
 #include "Host.h"
 #include "MTGS.h"
 #include "VMManager.h"
@@ -553,6 +555,67 @@ namespace DebugServer
 
 	static std::string handleCommand(const std::string& jsonLine);
 
+	static void appendSymbol(JsonBuilder& j, const ccc::Symbol& symbol, const char* kind, const std::string& source)
+	{
+		j.startObject(); j.kv("name", symbol.name()); j.kv("kind", kind);
+		j.key("address"); j.valHex32(symbol.address().value); j.kv("size", symbol.size());
+		j.kv("source_file", source); j.endObject();
+	}
+
+	static std::string lookupSymbols(DebugInterface* cpu, const std::unordered_map<std::string, JsonValue>& params)
+	{
+		const auto query = getStr(params, "query"), kind = getStr(params, "kind", "all");
+		const int64_t offset = getNum(params, "offset", 0), limit = getNum(params, "limit", 50);
+		const bool exact = getBool(params, "exact", false);
+		if (query.size() > 256 || offset < 0 || offset > 1000000 || limit < 1 || limit > 100 ||
+			(kind != "all" && kind != "function" && kind != "global")) return failure("Invalid symbol filter or pagination");
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("session", s_session.load());
+		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.key("symbols"); j.startArray();
+		uint64_t matches = 0, returned = 0;
+		cpu->GetSymbolGuardian().Read([&](const ccc::SymbolDatabase& database) {
+			auto visit = [&](const auto& symbols, const char* symbolKind) {
+				for (const auto& symbol : symbols)
+				{
+					if (!symbol.address().valid() || (exact ? symbol.name() != query : symbol.name().find(query) == std::string::npos)) continue;
+					if (matches++ < static_cast<uint64_t>(offset) || returned >= static_cast<uint64_t>(limit)) continue;
+					const auto* file = database.source_files.symbol_from_handle(symbol.source_file());
+					appendSymbol(j, symbol, symbolKind, file ? (file->command_line_path.empty() ? file->name() : file->command_line_path) : "");
+					++returned;
+				}
+			};
+			if (kind != "global") visit(database.functions, "function");
+			if (kind != "function") visit(database.global_variables, "global");
+		});
+		j.endArray(); j.kv("total_matches", matches); j.kv("next_offset", static_cast<uint64_t>(offset) + returned);
+		j.kv("has_more", static_cast<uint64_t>(offset) + returned < matches); j.endObject(); return j.str();
+	}
+
+	static std::string resolveAddress(DebugInterface* cpu, u32 address)
+	{
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.key("address"); j.valHex32(address);
+		j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
+		j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.key("symbols"); j.startArray();
+		cpu->GetSymbolGuardian().Read([&](const ccc::SymbolDatabase& database) {
+			size_t count = 0;
+			auto visit = [&](const auto& symbols, const char* kind) {
+				for (const auto& symbol : symbols)
+				{
+					if (!symbol.address().valid() || address < symbol.address().value) continue;
+					const u32 delta = address - symbol.address().value;
+					if (symbol.size() ? delta >= symbol.size() : delta != 0) continue;
+					const auto* file = database.source_files.symbol_from_handle(symbol.source_file());
+					appendSymbol(j, symbol, kind, file ? (file->command_line_path.empty() ? file->name() : file->command_line_path) : "");
+					if (++count >= 100) break;
+				}
+			};
+			visit(database.functions, "function");
+			if (count < 100) visit(database.global_variables, "global");
+		});
+		j.endArray(); j.endObject(); return j.str();
+	}
+
 	static void restoreController()
 	{
 		if (!s_operation.input) return;
@@ -688,6 +751,52 @@ namespace DebugServer
 		std::string cpuName = getStr(params, "cpu", "ee");
 		DebugInterface* cpu = getCpu(cpuName);
 		if (cpuName != "ee" && cpuName != "iop") return failure("cpu must be ee or iop");
+		if (cmd == "lookup_symbols") return lookupSymbols(cpu, params);
+		if (cmd == "import_symbols")
+		{
+			auto* importer = cpu->GetSymbolImporter();
+			if (!importer) return failure("Explicit ELF symbol import is available for EE only");
+			if (!VMManager::HasValidVM() || VMManager::GetCurrentELF().empty()) return failure("Boot an ELF before importing symbols");
+			auto options = EmuConfig.DebuggerAnalysis;
+			options.ImportSymbolsFromELF = true;
+			options.FunctionScanMode = DebugFunctionScanMode::SKIP;
+			options.GenerateFunctionHashes = false;
+			importer->LoadAndAnalyseElf(std::move(options));
+			JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("requested", true);
+			j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
+			j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC()); j.endObject(); return j.str();
+		}
+		if (cmd == "resolve_address")
+		{
+			const int64_t address = getNum(params, "address", -1);
+			if (address < 0 || address > UINT32_MAX) return failure("Address must be an unsigned 32-bit value");
+			return resolveAddress(cpu, static_cast<u32>(address));
+		}
+		if (cmd == "breakpoint_symbol")
+		{
+			const std::string name = getStr(params, "name");
+			if (name.empty() || name.size() > 256) return failure("Function name must be 1-256 bytes");
+			std::vector<u32> addresses;
+			cpu->GetSymbolGuardian().Read([&](const ccc::SymbolDatabase& database) {
+				for (const auto& function : database.functions)
+					if (function.address().valid() && function.name() == name &&
+						std::find(addresses.begin(), addresses.end(), function.address().value) == addresses.end())
+						addresses.push_back(function.address().value);
+			});
+			if (addresses.empty()) return failure("Function symbol not found");
+			if (addresses.size() != 1) return failure("Function name is ambiguous; select an explicit address");
+			const u32 address = addresses.front();
+			if ((address & 3) || !cpu->isValidAddress(address)) return failure("Function address is not executable/aligned in this CPU memory");
+			JsonBuilder request; request.startObject(); request.kv("cmd", "set_breakpoint");
+			request.kv("cpu", cpuName); request.key("address"); request.valHex32(address);
+			request.kv("temporary", getBool(params, "temporary", false)); request.endObject();
+			const auto response = handleCommand(request.str());
+			if (!getBool(parseJsonObject(response), "ok", false)) return response;
+			JsonBuilder result; result.startObject(); result.kv("ok", true); result.kv("name", name);
+			result.key("address"); result.valHex32(address); result.kv("session", s_session.load());
+			result.kv("elf", VMManager::GetCurrentELF()); result.key("elf_crc"); result.valHex32(VMManager::GetCurrentCRC());
+			result.endObject(); return result.str();
+		}
 		// These commands are already marshalled by executeCommand().
 		if (cmd == "frame_advance" || cmd == "input_frames") return startFrames(params, cmd == "input_frames");
 		if (cmd == "automation_status" || cmd == "automation_cancel")
@@ -737,7 +846,7 @@ namespace DebugServer
 				j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -868,6 +977,9 @@ namespace DebugServer
 			u32 addr = (u32)getNum(params, "address", 0);
 			int len = (int)getNum(params, "length", 256);
 			if (len > 65536) len = 65536;
+			const bool strict = getBool(params, "strict", false);
+			if (strict && (len < 1 || len > 4096 || static_cast<uint64_t>(addr) + len > 0x100000000ULL))
+				return failure("Strict memory reads require 1-4096 bytes without address wraparound");
 
 			j.startObject();
 			j.kv("ok", true);
@@ -878,16 +990,19 @@ namespace DebugServer
 			j.key("hex");
 			std::string hexStr;
 			hexStr.reserve(len * 2);
+			int invalidBytes = 0;
 			for (int i = 0; i < len; i++)
 			{
 				bool valid = true;
 				u32 byte = cpu->read8(addr + i, valid);
-				if (!valid) byte = 0;
+				if (!valid) { byte = 0; ++invalidBytes; }
 				char hb[4];
 				snprintf(hb, sizeof(hb), "%02x", byte & 0xFF);
 				hexStr += hb;
 			}
+			if (strict && invalidBytes) return failure("Strict memory read contains unmapped bytes");
 			j.valStr(hexStr);
+			j.kv("invalid_bytes", invalidBytes);
 			j.endObject();
 		}
 		// ----- WRITE MEMORY -----
@@ -1326,6 +1441,7 @@ namespace DebugServer
 			const char* cmds[] = {
 				"status", "capabilities", "read_events", "read_logs", "capture_context", "load_elf",
 				"frame_advance", "input_frames", "automation_status", "automation_cancel", "controller_state",
+				"lookup_symbols", "resolve_address", "breakpoint_symbol", "import_symbols",
 				"screenshot", "read_registers", "write_register", "set_pc",
 				"read_memory", "write_memory", "read_string",
 				"disassemble", "evaluate",

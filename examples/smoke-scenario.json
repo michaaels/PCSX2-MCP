@@ -1,0 +1,11 @@
+{
+  "name": "homebrew-smoke",
+  "steps": [
+    { "action": "frames", "frames": 7 },
+    { "action": "assert_expression", "expression": "1 + 1", "equals": "2" },
+    { "action": "input", "buttons": ["cross"], "frames": 2 },
+    { "action": "assert_controller", "buttons": [] },
+    { "action": "screenshot", "width": 960, "height": 720 },
+    { "action": "context", "width": 960, "height": 720 }
+  ]
+}

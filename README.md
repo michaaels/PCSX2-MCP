@@ -311,6 +311,8 @@ For the new session tools (events, console logs, ELF reload and context reports)
 [Debug sessions](docs/debug-sessions.md). They require rebuilding both the MCP server
 and PCSX2 with `tools/apply-debug-server.py`; the original release binary does not contain them.
 The next extension adds [emulator launch and frame/controller automation](docs/automation.md).
+For name-based breakpoints and repeatable assertions/captures, see
+[symbols and debug scenarios](docs/workflows.md).
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>

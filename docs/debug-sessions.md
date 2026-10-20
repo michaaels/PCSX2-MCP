@@ -129,5 +129,5 @@ Native Windows build: PCSX2 v2.6.3, MSVC 19.51, Qt 6.12.0, Direct3D 11. Tested:
 The interpreter and IOP hooks compile but have not yet been exercised by this live
 test. New session tools have not yet been validated on Linux, commercial games,
 D3D12/Vulkan, or physical PS2 hardware. Launch and frame/input automation are covered
-in [Automation](automation.md). Exception events, source symbols/DWARF and scenario
-runners remain future work.
+in [Automation](automation.md). [Symbol lookup and scenarios](workflows.md) extend those
+sessions. Exception events and full source-line/DWARF debugging remain future work.
