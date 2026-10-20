@@ -310,6 +310,7 @@ PCSX2-MCP-v1.0.0-win64/          ← ready to run, everything pre-built
 For the new session tools (events, console logs, ELF reload and context reports), see
 [Debug sessions](docs/debug-sessions.md). They require rebuilding both the MCP server
 and PCSX2 with `tools/apply-debug-server.py`; the original release binary does not contain them.
+The next extension adds [emulator launch and frame/controller automation](docs/automation.md).
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>

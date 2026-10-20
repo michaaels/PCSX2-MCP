@@ -39,5 +39,8 @@ namespace DebugServer
 
 	// Called on the CPU thread after an actual VM state transition.
 	void OnVMStateChanged(int state);
+	void OnVSync();
+	void OnInputPoll();
+	void OnVMReset();
 
 } // namespace DebugServer

@@ -21,6 +21,8 @@ import * as net from 'node:net';
 import { parseScreenshot, type Screenshot } from './screenshot.js';
 import { capabilitiesResponse, eventsResponse, logsResponse, parseContext, type DebugEventType } from './debug-session.js';
 import { z } from 'zod';
+import { automationResponse, controllerResponse, inputOptions, buttons, type InputOptions } from './automation.js';
+import { setTimeout as delay } from 'node:timers/promises';
 
 export interface DebugRegister {
   name: string;
@@ -92,6 +94,7 @@ export class DebugServerClient {
   private pendingResolve: ((data: any) => void) | null = null;
   private pendingReject: ((err: Error) => void) | null = null;
   private commandQueue: Promise<void> = Promise.resolve();
+  private automationBusy = false;
 
   constructor(host = '127.0.0.1', port = 21512) {
     this.host = host;
@@ -219,6 +222,65 @@ export class DebugServerClient {
 
   async getCapabilities() {
     return capabilitiesResponse.parse(await this.sessionCommand({ cmd: 'capabilities' }));
+  }
+
+  async getController(controller = 0) {
+    z.number().int().min(0).max(1).parse(controller);
+    const result = controllerResponse.parse(await this.sessionCommand({ cmd: 'controller_state', controller }));
+    return { ...result, buttons: buttons.filter((_, index) => result.pressed_mask & (1 << index)) };
+  }
+
+  async startFrameAdvance(frames = 1, input?: InputOptions) {
+    z.number().int().min(1).max(600).parse(frames);
+    const parsed = input === undefined ? undefined : inputOptions.parse(input);
+    return automationResponse.parse(await this.sessionCommand({ cmd: parsed ? 'input_frames' : 'frame_advance', frames,
+      ...(parsed && { ...parsed, buttons: parsed.buttons.reduce((mask, button) => mask | (1 << buttons.indexOf(button)), 0) }),
+    }));
+  }
+
+  async getAutomation(operationId: number) {
+    z.number().int().positive().safe().parse(operationId);
+    return automationResponse.parse(await this.sessionCommand({ cmd: 'automation_status', operation_id: operationId }));
+  }
+
+  async cancelAutomation(operationId: number) {
+    z.number().int().positive().safe().parse(operationId);
+    return automationResponse.parse(await this.sessionCommand({ cmd: 'automation_cancel', operation_id: operationId }));
+  }
+
+  async advanceFrames(frames: number, options: { input?: InputOptions; timeoutMs?: number; signal?: AbortSignal } = {}) {
+    const timeout = z.number().int().min(1).max(30000).parse(options.timeoutMs ?? 20000);
+    options.signal?.throwIfAborted();
+    if (this.automationBusy) throw new Error('A frame/input operation is already pending on this connection');
+    this.automationBusy = true;
+    try {
+      const socket = this.socket;
+      let started;
+      try { started = await this.startFrameAdvance(frames, options.input); }
+      catch (error) {
+        if (!this.isConnected()) throw new Error(`Frame startup failed without an operation ID; cancellation could not be confirmed: ${error instanceof Error ? error.message : error}`);
+        throw error;
+      }
+      const deadline = performance.now() + timeout;
+      try {
+        for (;;) {
+          options.signal?.throwIfAborted();
+          if (this.socket !== socket) throw new Error('DebugServer connection changed during automation');
+          const result = await this.getAutomation(started.operation_id);
+          if (!result.active) return { ...result, completed: result.reason === 'completed' && result.frames_advanced === frames };
+          if (performance.now() >= deadline) throw new Error(`Frame operation ${started.operation_id} timed out`);
+          await delay(25, undefined, { signal: options.signal });
+        }
+      } catch (error) {
+        try {
+          if (this.socket !== socket) throw new Error('Original connection is no longer available');
+          await this.cancelAutomation(started.operation_id);
+        } catch (cleanup) {
+          throw new Error(`${error instanceof Error ? error.message : error}; cancellation could not be confirmed: ${cleanup instanceof Error ? cleanup.message : cleanup}`);
+        }
+        throw error;
+      }
+    } finally { this.automationBusy = false; }
   }
 
   async readEvents(after = 0, limit = 100, waitMs = 0) {

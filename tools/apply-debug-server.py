@@ -39,6 +39,19 @@ def main() -> None:
         '\ts_state.store(VMState::Paused, std::memory_order_release);\n\tDebugServer::Start();\n\tHost::OnVMStarted();', str(vm))
     vm_text = replace_once(vm_text, 'void VMManager::Shutdown(bool save_resume_state)\n{',
         'void VMManager::Shutdown(bool save_resume_state)\n{\n\tDebugServer::Stop();', str(vm))
+    vm_text = replace_once(vm_text, 'void VMManager::Reset()\n{',
+        'void VMManager::Reset()\n{\n\tDebugServer::OnVMReset();', str(vm))
+    vm_text = replace_once(vm_text, 'void VMManager::Internal::VSyncOnCPUThread()\n{',
+        'void VMManager::Internal::VSyncOnCPUThread()\n{\n\tDebugServer::OnVSync();', str(vm))
+    vm_text = replace_once(vm_text,
+        '\t\tg_InputRecording.handleControllerDataUpdate();\n\t}\n}',
+        '\t\tg_InputRecording.handleControllerDataUpdate();\n\t}\n\tDebugServer::OnInputPoll();\n}', str(vm))
+    vm_text = replace_once(vm_text, 'void VMManager::FrameAdvance(u32 num_frames /*= 1*/)\n{',
+        'void VMManager::CancelFrameAdvance()\n{\n\ts_frame_advance_count = 0;\n}\n\n'
+        'void VMManager::FrameAdvance(u32 num_frames /*= 1*/)\n{', str(vm))
+    vm_h = source / 'pcsx2/VMManager.h'
+    vm_h_text = replace_once(vm_h.read_text(encoding='utf-8'), '\tvoid FrameAdvance(u32 num_frames = 1);',
+        '\tvoid FrameAdvance(u32 num_frames = 1);\n\n\t// CPU thread only: cancel remaining automated video frames.\n\tvoid CancelFrameAdvance();', str(vm_h))
 
     # Preserve the GUI/file logging sinks. This independent atomic observer only
     # receives INFO-or-higher console messages while the MCP server is active.
@@ -102,6 +115,7 @@ def main() -> None:
             shutil.copy2(original, target)
     write_if_changed(cmake, cmake_text)
     write_if_changed(vm, vm_text)
+    write_if_changed(vm_h, vm_h_text)
     write_if_changed(console_h, console_h_text)
     write_if_changed(console_cpp, console_text)
     for target, text in breakpoint_files.items():

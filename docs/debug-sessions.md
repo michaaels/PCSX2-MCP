@@ -16,7 +16,7 @@ must be rebuilt. Pine-only and original release binaries do not provide these fe
 | `pcsx2_capture_context` | Captures registers, PC, backtrace, optional memory, ELF/CRC, recent logs and a GS screenshot while paused, then restores the previous running/paused state. |
 
 Event types: `vm_started`, `vm_stopping`, `paused`, `resumed`, `breakpoint`,
-`watchpoint`, `elf_load_requested`. Breakpoint/watchpoint events identify EE or IOP
+`watchpoint`, `elf_load_requested`, `automation_completed`, `automation_interrupted`. Breakpoint/watchpoint events identify EE or IOP
 and the stopped PC. They are wired into both interpreter and recompiler handlers.
 They do not contain the accessed memory address. Exception events are not implemented.
 
@@ -128,5 +128,6 @@ Native Windows build: PCSX2 v2.6.3, MSVC 19.51, Qt 6.12.0, Direct3D 11. Tested:
 
 The interpreter and IOP hooks compile but have not yet been exercised by this live
 test. New session tools have not yet been validated on Linux, commercial games,
-D3D12/Vulkan, or physical PS2 hardware. Automatic emulator launch, exception events,
-source symbols/DWARF, frame/input automation and scenario runners remain future work.
+D3D12/Vulkan, or physical PS2 hardware. Launch and frame/input automation are covered
+in [Automation](automation.md). Exception events, source symbols/DWARF and scenario
+runners remain future work.

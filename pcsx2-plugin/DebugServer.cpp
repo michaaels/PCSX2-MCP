@@ -50,6 +50,10 @@ typedef int socket_t;
 #include "Host.h"
 #include "MTGS.h"
 #include "VMManager.h"
+#include "Achievements.h"
+#include "Recording/InputRecording.h"
+#include "SIO/Pad/Pad.h"
+#include "SIO/Pad/PadDualshock2.h"
 #include "common/Image.h"
 #include "common/Console.h"
 #include "common/FileSystem.h"
@@ -69,6 +73,7 @@ typedef int socket_t;
 #include <cerrno>
 #include <deque>
 #include <future>
+#include <array>
 
 // Forward declarations — these are PCSX2 globals
 extern R5900DebugInterface r5900Debug;
@@ -93,6 +98,23 @@ namespace DebugServer
 	static std::deque<HistoryEntry> s_events, s_logs;
 	static uint64_t s_eventSequence = 0, s_logSequence = 0;
 	static std::atomic<uint64_t> s_session{0};
+	// Accessed exclusively on the CPU thread. Count VSync boundaries, not host FPS.
+	static uint64_t s_videoFrame = 0, s_operationSequence = 0;
+	static constexpr std::array<u32, 16> s_buttonBits = {12, 13, 14, 15, 4, 5, 6, 7, 8, 11, 2, 0, 3, 1, 9, 10};
+	struct FrameOperation
+	{
+		uint64_t id = 0, start = 0, target = 0, end = 0;
+		bool active = false, input = false;
+		u8 controller = 0;
+		u32 buttons = 0, savedButtons = 0;
+		std::array<u8, 4> axes{127, 127, 127, 127};
+		std::array<u8, 16> savedPressures{};
+		std::tuple<u8, u8> savedLeft, savedRight;
+		PadBase* savedPad = nullptr;
+		std::string reason;
+		std::chrono::steady_clock::time_point deadline;
+	};
+	static FrameOperation s_operation;
 
 	static int64_t timestampMillis()
 	{
@@ -531,6 +553,79 @@ namespace DebugServer
 
 	static std::string handleCommand(const std::string& jsonLine);
 
+	static void restoreController()
+	{
+		if (!s_operation.input) return;
+		auto* pad = Pad::GetPad(s_operation.controller);
+		if (pad == s_operation.savedPad && pad && pad->GetType() == Pad::ControllerType::DualShock2)
+		{
+			for (u32 i = 0; i < 16; ++i)
+				pad->SetRawPressureButton(i, {!(s_operation.savedButtons & (1u << s_buttonBits[i])), s_operation.savedPressures[i]});
+			pad->SetRawAnalogs(s_operation.savedLeft, s_operation.savedRight);
+		}
+	}
+
+	static void finishOperation(const char* reason)
+	{
+		if (!s_operation.active) return;
+		s_operation.active = false;
+		s_operation.reason = reason;
+		s_operation.end = s_videoFrame;
+		VMManager::CancelFrameAdvance();
+		restoreController();
+		recordEvent(std::strcmp(reason, "completed") == 0 ? "automation_completed" : "automation_interrupted",
+			"ee", r5900Debug.getPC(), reason);
+	}
+
+	static std::string operationStatus()
+	{
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("session", s_session.load());
+		j.kv("operation_id", s_operation.id); j.kv("active", s_operation.active);
+		j.kv("start_frame", s_operation.start); j.kv("target_frame", s_operation.target);
+		j.kv("current_frame", s_videoFrame); j.kv("reason", s_operation.reason);
+		j.kv("frames_advanced", (s_operation.active ? s_videoFrame : s_operation.end) - s_operation.start);
+		j.kv("paused", VMManager::GetState() == VMState::Paused); j.endObject(); return j.str();
+	}
+
+	static std::string startFrames(const std::unordered_map<std::string, JsonValue>& params, bool input)
+	{
+		const int64_t frames = getNum(params, "frames", 1);
+		if (frames < 1 || frames > 600) return failure("frames must be 1-600");
+		if (s_operation.active) return failure("Another frame/input operation is active");
+		if (VMManager::GetState() != VMState::Paused) return failure("Pause the VM before frame/input automation");
+		if (Achievements::IsHardcoreModeActive()) return failure("Frame automation is unavailable in hardcore mode");
+		if (g_InputRecording.isActive()) return failure("Stop input recording/playback before frame automation");
+		FrameOperation operation;
+		if (input)
+		{
+			const int64_t controller = getNum(params, "controller", 0), buttons = getNum(params, "buttons", 0);
+			if (controller < 0 || controller > 1 || buttons < 0 || buttons > 65535)
+				return failure("controller must be 0-1 and buttons must be a 16-bit mask");
+			operation.controller = static_cast<u8>(controller);
+			auto* pad = Pad::GetPad(operation.controller);
+			if (!pad || pad->GetType() != Pad::ControllerType::DualShock2)
+				return failure("Selected controller must be configured as DualShock2");
+			const char* axisNames[] = {"left_x", "left_y", "right_x", "right_y"};
+			for (size_t i = 0; i < 4; ++i)
+			{
+				const int64_t value = getNum(params, axisNames[i], 127);
+				if (value < 0 || value > 255) return failure("Analog coordinates must be 0-255 (127 neutral)");
+				operation.axes[i] = static_cast<u8>(value);
+			}
+			operation.input = true; operation.buttons = static_cast<u32>(buttons); operation.savedPad = pad;
+			operation.savedButtons = pad->GetButtons();
+			for (u32 i = 0; i < 16; ++i) operation.savedPressures[i] = pad->GetRawInput(i);
+			operation.savedLeft = pad->GetRawLeftAnalog(); operation.savedRight = pad->GetRawRightAnalog();
+		}
+		operation.id = ++s_operationSequence; operation.start = s_videoFrame;
+		operation.target = s_videoFrame + static_cast<uint64_t>(frames); operation.active = true;
+		operation.deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+		s_operation = std::move(operation);
+		OnInputPoll();
+		VMManager::FrameAdvance(static_cast<u32>(frames));
+		return operationStatus();
+	}
+
 	static std::string captureContext(const std::unordered_map<std::string, JsonValue>& params)
 	{
 		const std::string cpuName = getStr(params, "cpu", "ee");
@@ -593,6 +688,33 @@ namespace DebugServer
 		std::string cpuName = getStr(params, "cpu", "ee");
 		DebugInterface* cpu = getCpu(cpuName);
 		if (cpuName != "ee" && cpuName != "iop") return failure("cpu must be ee or iop");
+		// These commands are already marshalled by executeCommand().
+		if (cmd == "frame_advance" || cmd == "input_frames") return startFrames(params, cmd == "input_frames");
+		if (cmd == "automation_status" || cmd == "automation_cancel")
+		{
+			if (getNum(params, "operation_id", -1) != static_cast<int64_t>(s_operation.id) || s_operation.id == 0)
+				return failure("Unknown or superseded automation operation");
+			if (cmd == "automation_cancel" && s_operation.active)
+			{
+				finishOperation("cancelled");
+				VMManager::SetPaused(true);
+			}
+			return operationStatus();
+		}
+		if (cmd == "controller_state")
+		{
+			const int64_t controller = getNum(params, "controller", 0);
+			if (controller < 0 || controller > 1) return failure("controller must be 0-1");
+			auto* pad = Pad::GetPad(static_cast<u8>(controller));
+			if (!pad || pad->GetType() != Pad::ControllerType::DualShock2) return failure("Selected controller is not DualShock2");
+			u32 pressed = 0;
+			for (u32 i = 0; i < 16; ++i) if (!(pad->GetButtons() & (1u << s_buttonBits[i]))) pressed |= 1u << i;
+			JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("controller", static_cast<int>(controller));
+			j.kv("pressed_mask", pressed);
+			const auto [lx, ly] = pad->GetRawLeftAnalog(); const auto [rx, ry] = pad->GetRawRightAnalog();
+			j.kv("left_x", lx); j.kv("left_y", ly); j.kv("right_x", rx); j.kv("right_y", ry);
+			j.endObject(); return j.str();
+		}
 
 		if (cmd == "read_events" || cmd == "read_logs")
 		{
@@ -607,10 +729,15 @@ namespace DebugServer
 		{
 			return onCPU([]() {
 				JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("protocol_version", 2);
+#ifdef _WIN32
+				j.kv("process_id", static_cast<uint64_t>(GetCurrentProcessId()));
+#else
+				j.kv("process_id", static_cast<uint64_t>(getpid()));
+#endif
 				j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -1198,6 +1325,7 @@ namespace DebugServer
 			j.key("available_commands"); j.startArray();
 			const char* cmds[] = {
 				"status", "capabilities", "read_events", "read_logs", "capture_context", "load_elf",
+				"frame_advance", "input_frames", "automation_status", "automation_cancel", "controller_state",
 				"screenshot", "read_registers", "write_register", "set_pc",
 				"read_memory", "write_memory", "read_string",
 				"disassemble", "evaluate",
@@ -1379,6 +1507,7 @@ namespace DebugServer
 
 	void Stop()
 	{
+		finishOperation("vm_stopping");
 		recordEvent("vm_stopping");
 		Log::SetObserver(nullptr);
 		s_running.store(false);
@@ -1405,8 +1534,47 @@ namespace DebugServer
 	void OnVMStateChanged(int state)
 	{
 		if (!s_running.load()) return;
+		if (state == static_cast<int>(VMState::Paused) && s_operation.active)
+			finishOperation(s_videoFrame >= s_operation.target ? "completed" : "paused_early");
 		if (state == static_cast<int>(VMState::Paused)) recordEvent("paused", "ee", r5900Debug.getPC());
 		else if (state == static_cast<int>(VMState::Running)) recordEvent("resumed", "ee", r5900Debug.getPC());
+	}
+
+	void OnVSync()
+	{
+		if (!s_running.load()) return;
+		++s_videoFrame;
+		if (s_operation.active && std::chrono::steady_clock::now() >= s_operation.deadline)
+		{
+			finishOperation("deadline");
+			VMManager::SetPaused(true);
+		}
+	}
+
+	void OnInputPoll()
+	{
+		if (s_operation.active && std::chrono::steady_clock::now() >= s_operation.deadline)
+		{
+			finishOperation("deadline");
+			VMManager::SetPaused(true);
+		}
+		if (!s_operation.active || !s_operation.input) return;
+		auto* pad = Pad::GetPad(s_operation.controller);
+		if (!pad || pad != s_operation.savedPad || pad->GetType() != Pad::ControllerType::DualShock2)
+		{
+			finishOperation("controller_changed");
+			VMManager::SetPaused(true);
+			return;
+		}
+		for (u32 i = 0; i < 16; ++i)
+			pad->SetRawPressureButton(i, {(s_operation.buttons & (1u << i)) != 0, (s_operation.buttons & (1u << i)) ? u8{255} : u8{0}});
+		const auto& a = s_operation.axes;
+		pad->SetRawAnalogs({a[0], a[1]}, {a[2], a[3]});
+	}
+
+	void OnVMReset()
+	{
+		finishOperation("vm_reset");
 	}
 
 } // namespace DebugServer

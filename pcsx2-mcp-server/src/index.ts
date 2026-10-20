@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { DebugServerClient } from './debug-server-client.js';
 import { PineClient, EmuStatus } from './pine-client.js';
 import { registerSessionTools } from './session-tools.js';
+import { registerAutomationTools } from './automation-tools.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -67,6 +68,8 @@ async function writeMem(addr: number, data: Buffer): Promise<void> {
 // ===== MCP Server =====
 const server = new McpServer({ name: 'pcsx2-ultimate-debugger', version: '2.0.0' }, { capabilities: { tools: {}, resources: {} } });
 registerSessionTools(server, () => debugServer);
+registerAutomationTools(server, () => debugServer, client => { debugServer?.disconnect(); debugServer = client; });
+process.stdin.once('end', () => { debugServer?.disconnect(); pine?.disconnect(); });
 
 // ==========================================================
 //  TOOL: pcsx2_connect
