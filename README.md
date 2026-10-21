@@ -326,6 +326,9 @@ For one-shot automatic EE exception evidence, filters and partial reports, see
 [exception watches](docs/exceptions.md).
 The same tools now select EE or [IOP exceptions](docs/iop-exceptions.md), with
 separate CPU/reset semantics and no attribution of IOP PCs to the EE ELF.
+BREAK/SYSCALL JIT provenance identifies call-site PC/opcode/delay slot for both
+CPUs, checks canonical RAM, and reports disagreement with raw CP0/BD without
+changing emulator exception behavior. Other exception paths may lack provenance.
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>

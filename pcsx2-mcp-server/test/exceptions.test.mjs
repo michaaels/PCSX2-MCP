@@ -158,6 +158,35 @@ test('rejects malformed provenance and stale BREAK origin on another exception c
     mutate(value); assert.throws(() => parseExceptionReport(value));
   }
 });
+test('EE/IOP syscall and IOP BREAK origins validate CPU, opcode and exception kind independently', () => {
+  for (const cpu of ['ee', 'iop']) for (const code of [8, 9]) {
+    const value = cpu === 'ee' ? report() : iopReport();
+    const syscall = code === 8;
+    value.core.exception_code = code; value.core.raw_code = syscall ? '0x00000020' : '0x00000024';
+    value.core.cause = value.core.raw_code; value.core.cp0[13] = value.core.cause;
+    value.core.instruction = { source: `${cpu}_recompiler_${syscall ? 'syscall' : 'break'}`, pc: '0x00100004',
+      opcode: syscall ? '0x000abc0c' : '0x000abc0d', branch_delay: true, opcode_matches_memory: true };
+    const parsed = parseExceptionReport(value);
+    assert.equal(parsed.instruction_evidence.status, 'verified');
+    assert.equal(parsed.instruction_evidence.consistency.bd_argument_matches, false);
+    assert.equal(parsed.instruction_evidence.consistency.epc_matches, true);
+    assert.equal(parsed.instruction_evidence.consistency.cause_bd_matches, false);
+    assert.equal(parsed.core.requested_branch_delay, false);
+    if (cpu === 'iop') assert.ok(parsed.partial_reasons.includes('iop_module_identity_unavailable'));
+    for (const mutate of [r => r.core.instruction.source = `${cpu === 'ee' ? 'iop' : 'ee'}_recompiler_${syscall ? 'syscall' : 'break'}`,
+      r => r.core.instruction.opcode = syscall ? '0x0000000d' : '0x0000000c',
+      r => r.core.instruction.opcode = '0x1000000c', r => r.core.instruction.pc = '0x80010000']) {
+      const malformed = structuredClone(value); mutate(malformed); assert.throws(() => parseExceptionReport(malformed));
+    }
+    value.core.instruction.opcode_matches_memory = false; value.core.instruction.pc = '0x80010000';
+    const excluded = parseExceptionReport(value);
+    assert.equal(excluded.instruction_evidence.status, 'unverified');
+    assert.ok(excluded.partial_reasons.includes(syscall ? 'syscall_instruction_opcode_not_verified' : 'break_instruction_opcode_not_verified'));
+  }
+});
+test('legacy IOP report has unavailable instruction evidence without inventing EE provenance', () => {
+  assert.equal(parseExceptionReport(iopReport()).instruction_evidence.status, 'unavailable');
+});
 test('read wait releases command ownership so another caller can resume and trigger capture', async t => {
   let captured = false;
   const { client } = await workflowFixture(t, request => {

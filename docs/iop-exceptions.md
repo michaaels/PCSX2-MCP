@@ -2,7 +2,8 @@
 
 Rebuild PCSX2 with `tools/apply-debug-server.py` and the native build, rebuild the
 Node server (`npm run build`), then restart the MCP client. The capability is
-`iop_exception_watch`. Both EE and IOP recompilers are required; interpreter
+`iop_exception_watch`, with `iop_trap_provenance` for JIT BREAK/SYSCALL origin.
+Both EE and IOP recompilers are required; interpreter
 configurations are rejected before arming.
 
 Use the same three [exception tools](exceptions.md), selecting the CPU:
@@ -61,13 +62,25 @@ stop retains core/events and withholds later RAM/context. Backtrace is heuristic
 The optional GS screenshot is the VM's current visual frame, not an IOP-specific
 rendering. No frame remains partial evidence.
 
-`exception_pc` means PC at `psxException` entry. `instruction_evidence` is
-unavailable for IOP; EE BREAK provenance is never reused. The pinned IOP JIT
-also supplied `bd=false` for a genuine delay-slot BREAK. The fixture's raw EPC
-then equaled the BREAK PC instead of the preceding branch. Those values remain
-visible; the collector does not repair architectural emulation or claim verified
-IOP fault PC/BD from them. Normal BREAK PC was independently contrasted with IRX
-instruction bytes. Nested EE EXL comparisons remain EE-specific.
+`exception_pc` means PC at `psxException` entry. For JIT BREAK/SYSCALL,
+`core.instruction` freezes the instruction PC (`psxpc-4`), emitted opcode
+(`psxRegs.code`) and compiler `s_recompilingDelaySlot` flag before the original
+`psxException` call. The raw `psxbranch==1` BD argument remains separate and
+unchanged. Source is `iop_recompiler_break` or `iop_recompiler_syscall`; CPU,
+opcode and exception code must agree. Temporary CPU-thread POD witnesses are
+consumed even for unselected exceptions, and cleared on normal return/reset.
+
+`instruction_evidence` is verified only when the opcode matched canonical IOP
+RAM below 2 MiB at that call site. Other locations are unverified, and old
+builds/uninstrumented paths remain unavailable. EE witnesses are never reused.
+Verified JIT origin does not identify the module or repair architectural state.
+
+The pinned IOP JIT supplied `bd=false` for a verified delay-slot BREAK at
+`0x000450e0`, opcode `0x0123000d`, JIT delay=true. Raw EPC equaled the BREAK PC
+instead of the preceding branch. Consistency reports entry-PC match but BD,
+EPC and Cause.BD disagreement; all raw values stay visible. Normal and delayed
+BREAK bytes were independently contrasted with the linked IRX. Nested EE EXL
+comparisons remain EE-specific; IOP comparisons use its raw R3000 fields.
 
 ## Isolated Windows validation
 
@@ -94,7 +107,7 @@ does not require HostFs. Validation temporarily enabled this portable setting
 and restored the original INI byte-for-byte after stopping its own emulator.
 The reusable live script assumes this prerequisite and does not edit the INI.
 
-Nine IOP checks passed: actual IRX load/stale epoch rejection; automatic capture
+Nine IOP checks passed again with provenance: actual IRX load/stale epoch rejection; automatic capture
 before polling and reconnect; independent IRX opcode/partial-frame evidence;
 immutable report across VM reset; EE filter ignores IOP BREAK resumed from a real
 IOP breakpoint; delay-slot raw-state probe; real code-8 syscall; explicit software
@@ -102,11 +115,18 @@ reboot scope; native CPU reset invalidation. The CPU-reset fixture writes the
 SBUS_F240 bit 19 that the pinned upstream `HwWrite.cpp` maps to `psxReset`; this
 is an isolated emulator probe, not physical PS2 reset acceptance.
 
-76 Node tests passed, alongside 11 EE exception live checks and 11 source-step
-regression checks. Integration reapplied without changing native source hashes.
-Reports: `release/exception-validation/iop-sdk5/iop-exception-Wah6XU/validation.json`,
-`iop-ee-regression/exception-TeNe0B/validation.json`, and
-`iop-step-regression/source-step-rOzzRJ/validation.json` under the same parent.
+The code-8 watch captures a real kernel SYSCALL (`0x0000aea0` in this run),
+which may precede the worker's own labeled SYSCALL. Its JIT opcode is verified
+against RAM; the test does not attribute it to the IRX or claim independent
+IRX label validation for it. Delay-slot SYSCALL is not a live IOP acceptance
+case in this delivery.
+
+78 Node tests passed, alongside 16 EE exception live checks and 11 source-step
+regression checks. Pristine, upgraded and repeated integration match all native
+source hashes. Reports:
+`release/exception-validation/iop-sdk5/iop-exception-NTfUz4/validation.json`,
+`trap-provenance-ee/exception-z2UVWo/validation.json`, and
+`trap-provenance-step/source-step-4fwrhQ/validation.json` under the same parent.
 No SMS runtime/decoder/Bridge changes, playback/audio or hardware acceptance.
 IOP interpreter, Linux host, full code coverage, IRX/source mapping, software
 reboot generations and independent no-progress monitoring remain pending.

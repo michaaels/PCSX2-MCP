@@ -47,9 +47,11 @@ namespace DebugServer
 	void OnIOPException(uint32_t code, uint32_t pc, bool branchDelay, uint32_t previousStatus);
 	void OnIOPReset();
 	bool IOPExceptionCaptured();
-	// JIT BREAK call site: preserve provenance without changing guest PC/CP0/BD.
+	// JIT trap call sites: preserve provenance without changing guest PC/CP0/BD.
 	// taggedInstructionPC: aligned PC with bit 0 carrying the delay-slot flag.
 	void ExecuteEEBreak(uint32_t taggedInstructionPC, uint32_t opcode);
+	void ExecuteEESyscall(uint32_t taggedInstructionPC, uint32_t opcode);
+	void ExecuteIOPException(uint32_t taggedInstructionPC, uint32_t rawBranchDelay);
 	bool PreserveStepWatchpoints();
 
 } // namespace DebugServer

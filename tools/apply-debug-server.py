@@ -124,6 +124,12 @@ def main() -> None:
         text = replace_once(text, '#include "VMManager.h"',
             '#include "VMManager.h"\n#include "DebugTools/DebugServer.h"', filename)
         if filename == 'pcsx2/x86/ix86-32/iR5900.cpp':
+            # recSYSCALL's constant FlushCache fast path stays ahead of this call.
+            text = replace_once(text,
+                '\trecCall(R5900::Interpreter::OpcodeImpl::SYSCALL);',
+                '\tiFlushCall(FLUSH_INTERPRETER);\n'
+                '\txFastCall((void*)DebugServer::ExecuteEESyscall, (g_recompilingDelaySlot ? pc | 1u : pc - 4),\n'
+                '\t\tstatic_cast<u32>(cpuRegs.code));', filename)
             text = replace_once(text,
                 '\trecCall(R5900::Interpreter::OpcodeImpl::BREAK);',
                 '\t// Carry the JIT instruction address/BD separately; preserve upstream BREAK semantics.\n'
@@ -139,10 +145,19 @@ def main() -> None:
         if filename == 'pcsx2/x86/iR3000A.cpp':
             for code in ('0x20', '0x24'):
                 call = '\txFastCall((void*)psxException, ' + code + ', psxbranch == 1);'
-                text = replace_once(text, call, call + '\n'
-                    '\t// A selected MCP exception stops before executing its IOP handler.\n'
-                    '\txFastCall((void*)DebugServer::IOPExceptionCaptured);\n'
-                    '\txTEST(al, al);\n\txJNZ(iopExitRecompiledCode);', filename)
+                exit_hook = ('\n\t// A selected MCP exception stops before executing its IOP handler.\n'
+                             '\txFastCall((void*)DebugServer::IOPExceptionCaptured);\n'
+                             '\txTEST(al, al);\n\txJNZ(iopExitRecompiledCode);')
+                # Upgrade the previous integration as well as a pristine checkout.
+                text = text.replace(call + exit_hook, call)
+                wrapper = '\txFastCall((void*)DebugServer::ExecuteIOPException,\n' \
+                    '\t\t(psxpc - 4) | (s_recompilingDelaySlot ? 1u : 0u), psxbranch == 1);'
+                # Both trap call sites share this wrapper; narrow by opcode block.
+                signature = 'void rpsx' + ('SYSCALL' if code == '0x20' else 'BREAK') + '()'
+                start = text.index(signature)
+                end = text.index('\n}', start) + 2
+                block = replace_once(text[start:end], call, wrapper + exit_hook, filename)
+                text = text[:start] + block + text[end:]
         for signature, iop, watch in functions:
             # Accept extra arguments on the dynarec functions, while keeping the
             # replacement confined to the correct function body.

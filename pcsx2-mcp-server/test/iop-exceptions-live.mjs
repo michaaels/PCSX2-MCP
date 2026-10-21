@@ -73,7 +73,10 @@ function verify(result, code) {
   assert.equal(r.iop_reset_epoch, result.iop_reset_epoch);
   assert.equal(r.elf_role, 'ee_boot_affinity_only'); assert.equal(r.module_identity, null);
   assert.equal(r.core.previous_exl, null); assert.ok(r.core.previous_status);
-  assert.equal(r.instruction_evidence.status, 'unavailable');
+  assert.equal(r.instruction_evidence.status, 'verified');
+  assert.equal(r.instruction_evidence.source, code === 8 ? 'iop_recompiler_syscall' : 'iop_recompiler_break');
+  assert.equal(Number(r.instruction_evidence.pc), Number(r.core.exception_pc));
+  assert.equal(Number(r.instruction_evidence.opcode) & 0xfc00003f, code === 8 ? 12 : 13);
   assert.ok(r.core.gpr.every(value => BigInt(value) <= 0xffffffffn));
   assert.equal(r.context_matches_stop, true, JSON.stringify(r.partial_reasons));
   assert.equal(r.context.cpu, 'iop'); assert.equal(r.context.status.data.pc, r.core.post_exception_pc);
@@ -90,6 +93,7 @@ try {
   await inspector.pause();
   report.initial = await boot('normal');
   const caps = await inspector.getCapabilities(); assert.ok(caps.features.includes('iop_exception_watch'));
+  assert.ok(caps.features.includes('iop_trap_provenance'));
   const rejectedId = 'a'.repeat(32), status = await inspector.getStatus();
   await assert.rejects(inspector.startExceptionWatch(rejectedId, { ...caps, iop_reset_epoch: caps.iop_reset_epoch + 1 }, { cpu: 'iop' }), /epoch changed/);
   assert.deepEqual(await inspector.getStatus(), status);
@@ -107,6 +111,8 @@ try {
   const window = normal.report.memory.code, opcode = Buffer.from(window.hex, 'hex').readUInt32LE(Number(normalCore.exception_pc) - Number(window.address));
   const irx = await fs.readFile(path.join(fixtureDirectory, 'iop-exceptions.irx'));
   assert.equal(opcode, irx.readUInt32LE(symbol(irx, 'fixture_iop_break').file_offset));
+  assert.equal(Number(normal.report.instruction_evidence.opcode), opcode);
+  assert.equal(normal.report.instruction_evidence.branch_delay, false);
   assert.deepEqual(await inspector.listBreakpoints('iop'), before);
   assert.equal(normal.report.context.screenshot.ok, false);
   passed('automatic IOP BREAK freezes 32-bit GPR/real CP0, canonical RAM, IOP context and events before polling; reconnect preserves foreign IOP breakpoint');
@@ -137,20 +143,24 @@ try {
   const delayedWindow = delayed.report.memory.code, delayedBytes = Buffer.from(delayedWindow.hex, 'hex');
   const delayedOffset = Number(delayedCore.exception_pc) - Number(delayedWindow.address);
   assert.equal(delayedBytes.readUInt32LE(delayedOffset), irx.readUInt32LE(symbol(irx, 'fixture_iop_delay_break').file_offset));
+  assert.equal(Number(delayed.report.instruction_evidence.opcode), delayedBytes.readUInt32LE(delayedOffset));
+  assert.equal(delayed.report.instruction_evidence.branch_delay, true);
+  assert.equal(delayed.report.instruction_evidence.consistency.bd_argument_matches, false);
   assert.equal(delayedBytes.readUInt32LE(delayedOffset - 4), irx.readUInt32LE(symbol(irx, 'fixture_iop_branch').file_offset));
   // Preserve the pinned upstream recompiler's observed BD limitation, not an idealized ISA result.
   assert.equal(delayedCore.requested_branch_delay, false);
   assert.equal(Number(delayedCore.epc), Number(delayedCore.exception_pc));
   report.delay_slot_probe = { fixture_expected_branch_delay: true, observed_bd_argument: delayedCore.requested_branch_delay,
     cause: delayedCore.cause, epc: delayedCore.epc, exception_pc: delayedCore.exception_pc,
-    limitation: 'IOP recompiler supplied bd=false for a genuine delay-slot BREAK; no architectural repair or verified IOP instruction provenance' };
+    instruction_evidence: delayed.report.instruction_evidence,
+    limitation: 'IOP recompiler supplied bd=false for a verified delay-slot BREAK; raw architectural state is not repaired' };
   passed('IOP delay-slot fixture matches IRX BREAK/branch bytes and preserves the observed upstream BD/EPC limitation');
   await boot('syscall');
   const syscallWatch = await call('pcsx2_exception_watch_start', { cpu: 'iop', exception_codes: [8], timeout_ms: 15000, screenshot: false });
   await inspector.resume();
   const syscall = await call('pcsx2_exception_report', { watch_id: syscallWatch.watch_id, wait_ms: 10000 });
   report.results.push(syscall); verify(syscall, 8);
-  passed('explicit IOP syscall filter observes a real code-8 exception without EE BREAK provenance');
+  passed('explicit IOP syscall filter observes a real code-8 exception with CPU-specific verified opcode provenance');
   await boot('reset');
   const resetWatch = await call('pcsx2_exception_watch_start', { cpu: 'iop', screenshot: false });
   const oldEpoch = resetWatch.iop_reset_epoch;

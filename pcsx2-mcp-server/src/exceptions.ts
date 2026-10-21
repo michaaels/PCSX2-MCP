@@ -15,7 +15,7 @@ export const exceptionState = z.object({ ok: z.literal(true), watch_id: watchId,
   state: z.enum(['armed', 'capturing', 'captured', 'expired', 'cancelled', 'vm_changed', 'vm_stopped', 'cpu_reset']), active: z.boolean(),
   session: counter, execution_epoch: counter, elf: z.string(), elf_crc: address, report: z.unknown().nullable() });
 const memory = z.object({ address, length: z.number().int().min(1).max(256), valid: z.boolean(), hex: z.string().regex(/^(?:[\da-f]{2})+$/).optional(), reason: z.string().optional() });
-const instructionOrigin = z.object({ source: z.literal('ee_recompiler_break'), pc: address, opcode: address,
+const instructionOrigin = z.object({ source: z.enum(['ee_recompiler_break', 'ee_recompiler_syscall', 'iop_recompiler_break', 'iop_recompiler_syscall']), pc: address, opcode: address,
   branch_delay: z.boolean(), opcode_matches_memory: z.boolean() });
 export function parseExceptionReport(value: unknown) {
   const report = z.object({ watch_id: watchId, cpu: z.enum(['ee', 'iop']), timestamp_ms: counter,
@@ -33,7 +33,7 @@ export function parseExceptionReport(value: unknown) {
   if (report.cpu === 'iop') {
     if (report.iop_reset_epoch === undefined || report.iop_reset_scope !== 'cpu_reset_only' || report.elf_role !== 'ee_boot_affinity_only' || report.module_identity !== null ||
       report.core.previous_exl !== null || report.core.previous_status === undefined || report.core.hi === undefined || report.core.lo === undefined ||
-      report.core.instruction || report.core.gpr.some(value => BigInt(value) > 0xffffffffn)) throw new Error('Invalid IOP identity/register semantics');
+      report.core.gpr.some(value => BigInt(value) > 0xffffffffn)) throw new Error('Invalid IOP identity/register semantics');
     const before = Number(report.core.previous_status);
     if (Number(report.core.status) !== (((before & ~63) | ((before & 15) << 2)) >>> 0)) throw new Error('Invalid IOP Status mode stack');
   } else if (report.core.previous_exl === null) throw new Error('EE requires previous EXL');
@@ -41,8 +41,14 @@ export function parseExceptionReport(value: unknown) {
     if (Number(report.core[name]) !== Number(report.core.cp0[reg])) throw new Error('Inconsistent exception CP0 registers');
   }
   const origin = report.core.instruction;
-  if (origin && (report.cpu !== 'ee' || report.core.exception_code !== 9 || (Number(origin.pc) & 3) !== 0 ||
-      (Number(origin.opcode) & 0xfc00003f) !== 13)) throw new Error('Invalid BREAK instruction provenance');
+  if (origin) {
+    const syscall = origin.source.endsWith('_syscall');
+    if (!origin.source.startsWith(report.cpu + '_') || report.core.exception_code !== (syscall ? 8 : 9) ||
+        (Number(origin.pc) & 3) !== 0 || (Number(origin.opcode) & 0xfc00003f) !== (syscall ? 12 : 13))
+      throw new Error('Invalid trap instruction provenance');
+    if (origin.opcode_matches_memory && Number(origin.pc) + 4 > (report.cpu === 'iop' ? 0x200000 : 0x2000000))
+      throw new Error('Verified trap provenance outside canonical RAM');
+  }
   const instructionEvidence = origin ? { ...origin, status: origin.opcode_matches_memory ? 'verified' as const : 'unverified' as const,
     ...(!origin.opcode_matches_memory ? { reason: 'opcode_unreadable_excluded_or_changed' } : {}),
     consistency: {
@@ -65,7 +71,7 @@ export function parseExceptionReport(value: unknown) {
     ...(!context.ok ? [context.error] : report.screenshot_requested && !context.screenshot.ok ? [context.screenshot.error] : []),
     ...(['code', 'stack'] as const).filter(key => !report.memory[key]?.valid).map(key => `${key}_memory_unavailable`),
     ...(!report.events ? ['event_history_unavailable'] : []),
-    ...(origin && !origin.opcode_matches_memory ? ['break_instruction_opcode_not_verified'] : []),
+    ...(origin && !origin.opcode_matches_memory ? [origin.source.endsWith('_syscall') ? 'syscall_instruction_opcode_not_verified' : 'break_instruction_opcode_not_verified'] : []),
     ...(report.cpu === 'iop' ? ['iop_module_identity_unavailable'] : []),
   ];
   return { ...report, context, observation: report.cpu === 'ee' ? 'configured_ee_exception' as const : 'configured_iop_exception' as const,

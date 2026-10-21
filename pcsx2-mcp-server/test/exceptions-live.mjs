@@ -47,13 +47,15 @@ function elfOpcode(pc) {
   }
   throw new Error('Fixture instruction outside PT_LOAD');
 }
-function verifyBreak(result, label, branchDelay) {
+function verifyTrap(result, label, branchDelay, syscall = false) {
   const evidence = result.report.instruction_evidence, expected = elfSymbol(label);
   assert.equal(evidence.status, 'verified', JSON.stringify(evidence));
   assert.equal(Number(evidence.pc), expected); assert.equal(Number(evidence.opcode), elfOpcode(expected));
   assert.equal(evidence.branch_delay, branchDelay);
-  assert.equal((Number(evidence.opcode) & 0xfc00003f), 13);
+  assert.equal((Number(evidence.opcode) & 0xfc00003f), syscall ? 12 : 13);
+  assert.equal(evidence.source, syscall ? 'ee_recompiler_syscall' : 'ee_recompiler_break');
 }
+const verifyBreak = verifyTrap;
 async function setMode(mode) {
   const bytes = Buffer.alloc(4); bytes.writeUInt32LE(mode);
   await inspector.writeMemory('0x' + elfSymbol('exception_mode').toString(16).padStart(8, '0'), bytes.toString('hex'));
@@ -75,6 +77,7 @@ try {
   await inspector.pause(); await boot();
   assert.ok((await inspector.getCapabilities()).features.includes('ee_exception_watch'));
   assert.ok((await inspector.getCapabilities()).features.includes('ee_break_provenance'));
+  assert.ok((await inspector.getCapabilities()).features.includes('ee_syscall_provenance'));
   const before = await inspector.getStatus();
   const expiry = await call('pcsx2_exception_watch_start', { timeout_ms: 100, screenshot: false });
   assert.equal(expiry.resumes_vm, false);
@@ -176,9 +179,42 @@ try {
   report.results.push(syscall); assert.equal(syscall.state, 'captured', JSON.stringify(syscall));
   assert.equal(syscall.report.core.exception_code, 8);
   assert.equal(Number(syscall.report.core.exception_pc), elfSymbol('exception_syscall'));
-  assert.equal(syscall.report.core.instruction, null);
-  assert.equal(syscall.report.instruction_evidence.status, 'unavailable');
-  passed('explicitly selected real syscall has no stale BREAK provenance after reset/new watch');
+  verifyTrap(syscall, 'exception_syscall', false, true);
+  passed('explicitly selected real syscall matches independent ELF PC/opcode without stale BREAK provenance');
+
+  for (const [mode, label, delaySlot, message] of [
+    [4, 'exception_delay_syscall', true, 'delay-slot syscall has independent verified JIT PC/BD and preserves raw upstream state'],
+    [5, 'exception_nested_syscall', false, 'nested EXL syscall preserves older EPC with unknown architectural comparisons'],
+    [8, 'exception_runtime_flushcache', false, 'runtime-loaded FlushCache still raises the original syscall exception with verified provenance']]) {
+    await boot(); await setMode(mode);
+    const armed = await call('pcsx2_exception_watch_start', { exception_codes: [8], screenshot: false });
+    await inspector.resume();
+    const captured = await call('pcsx2_exception_report', { watch_id: armed.watch_id, wait_ms: 5000 });
+    report.results.push(captured); assert.equal(captured.state, 'captured', JSON.stringify(captured));
+    verifyTrap(captured, label, delaySlot, true);
+    if (mode === 4) {
+      assert.equal(elfSymbol(label), elfSymbol('exception_syscall_branch') + 4);
+      assert.equal(elfOpcode(elfSymbol('exception_syscall_branch')) >>> 26, 4);
+      report.syscall_delay_slot_probe = { core: captured.report.core, instruction_evidence: captured.report.instruction_evidence };
+    } else if (mode === 5) {
+      assert.equal(captured.report.core.previous_exl, true);
+      assert.equal(Number(captured.report.core.epc), 0x00101234);
+      assert.equal(captured.report.instruction_evidence.consistency.epc_matches, null);
+      assert.equal(captured.report.instruction_evidence.consistency.cause_bd_matches, null);
+    } else assert.equal(BigInt(captured.report.core.gpr[3]) & 0xffffffffn, 0x64n);
+    passed(message);
+  }
+  for (const [mode, label] of [[6, 'exception_after_flushcache'], [7, 'exception_after_hle']]) {
+    await boot(); await setMode(mode);
+    const armed = await call('pcsx2_exception_watch_start', { exception_codes: [8, 9], screenshot: false });
+    await inspector.resume();
+    const captured = await call('pcsx2_exception_report', { watch_id: armed.watch_id, wait_ms: 5000 });
+    report.results.push(captured); assert.equal(captured.state, 'captured', JSON.stringify(captured));
+    verifyBreak(captured, label, false);
+    assert.equal(captured.report.core.exception_code, 9);
+    passed(mode === 6 ? 'constant FlushCache/iFlushCache optimization emits no fabricated syscall capture; following BREAK remains correct' :
+      'HLE GetOsdConfigParam2 early return emits no exception and clears syscall origin before following BREAK');
+  }
 
   await boot();
   const filtered = await call('pcsx2_exception_watch_start', { exception_codes: [12], timeout_ms: 5000, screenshot: false });

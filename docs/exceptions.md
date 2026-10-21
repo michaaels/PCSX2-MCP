@@ -2,7 +2,8 @@
 
 Rebuild both PCSX2 (integration script + native build) and `pcsx2-mcp-server`
 (`npm run build`). Restart the MCP client to discover these tools. The native
-EE capabilities are `ee_exception_watch` and `ee_break_provenance`; this is a PCSX2
+EE capabilities are `ee_exception_watch`, `ee_break_provenance` and
+`ee_syscall_provenance`; this is a PCSX2
 backend, not a physical PS2
 debugger or a no-progress detector.
 
@@ -53,13 +54,24 @@ not independently verified as the faulting instruction. EPC may refer to an
 older exception when EXL was already set; BadVAddr is relevant only for the
 reported address/TLB exception codes. No register value alone proves root cause.
 
-For **EE recompiler BREAK only**, `core.instruction` additionally freezes the
+For **EE recompiler BREAK and SYSCALL**, `core.instruction` additionally freezes the
 JIT call-site PC, opcode and delay-slot flag. The emitter passes these constants
-to a wrapper that calls the original interpreter BREAK without modifying guest
+to a wrapper that calls the original interpreter operation without modifying guest
 PC/CP0/BD. The wrapper reads only aligned canonical EE RAM to compare the
-instruction word immediately before BREAK. Its CPU-thread POD record is consumed
+instruction word immediately before the operation. Its CPU-thread POD record is consumed
 by `OnEEException` before any pause/safe exit, including unselected exceptions;
 normal return and reset also clear it. No RAII lifetime crosses the safe exit.
+The source is `ee_recompiler_break` or `ee_recompiler_syscall`; CPU, exception
+code and opcode must agree. A SYSCALL opcode's immediate field is not the PS2
+syscall dispatch number in GPR v1. The collector does not infer a dispatch name
+from the opcode or assume that v1 is unchanged by upstream HLE.
+
+Constant-v1 FlushCache/iFlushCache retain the JIT's original fast path: no
+wrapper or guest exception is emitted. The original interpreter also has HLE
+early returns, which clear the temporary witness without producing a report.
+Only an actual matching `cpuException` freezes provenance. Runtime-loaded v1
+can take a different upstream path from a constant value; the watcher preserves
+that behavior rather than fabricating equivalent exceptions.
 
 `instruction_evidence.status` is `verified` when that opcode matched RAM,
 `unverified` when bytes were excluded/unreadable/changed, or `unavailable` on an
@@ -68,11 +80,12 @@ and opcode comparison, not correct architectural exception emulation. Its
 `consistency` compares entry PC, BD argument, EPC and Cause.BD with the JIT
 origin. Disagreement is reported without rewriting any raw fields. EPC and
 Cause.BD comparisons are `null` for previous EXL, since an older exception may
-own those architectural fields. Other CPU cores, interpreter-only execution,
-syscalls and other exception codes have no instruction provenance in this
-delivery. The node parser accepts old reports with no `core.instruction`.
+own those architectural fields. Other EE exception codes and interpreter-only
+execution have no instruction provenance in this delivery. IOP BREAK/SYSCALL
+now have their own [CPU-specific provenance](iop-exceptions.md), never an EE
+witness. The node parser accepts old reports with no `core.instruction`.
 
-Example from the delay-slot fixture: JIT instruction `0x00100068`, opcode
+Example from the original 4B1 delay-slot fixture: JIT instruction `0x00100068`, opcode
 `0x0000000d`, delay slot true; upstream exception entry PC/EPC `0x00100064`,
 incoming BD false. The report preserves both observations. The ordinary
 64-byte code window still centers on the raw exception-entry PC; provenance is
@@ -138,21 +151,32 @@ withholds mismatching extended state. It does not repair guest exception
 semantics. 4B1 now supplies the independent JIT BREAK origin described above,
 while keeping the inaccurate raw entry PC/BD visible. The probe checks truthful
 reporting, not correct PS2 delay-slot exception emulation. Precise provenance
-for other exception paths remains pending. Unknown opcodes that upstream merely
+for exception paths beyond BREAK/SYSCALL remains pending. Unknown opcodes that upstream merely
 logs are also outside this hook's coverage.
 
-73 Node tests passed, plus 11 live exception checks and the existing 11-check
-source-stepping live regression including BREAK and watchpoints. Independent
-ELF assembler labels/PT_LOAD opcodes confirm normal/delay-slot BREAK origins.
-A guest fixture sets EXL and EPC `0x00101234` before BREAK; the report preserves
-that old EPC, verifies the current instruction, and leaves architectural
-comparisons unknown. An explicitly selected real syscall returns unavailable
-provenance, with no stale BREAK data after reset/new watch. Unverified opcodes
-and malformed provenance are covered by unit tests, not a live stale-JIT case.
-Reapplying integration preserved the hashes of native sources (idempotence).
-Local reports: `release/exception-validation/provenance-dwarf5/` and
-`release/exception-validation/provenance-regression/`.
-IOP exceptions were added in 4B2 with separate validation. Independent no-progress
+78 Node tests passed, plus 16 live EE exception checks, 9 IOP checks and the
+existing 11-check source-stepping live regression including BREAK and
+watchpoints. Independent ELF assembler labels/PT_LOAD opcodes confirm EE
+normal/delay-slot BREAK and SYSCALL origins. Guest fixtures set EXL and EPC
+`0x00101234` before either instruction; old EPC stays intact and architectural
+comparisons remain unknown. Delay-slot SYSCALL yielded JIT PC `0x00100110`,
+delay=true versus raw entry PC `0x0010010c`, bd=false. The raw core is preserved.
+
+The live test also reaches a following BREAK without code-8 capture after both
+constant FlushCache variants and HLE GetOsdConfigParam2 (zero-byte read, pinned
+retail BIOS). A runtime-loaded FlushCache does raise code 8 with verified
+provenance. These are specific upstream paths, not general HLE coverage.
+Unverified opcodes and malformed/cross-CPU provenance are unit-tested, not a
+live stale-JIT case. Pristine integration, upgrading the previous integration
+and repeated application produced identical hashes for all 13 native files.
+Local reports:
+
+- `release/exception-validation/trap-provenance-ee/exception-z2UVWo/validation.json`
+- `release/exception-validation/iop-sdk5/iop-exception-NTfUz4/validation.json`
+- `release/exception-validation/trap-provenance-step/source-step-4fwrhQ/validation.json`
+- `release/exception-validation/trap-integration.json`
+
+IOP exceptions were added in 4B2 and JIT provenance in 4B3. Independent no-progress
 monitoring, comprehensive exception-code coverage, Linux host and physical PS2
 remain pending. No deliberate fault was
 injected into SMS and no playback/audio acceptance is claimed by this fixture.
