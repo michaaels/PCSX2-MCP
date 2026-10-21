@@ -69,4 +69,4 @@ The latest debugging acceptance targets Windows PCSX2 v2.6.3. Earlier rendered
 screenshot checks also used Linux/WSL; that does not validate every later
 debugging feature on Linux. Emulator tests do not establish physical PS2 debug
 support or playback/audio acceptance. See the feature contracts above for
-their individual limits and the consolidated validation record added separately.
+their individual limits and the [consolidated validation record](debug-validation.md).
