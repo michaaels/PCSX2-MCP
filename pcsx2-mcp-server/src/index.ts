@@ -25,6 +25,7 @@ import { registerSourceTools } from './source-tools.js';
 import { registerExceptionTools } from './exception-tools.js';
 import { registerProgressTools } from './progress-tools.js';
 import { registerIopModuleTools } from './iop-module-tools.js';
+import { defaultPorts, tcpPort } from './ports.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -86,7 +87,7 @@ process.stdin.once('end', () => { debugServer?.disconnect(); pine?.disconnect();
 // ==========================================================
 server.tool('pcsx2_connect',
   'Connect to PCSX2. Tries DebugServer (21512), then Pine (28011). DebugServer gives FULL access (128-bit regs, expressions, conditional BP, native disasm). Pine gives memory + game info.',
-  { debug_port: z.number().default(21512).describe('DebugServer port'), pine_port: z.number().default(28011).describe('Pine IPC port'), mode: z.enum(['auto', 'debug', 'pine']).default('auto') },
+  { debug_port: tcpPort.default(defaultPorts().debug).describe('DebugServer port; defaults to PCSX2_DEBUG_PORT or 21512'), pine_port: tcpPort.default(defaultPorts().pine).describe('Pine IPC port; defaults to PCSX2_PINE_PORT or 28011'), mode: z.enum(['auto', 'debug', 'pine']).default('auto') },
   async ({ debug_port, pine_port, mode }) => {
     const results: string[] = [];
     // Try DebugServer

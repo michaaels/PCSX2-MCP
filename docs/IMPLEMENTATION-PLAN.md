@@ -16,7 +16,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
-| F1 | Puertos por proceso, directorios de datos independientes y aislamiento de sockets/sesiones; dos instancias Windows | En desarrollo |
+| F1 | Puertos por proceso, directorios de datos independientes y aislamiento de sockets/sesiones; dos instancias Windows | Implementado y probado; incluido en main con esta entrega |
 | F2 | GS dumps acotados con identidad, estados y archivos verificables | Pendiente |
 | F3 | Captura vídeo/audio con propiedad, límites y finalización comprobada | Pendiente |
 | F4 | Observadores de cambios de memoria EE/IOP en el hilo CPU | Pendiente |
@@ -36,5 +36,8 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
 - Base recibida: `26b5d06`, con las extensiones y la validación descritas en
   [development-status](development-status.md) y [debug-validation](debug-validation.md).
 - Revisión de forks: documentación previa, sin cambios de runtime.
-- F1: implementación y aceptación pendientes de cerrar. Registrar aquí commit,
-  pruebas y publicación al completarlo.
+- F1: TypeScript y Windows v2.6.3 compilados; 94 pruebas Node, 7 comprobaciones
+  live de instancias y 11 de regresión de automatización pasaron. Integración
+  limpia/upgrade/reaplicada y checkout de build coinciden en 15 archivos.
+  Contrato, límites y reproducción en [automation](automation.md#independent-instances).
+- Siguiente entrega: F2, GS dumps. Retomar 5A2 tras F1–F4; F5 exige 5A3.

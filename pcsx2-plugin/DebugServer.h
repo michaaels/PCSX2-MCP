@@ -25,8 +25,8 @@
 
 namespace DebugServer
 {
-	// Start the debug server on the given TCP port
-	// Call this once from PCSX2 initialization (e.g. in VMManager::Initialize)
+	// CPU thread only. PCSX2_DEBUG_PORT overrides the default per process.
+	// A failed bind does not start a session. Stop before starting another VM.
 	void Start(int port = 21512);
 
 	// Stop the server and close all connections

@@ -56,6 +56,7 @@ typedef int socket_t;
 #include "Host.h"
 #include "MTGS.h"
 #include "VMManager.h"
+#include "Config.h"
 #include "Achievements.h"
 #include "Recording/InputRecording.h"
 #include "SIO/Pad/Pad.h"
@@ -89,6 +90,8 @@ extern R3000DebugInterface r3000Debug;
 namespace DebugServer
 {
 	static std::atomic<bool> s_running{false};
+	static int s_debugPort = 21512; // CPU thread: set only after a successful bind.
+	static thread_local uint64_t s_requestSession = 0;
 	struct HistoryEntry
 	{
 		uint64_t sequence;
@@ -494,13 +497,16 @@ namespace DebugServer
 			std::vector<u32> pixels;
 		};
 		auto capture = std::make_shared<Capture>();
+		const uint64_t requestSession = s_requestSession;
 		// MTGS has a single producer: queue the capture from the CPU thread,
 		// never from this TCP worker. Shared ownership also covers a late callback.
-		Host::RunOnCPUThread([capture, requestedWidth, requestedHeight]() {
+		Host::RunOnCPUThread([capture, requestedWidth, requestedHeight, requestSession]() {
 			{
 				std::lock_guard lock(capture->mutex);
 				if (capture->cancelled)
 					return;
+				if (requestSession && (!s_running.load() || s_session.load() != requestSession))
+				{ capture->done = true; capture->ready.notify_one(); return; }
 			}
 			u32 width = 0, height = 0;
 			std::vector<u32> pixels;
@@ -577,9 +583,12 @@ namespace DebugServer
 		};
 		auto work = std::make_shared<Work>();
 		auto result = work->result.get_future();
-		Host::RunOnCPUThread([work, operation = std::move(operation)]() {
+		const uint64_t requestSession = s_requestSession;
+		Host::RunOnCPUThread([work, requestSession, operation = std::move(operation)]() {
 			int queued = 0;
 			if (!work->state.compare_exchange_strong(queued, 1)) return;
+			if (requestSession && (!s_running.load() || s_session.load() != requestSession))
+			{ work->result.set_value(failure("DebugServer session ended before the operation started")); return; }
 			try { work->result.set_value(operation()); }
 			catch (const std::exception& e) { work->result.set_value(failure(e.what())); }
 		});
@@ -1582,6 +1591,7 @@ namespace DebugServer
 				j.kv("process_id", static_cast<uint64_t>(getpid()));
 #endif
 				j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
+				j.kv("debug_port", s_debugPort); j.kv("data_directory", EmuFolders::DataRoot);
 				j.kv("execution_epoch", s_executionEpoch);
 				j.kv("iop_reset_epoch", s_iopResetEpoch);
 				j.kv("iop_reset_scope", "cpu_reset_only");
@@ -2210,14 +2220,34 @@ namespace DebugServer
 	static std::thread s_serverThread;
 	static socket_t s_listenSocket = SOCKET_INVALID;
 	static std::mutex s_commandMutex;
+	static std::mutex s_clientMutex;
+	static std::vector<socket_t> s_clients;
+
+	static void shutdownSocket(socket_t socket)
+	{
+#ifdef _WIN32
+		shutdown(socket, SD_BOTH);
+#else
+		shutdown(socket, SHUT_RDWR);
+#endif
+	}
+
+	static void closeClient(socket_t socket)
+	{
+		std::lock_guard lock(s_clientMutex);
+		s_clients.erase(std::remove(s_clients.begin(), s_clients.end(), socket), s_clients.end());
+		CLOSE_SOCKET(socket);
+	}
 
 	static std::string executeCommand(const std::string& line)
 	{
+		if (!s_running.load() || s_session.load() != s_requestSession) return failure("DebugServer session ended");
 		const auto params = parseJsonObject(line);
 		const std::string cmd = getStr(params, "cmd");
 		// Event long-polls must not prevent a different client from resuming.
 		if (cmd == "read_events" || cmd == "read_logs") return handleCommand(line);
 		std::lock_guard lock(s_commandMutex);
+		if (!s_running.load() || s_session.load() != s_requestSession) return failure("DebugServer session ended");
 		if (cmd == "screenshot" || cmd == "capture_context" || cmd == "capabilities" ||
 			cmd == "load_elf" || cmd == "pause" || cmd == "resume" || cmd == "step" || cmd == "step_over")
 			return handleCommand(line);
@@ -2225,12 +2255,13 @@ namespace DebugServer
 		return onCPU([line]() { return handleCommand(line); });
 	}
 
-	static void clientHandler(socket_t clientSock)
+	static void clientHandler(socket_t clientSock, uint64_t session)
 	{
+		s_requestSession = session;
 		std::string buffer;
 		char recvBuf[4096];
 
-		while (s_running.load())
+		while (s_running.load() && s_session.load() == session)
 		{
 			int bytes = recv(clientSock, recvBuf, sizeof(recvBuf) - 1, 0);
 			if (bytes <= 0) break;
@@ -2274,7 +2305,7 @@ namespace DebugServer
 					}
 					if (count <= 0)
 					{
-						CLOSE_SOCKET(clientSock);
+						closeClient(clientSock);
 						return;
 					}
 					sent += static_cast<size_t>(count);
@@ -2282,83 +2313,109 @@ namespace DebugServer
 			}
 		}
 
-		CLOSE_SOCKET(clientSock);
+		closeClient(clientSock);
 	}
 
-	static void serverLoop(int port)
+	static socket_t createListener(int port)
 	{
-#ifdef _WIN32
-		WSADATA wsaData;
-		WSAStartup(MAKEWORD(2, 2), &wsaData);
-#endif
-
-		s_listenSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-		if (s_listenSocket == SOCKET_INVALID)
+		const socket_t listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+		if (listener == SOCKET_INVALID)
 		{
 			fprintf(stderr, "[DebugServer] Failed to create socket\n");
-			return;
+			return SOCKET_INVALID;
 		}
 
 		int opt = 1;
-		setsockopt(s_listenSocket, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+#ifdef _WIN32
+		const int reuse = SO_EXCLUSIVEADDRUSE;
+#else
+		const int reuse = SO_REUSEADDR;
+#endif
+		if (setsockopt(listener, SOL_SOCKET, reuse, (const char*)&opt, sizeof(opt)) != 0)
+		{ CLOSE_SOCKET(listener); return SOCKET_INVALID; }
 
 		struct sockaddr_in addr = {};
 		addr.sin_family = AF_INET;
 		addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // localhost only
 		addr.sin_port = htons((u_short)port);
 
-		if (bind(s_listenSocket, (struct sockaddr*)&addr, sizeof(addr)) != 0)
+		if (bind(listener, (struct sockaddr*)&addr, sizeof(addr)) != 0)
 		{
 			fprintf(stderr, "[DebugServer] Failed to bind on port %d\n", port);
-			CLOSE_SOCKET(s_listenSocket);
-			s_listenSocket = SOCKET_INVALID;
-			return;
+			CLOSE_SOCKET(listener);
+			return SOCKET_INVALID;
 		}
 
-		if (listen(s_listenSocket, 2) != 0)
+		if (listen(listener, 8) != 0)
 		{
 			fprintf(stderr, "[DebugServer] Failed to listen\n");
-			CLOSE_SOCKET(s_listenSocket);
-			s_listenSocket = SOCKET_INVALID;
-			return;
+			CLOSE_SOCKET(listener);
+			return SOCKET_INVALID;
 		}
 
 		fprintf(stderr, "[DebugServer] Listening on 127.0.0.1:%d\n", port);
+		return listener;
+	}
 
-		while (s_running.load())
+	static void serverLoop(socket_t listener, uint64_t session)
+	{
+		while (s_running.load() && s_session.load() == session)
 		{
 			// Use select with timeout to allow clean shutdown
 			fd_set readSet;
 			FD_ZERO(&readSet);
-			FD_SET(s_listenSocket, &readSet);
+			FD_SET(listener, &readSet);
 
 			struct timeval tv;
-			tv.tv_sec = 1;
-			tv.tv_usec = 0;
+			tv.tv_sec = 0;
+			tv.tv_usec = 100000;
 
-			int selectResult = select((int)s_listenSocket + 1, &readSet, nullptr, nullptr, &tv);
+			int selectResult = select((int)listener + 1, &readSet, nullptr, nullptr, &tv);
 			if (selectResult <= 0) continue;
 
-			socket_t clientSock = accept(s_listenSocket, nullptr, nullptr);
+			socket_t clientSock = accept(listener, nullptr, nullptr);
 			if (clientSock == SOCKET_INVALID) continue;
-
-			fprintf(stderr, "[DebugServer] Client connected\n");
-
-			// Handle client in a new thread
-			std::thread(clientHandler, clientSock).detach();
+			std::lock_guard lock(s_clientMutex);
+			if (!s_running.load() || s_session.load() != session || s_clients.size() >= 32)
+			{ CLOSE_SOCKET(clientSock); continue; }
+			s_clients.push_back(clientSock);
+			std::thread(clientHandler, clientSock, session).detach();
 		}
-
-		CLOSE_SOCKET(s_listenSocket);
-		s_listenSocket = SOCKET_INVALID;
-
-#ifdef _WIN32
-		WSACleanup();
-#endif
 	}
 
 	void Start(int port)
 	{
-		if (s_running.exchange(true)) return;
+		if (s_running.load()) return;
+#ifdef _WIN32
+		struct WinsockLifetime
+		{
+			bool ready;
+			WinsockLifetime() { WSADATA data; ready = WSAStartup(MAKEWORD(2, 2), &data) == 0; }
+			~WinsockLifetime() { if (ready) WSACleanup(); }
+		};
+		static WinsockLifetime winsock;
+		if (!winsock.ready) return;
+#endif
+		// Per-process configuration: never silently attach to the default port
+		// after a malformed override or a failed bind.
+		if (const char* value = std::getenv("PCSX2_DEBUG_PORT"))
+		{
+			unsigned int parsed = 0;
+			bool valid = *value != '\0';
+			for (const char* p = value; valid && *p; ++p)
+			{
+				valid = *p >= '0' && *p <= '9';
+				if (valid) { parsed = parsed * 10 + (*p - '0'); valid = parsed <= 65535; }
+			}
+			if (!valid || parsed == 0)
+			{ fprintf(stderr, "[DebugServer] Invalid PCSX2_DEBUG_PORT (expected 1-65535)\n"); return; }
+			port = static_cast<int>(parsed);
+		}
+		if (port < 1 || port > 65535) return;
+		s_listenSocket = createListener(port);
+		if (s_listenSocket == SOCKET_INVALID) return;
+		s_debugPort = port;
+		s_running.store(true);
 		s_sourceGroups.clear();
 		s_step = {}; s_stepDeadline.store(0); ++s_executionEpoch;
 		s_exception = {}; s_exceptionDeadline.store(0); s_exceptionPending.store(0);
@@ -2414,8 +2471,7 @@ namespace DebugServer
 		}).detach();
 		Log::SetObserver(&recordLog);
 		recordEvent("vm_started");
-		s_serverThread = std::thread(serverLoop, port);
-		s_serverThread.detach();
+		s_serverThread = std::thread(serverLoop, s_listenSocket, s_session.load());
 	}
 
 	void Stop()
@@ -2433,9 +2489,15 @@ namespace DebugServer
 		s_eventReady.notify_all();
 		if (s_listenSocket != SOCKET_INVALID)
 		{
+			shutdownSocket(s_listenSocket);
+			if (s_serverThread.joinable()) s_serverThread.join();
 			CLOSE_SOCKET(s_listenSocket);
 			s_listenSocket = SOCKET_INVALID;
 		}
+		// Handlers own close(); shutdown unblocks recv/send without descriptor
+		// reuse races. CPU callbacks queued by an old session are rejected above.
+		std::lock_guard lock(s_clientMutex);
+		for (const socket_t socket : s_clients) shutdownSocket(socket);
 	}
 
 	bool IsRunning()

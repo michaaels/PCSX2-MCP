@@ -29,6 +29,7 @@ import { guardedStepResponse, type StepIdentity } from './guarded-step.js';
 import { exceptionOptions, exceptionState, watchId } from './exceptions.js';
 import { progressOptions, progressState } from './progress.js';
 import { parseIopModuleSnapshot } from './iop-modules.js';
+import { defaultPorts, tcpPort } from './ports.js';
 
 export interface DebugRegister {
   name: string;
@@ -104,9 +105,9 @@ export class DebugServerClient {
   private exclusiveToken?: symbol;
   private sessionScope = new AsyncLocalStorage<symbol>();
 
-  constructor(host = '127.0.0.1', port = 21512) {
+  constructor(host = '127.0.0.1', port = defaultPorts().debug) {
     this.host = host;
-    this.port = port;
+    this.port = tcpPort.parse(port);
   }
 
   async connect(): Promise<void> {

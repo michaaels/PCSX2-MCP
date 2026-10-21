@@ -2,6 +2,11 @@
 
 Fecha: 2026-10-21. Estado: **revisión de código; ninguna función importada**.
 
+Este documento conserva el resultado del estudio previo. Posteriormente el
+usuario autorizó la implementación: seguir el estado vigente en
+[IMPLEMENTATION-PLAN](IMPLEMENTATION-PLAN.md), con cada entrega validada en
+`main` de `michaaels/PCSX2-MCP`.
+
 ## Alcance y revisiones
 
 Se compararon los cambios de cada fork respecto a `origin/main` (`8f9bf45`)

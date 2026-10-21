@@ -53,6 +53,21 @@ def main() -> None:
     vm_h_text = replace_once(vm_h.read_text(encoding='utf-8'), '\tvoid FrameAdvance(u32 num_frames = 1);',
         '\tvoid FrameAdvance(u32 num_frames = 1);\n\n\t// CPU thread only: cancel remaining automated video frames.\n\tvoid CancelFrameAdvance();', str(vm_h))
 
+    config = source / 'pcsx2/Pcsx2Config.cpp'
+    config_text = replace_once(config.read_text(encoding='utf-8'), '#include "common/FileSystem.h"',
+        '#include "common/FileSystem.h"\n#include "common/Error.h"', str(config))
+    config_text = replace_once(config_text, 'bool EmuFolders::SetDataDirectory(Error* error)\n{',
+        'bool EmuFolders::SetDataDirectory(Error* error)\n{\n'
+        '\t// Optional per-process MCP instance root, selected before any settings load.\n'
+        '\tif (const char* root = std::getenv("PCSX2_MCP_DATA_DIR"))\n'
+        '\t{\n\t\tif (!Path::IsAbsolute(root))\n\t\t{\n'
+        '\t\t\tError::SetStringView(error, "PCSX2_MCP_DATA_DIR must be an absolute path");\n'
+        '\t\t\treturn false;\n\t\t}\n'
+        '\t\tDataRoot = Path::Canonicalize(root);\n'
+        '\t\tSettings = Path::Combine(DataRoot, "inis");\n'
+        '\t\treturn FileSystem::EnsureDirectoryExists(DataRoot.c_str(), false, error) &&\n'
+        '\t\t\tFileSystem::EnsureDirectoryExists(Settings.c_str(), false, error);\n\t}\n', str(config))
+
     # Preserve the GUI/file logging sinks. This independent atomic observer only
     # receives INFO-or-higher console messages while the MCP server is active.
     console_h = source / 'common/Console.h'
@@ -196,6 +211,7 @@ def main() -> None:
     write_if_changed(cmake, cmake_text)
     write_if_changed(vm, vm_text)
     write_if_changed(vm_h, vm_h_text)
+    write_if_changed(config, config_text)
     write_if_changed(console_h, console_h_text)
     write_if_changed(console_cpp, console_text)
     for target, text in breakpoint_files.items():

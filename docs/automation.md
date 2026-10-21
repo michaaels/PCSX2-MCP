@@ -31,7 +31,7 @@ without a shell, with the executable directory as its working directory. Console
 windows are hidden on Windows; the emulator may still display its rendering window.
 ELFs must have a readable 32-bit little-endian MIPS header and be no larger than 256 MiB.
 
-The launcher refuses an occupied TCP port 21512. It then verifies that the native
+The launcher refuses an occupied selected TCP port (21512 by default). It then verifies that the native
 `process_id` reported by `pcsx2_capabilities` matches its child PID, so it cannot
 silently attach to another emulator that wins a startup race. The returned SHA256
 identifies the input ELF at launch time. Native DebugServer readiness does not mean
@@ -47,6 +47,64 @@ The child is unreferenced and is not explicitly killed on normal MCP input closu
 native sockets are disconnected. After a Codex/MCP restart, use `pcsx2_connect` to
 attach to a surviving game. Process survival may also depend on the host's process
 management policy. Ownership is not transferred to the new MCP instance.
+
+### Independent instances
+
+`pcsx2_connect` and `pcsx2_launch` default to `PCSX2_DEBUG_PORT` (21512 if absent).
+The connection's Pine default is `PCSX2_PINE_PORT` (28011 if absent). Values must
+be decimal integers from 1 to 65535; malformed environment values fail rather
+than silently selecting another instance. Explicit tool ports use the same bounds.
+
+`pcsx2_launch` accepts `debug_port` and an optional absolute `data_directory`:
+
+```json
+{"executable":"D:\\pcsx2\\pcsx2-qt.exe","elf":"D:\\project\\game.elf","debug_port":22512,"data_directory":"D:\\pcsx2-instances\\test-a"}
+```
+
+The data root must already contain a configured `inis/PCSX2.ini`, including BIOS
+location and setup completion. The launcher does not copy a BIOS or configure a
+new emulator. It passes `PCSX2_DEBUG_PORT` and `PCSX2_MCP_DATA_DIR` only to its
+child and verifies the native PID, listening port and requested data root.
+Rebuild the native patch and TypeScript server before using this launcher.
+
+Run a separate MCP process for each concurrent emulator, selecting a distinct
+debug port and data root. The native override selects settings before they load;
+relative cache, memory-card and output paths therefore belong to that root.
+Explicit absolute folder paths in an INI can still share files: configure those
+separately when isolation is required. The Pine environment variable selects a
+client endpoint; configure Pine's native port separately in each instance's INI,
+or disable Pine and use DebugServer. It does not reconfigure native Pine.
+
+The DebugServer binds localhost and uses an exclusive Windows bind. A failed
+bind does not start a debug session. Stopping the VM shuts down client sockets;
+queued CPU work from an ended server session is rejected. Native server lifecycle
+remains tied to VM startup/shutdown; changing an environment variable does not
+reload a running server. At most 32 client sockets are retained per process.
+
+Windows acceptance on 2026-10-21: 94 Node tests and the separate
+`test/instance-ports-live.mjs` check cover two emulator processes, private roots,
+port collision, independent pause, two rendered PNGs, shutdown and restart.
+Same-process GUI VM shutdown/reboot and non-Windows lifecycle behavior have not
+been exercised by this live test.
+
+Reproduce the instance check from `pcsx2-mcp-server`, substituting absolute paths
+and a new output directory (the configured root must locate its BIOS):
+
+```text
+node test/instance-ports-live.mjs <PCSX2> <rendering-ELF> <configured-data-root> <new-output>
+```
+
+Local evidence: `release/instance-ports-validation-20261021-final/validation.json`
+contains 7 passed checks and two PNGs beside the receipt. The separate
+`release/instance-ports-automation-regression-20261021/results.json` records
+11 automation checks, including real entry breakpoint/reset, controller cleanup
+and context capture. These are emulator checks, not physical PS2 acceptance.
+`python tools/check-integration.py pcsx2-src <new-output>` verifies pristine,
+upgrade from `26b5d06`, reapplication and build-checkout agreement for 15 native
+files; receipt: `release/instance-ports-integration-20261021/integration.json`.
+The data-root hook adds `pcsx2/Pcsx2Config.cpp` to the integrated source set.
+Port-selection/isolation ideas were reviewed from Ryubara commits `c010c72`
+and `3fb80b8`; this implementation retains the pinned v2.6.3 and our protocol.
 
 ## Video and controller steps
 

@@ -5,10 +5,11 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DebugServerClient } from './debug-server-client.js';
+import { defaultPorts, tcpPort } from './ports.js';
 
-async function portOccupied() {
+async function portOccupied(port: number) {
   return new Promise<boolean>((resolve, reject) => {
-    const socket = createConnection({ host: '127.0.0.1', port: 21512 });
+    const socket = createConnection({ host: '127.0.0.1', port });
     socket.setTimeout(500);
     socket.once('connect', () => { socket.destroy(); resolve(true); });
     socket.once('error', error => {
@@ -16,7 +17,7 @@ async function portOccupied() {
       if ('code' in error && error.code === 'ECONNREFUSED') resolve(false);
       else reject(error);
     });
-    socket.once('timeout', () => { socket.destroy(); reject(new Error('Cannot determine whether debug port 21512 is occupied')); });
+    socket.once('timeout', () => { socket.destroy(); reject(new Error(`Cannot determine whether debug port ${port} is occupied`)); });
   });
 }
 
@@ -41,7 +42,7 @@ export class EmulatorLauncher {
   private client?: DebugServerClient;
   private busy = false;
 
-  async launch(options: { executable: string; elf: string; portable?: boolean; timeoutMs?: number; signal?: AbortSignal }) {
+  async launch(options: { executable: string; elf: string; portable?: boolean; debugPort?: number; dataDirectory?: string; timeoutMs?: number; signal?: AbortSignal }) {
     if (this.busy || this.child) throw new Error('This MCP already owns a running or starting emulator');
     this.busy = true;
     try {
@@ -49,10 +50,19 @@ export class EmulatorLauncher {
       if (/[\x00-\x1f]/.test(options.executable + options.elf)) throw new Error('Paths cannot contain control characters');
       if (!(await fs.stat(options.executable)).isFile()) throw new Error('PCSX2 executable must be a file');
       const identity = await validateElf(options.elf);
+      const debugPort = tcpPort.parse(options.debugPort ?? defaultPorts().debug);
+      let dataDirectory: string | undefined;
+      if (options.dataDirectory !== undefined) {
+        if (!path.isAbsolute(options.dataDirectory) || /[\x00-\x1f]/.test(options.dataDirectory)) throw new Error('Data directory must be an absolute path without control characters');
+        dataDirectory = await fs.realpath(options.dataDirectory);
+        if (!(await fs.stat(path.join(dataDirectory, 'inis', 'PCSX2.ini'))).isFile()) throw new Error('Data directory needs a configured inis/PCSX2.ini');
+      }
       options.signal?.throwIfAborted();
-      if (await portOccupied()) throw new Error('Debug port 21512 is occupied. Attach with pcsx2_connect instead.');
+      if (await portOccupied(debugPort)) throw new Error(`Debug port ${debugPort} is occupied. Attach with pcsx2_connect instead.`);
       const args = [...(options.portable === false ? [] : ['-portable']), '-nogui', '-fastboot', options.elf];
-      const child = spawn(options.executable, args, { cwd: path.dirname(options.executable), windowsHide: true, stdio: 'ignore' });
+      const env: NodeJS.ProcessEnv = { ...process.env, PCSX2_DEBUG_PORT: String(debugPort) };
+      if (dataDirectory) env.PCSX2_MCP_DATA_DIR = dataDirectory;
+      const child = spawn(options.executable, args, { cwd: path.dirname(options.executable), env, windowsHide: true, stdio: 'ignore' });
       this.child = child;
       // A launched game survives a clean MCP/Codex restart; reconnect afterward.
       child.unref();
@@ -69,13 +79,15 @@ export class EmulatorLauncher {
           options.signal?.throwIfAborted();
           if (spawnError) throw spawnError;
           if (exited) throw new Error(`PCSX2 exited before DebugServer startup (code ${child.exitCode})`);
-          const candidate = new DebugServerClient();
+          const candidate = new DebugServerClient('127.0.0.1', debugPort);
           try {
             await candidate.connect();
             const capabilities = await candidate.getCapabilities();
             if (capabilities.process_id !== child.pid) throw new Error('DebugServer process identity does not match the launched emulator; rebuild the native patch');
+            if (capabilities.debug_port !== debugPort) throw new Error('DebugServer does not confirm the requested port; rebuild the native patch');
+            if (dataDirectory && (!capabilities.data_directory || path.normalize(await fs.realpath(capabilities.data_directory)) !== path.normalize(dataDirectory))) throw new Error('DebugServer data directory does not match the requested instance; rebuild the native patch');
             this.client = candidate;
-            return { client: candidate, result: { pid: child.pid, executable: options.executable, elf: options.elf, ...identity, capabilities } };
+            return { client: candidate, result: { pid: child.pid, executable: options.executable, elf: options.elf, debug_port: debugPort, data_directory: capabilities.data_directory, ...identity, capabilities } };
           } catch (error) {
             candidate.disconnect();
             if (!/ECONNREFUSED|connection closed/i.test(error instanceof Error ? error.message : String(error))) throw error;

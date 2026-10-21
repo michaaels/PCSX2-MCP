@@ -21,6 +21,7 @@ behavior, native integration and tests can be reviewed together.
 | Additional trap provenance | `3279461` | EE SYSCALL and IOP BREAK/SYSCALL call-site evidence; original exception behavior and HLE paths remain visible. [Usage](exceptions.md). |
 | Explicit progress signal | `7db45ed` | Native EE heartbeat observation, expected-wait gate, bounded history and automatic evidence capture. [Usage](progress-watches.md). |
 | IOP runtime modules | `49bf380` | Bounded paused loadcore inventory, address-to-runtime-range association and frozen module observations in exception reports. [Usage](iop-modules.md). |
+| Independent emulator instances | F1, 2026-10-21 | Validated environment/explicit ports, per-process data roots, PID/port/root launch checks, exclusive Windows bind and socket session guards. [Usage and evidence](automation.md#independent-instances). |
 
 ## Operational improvements
 

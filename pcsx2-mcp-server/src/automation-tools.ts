@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { inputOptions } from './automation.js';
 import { DebugServerClient } from './debug-server-client.js';
 import { EmulatorLauncher } from './emulator-launcher.js';
+import { defaultPorts, tcpPort } from './ports.js';
 
 const text = (value: unknown) => ({ type: 'text' as const, text: JSON.stringify(value, null, 2) });
 const frames = z.number().int().min(1).max(600).default(1);
@@ -21,10 +22,10 @@ export function registerAutomationTools(server: McpServer, getClient: () => Debu
   }
 
   server.tool('pcsx2_launch', 'Launch the patched PCSX2 with a homebrew ELF and connect automatically. Requires absolute local executable/ELF paths and a configured BIOS. Refuses an occupied debug port. Returns ELF SHA256/entry and verifies the native process ID. DebugServer readiness does not mean the game is ready.',
-    { executable: z.string().min(1), elf: z.string().min(1), portable: z.boolean().default(true), timeout_ms: timeout },
-    ({ executable, elf, portable, timeout_ms }, extra) => run(async () => {
+    { executable: z.string().min(1), elf: z.string().min(1), portable: z.boolean().default(true), debug_port: tcpPort.default(defaultPorts().debug), data_directory: z.string().min(1).optional().describe('Existing absolute data directory containing a configured inis/PCSX2.ini; isolates settings and outputs'), timeout_ms: timeout },
+    ({ executable, elf, portable, debug_port, data_directory, timeout_ms }, extra) => run(async () => {
       if (getClient()?.isConnected()) throw new Error('Already connected to an emulator; disconnect/stop it before launching another');
-      const launched = await launcher.launch({ executable, elf, portable, timeoutMs: timeout_ms, signal: extra.signal });
+      const launched = await launcher.launch({ executable, elf, portable, debugPort: debug_port, dataDirectory: data_directory, timeoutMs: timeout_ms, signal: extra.signal });
       setClient(launched.client);
       return { content: [text(launched.result)] };
     }));
