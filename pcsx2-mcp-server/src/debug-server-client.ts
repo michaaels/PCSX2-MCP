@@ -26,6 +26,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { address, symbolOptions, symbolsResponse, resolvedResponse, symbolBreakpointResponse, type SymbolOptions } from './symbols.js';
 import { guardedStepResponse, type StepIdentity } from './guarded-step.js';
+import { exceptionOptions, exceptionState, watchId } from './exceptions.js';
 
 export interface DebugRegister {
   name: string;
@@ -268,6 +269,27 @@ export class DebugServerClient {
       throw new Error('Unexpected guarded inspection state');
     if (addressValue !== undefined && (!result.memory || result.memory.address !== addressValue || result.memory.length !== length ||
       (result.memory.valid && result.memory.hex?.length !== length! * 2) || (!result.memory.valid && result.memory.hex !== undefined))) throw new Error('Invalid guarded inspection memory response');
+    return result;
+  }
+
+  async startExceptionWatch(id: string, expected: StepIdentity, options: z.infer<typeof exceptionOptions>) {
+    watchId.parse(id); const parsed = exceptionOptions.parse(options);
+    const response = await this.send({ cmd: 'exception_watch_start', cpu: 'ee', watch_id: id,
+      exception_mask: [...new Set(parsed.exception_codes)].reduce((mask, code) => mask + 2 ** code, 0), timeout_ms: parsed.timeout_ms, screenshot: parsed.screenshot,
+      expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
+      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc });
+    if (!response.ok) throw Object.assign(new Error(response.error ?? 'Exception watch rejected'), { native_rejected: true });
+    const result = exceptionState.parse(response);
+    if (result.watch_id !== id || result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.elf !== expected.elf ||
+      Number(result.elf_crc) !== Number(expected.elf_crc) || result.state !== 'armed' || !result.active || result.report !== null) throw new Error('Unexpected exception watch identity/state');
+    return result;
+  }
+
+  async exceptionWatchStatus(id: string, cancel = false) {
+    watchId.parse(id);
+    const result = exceptionState.parse(await this.sessionCommand({ cmd: cancel ? 'exception_watch_cancel' : 'exception_watch_status', cpu: 'ee', watch_id: id }));
+    if (result.watch_id !== id || result.active !== ['armed', 'capturing'].includes(result.state) || (result.state === 'captured' && result.report === null) ||
+      (result.state !== 'captured' && result.report !== null)) throw new Error('Inconsistent exception watch state');
     return result;
   }
 

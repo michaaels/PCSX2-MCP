@@ -90,8 +90,12 @@ def main() -> None:
     start = ee_text.index('__ri void cpuException(u32 code, u32 bd)')
     end = ee_text.index('\n}', start) + 2
     block = ee_text[start:end]
-    if 'DebugServer::OnEEException();' not in block:
-        block = block.replace('cpuUpdateOperationMode();', 'cpuUpdateOperationMode();\n\tDebugServer::OnEEException();')
+    block = replace_once(block, '__ri void cpuException(u32 code, u32 bd)\n{',
+        '__ri void cpuException(u32 code, u32 bd)\n{\n\tconst u32 mcpExceptionPC = cpuRegs.pc;\n\tconst bool mcpNestedException = cpuRegs.CP0.n.Status.b.EXL != 0;', str(ee))
+    hook = 'DebugServer::OnEEException(code, mcpExceptionPC, bd != 0, mcpNestedException);'
+    block = block.replace('DebugServer::OnEEException();', hook)
+    if hook not in block:
+        block = block.replace('cpuUpdateOperationMode();', 'cpuUpdateOperationMode();\n\t' + hook)
     ee_text = ee_text[:start] + block + ee_text[end:]
     breakpoint_files[ee] = ee_text
     for filename, functions in {

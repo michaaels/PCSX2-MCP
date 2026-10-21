@@ -21,6 +21,7 @@
 #include <thread>
 #include <atomic>
 #include <functional>
+#include <cstdint>
 
 namespace DebugServer
 {
@@ -42,7 +43,7 @@ namespace DebugServer
 	void OnVSync();
 	void OnInputPoll();
 	void OnVMReset();
-	void OnEEException();
+	void OnEEException(uint32_t code, uint32_t pc, bool branchDelay, bool nested);
 	bool PreserveStepWatchpoints();
 
 } // namespace DebugServer
