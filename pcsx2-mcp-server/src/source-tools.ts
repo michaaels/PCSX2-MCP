@@ -4,6 +4,8 @@ import { SourceResolver, sourceOptions } from './source-debug.js';
 import { SourceLineResolver, lineOptions } from './source-lines.js';
 import { z } from 'zod';
 import { SourceStepper, sourceStepOptions } from './source-stepping.js';
+import { SourceVariables } from './source-variables.js';
+import { variableOptions } from './variables.js';
 
 export function registerSourceTools(server: McpServer, getClient: () => DebugServerClient | null) {
   async function run(operation: () => Promise<unknown>) {
@@ -11,6 +13,12 @@ export function registerSourceTools(server: McpServer, getClient: () => DebugSer
     catch (error) { return { content: [{ type: 'text' as const, text: JSON.stringify({ error: error instanceof Error ? error.message : String(error),
       ...(error instanceof Error && 'cleanup' in error ? { cleanup: error.cleanup } : {}) }) }], isError: true }; }
   }
+  server.tool('pcsx2_variables', 'Read-only current physical EE frame (frame_index=0) arguments/locals from the matching loaded DWARF2–5 ELF. Requires paused VM, updated variable_inspection native snapshot and optional pinned Python backend. Supports bounded GPR/RAM locations, integers/floats, pointers, arrays and structures; pointers are followed only when requested. Unknown/optimized/unavailable locations and unsupported expressions/types remain explicit. No caller-frame unwinding, inline locals, source-expression evaluation or writes. Returns raw storage evidence, snapshot identity, per-variable status and budget/truncation information.',
+    variableOptions.shape, (options, extra) => run(async () => {
+      const client = getClient();
+      if (!client?.isConnected()) throw new Error('Connect to DebugServer first');
+      return new SourceVariables().inspect(client, options, extra.signal);
+    }));
   server.tool('pcsx2_source_step', 'Bounded EE source stepping while paused: into stops at another file/line, over executes physical calls and stops on another line, out executes until a physical JR $ra return. Requires matching loaded DWARF ELF and native guarded_step. Counts decoded instruction units (branch + delay slot = 2), not frames; executes callees within the same budget. Stops on interruption, timeout or unsupported instructions. Preserves foreign breakpoints; does not cross conflicting successor/delay-slot breakpoints. Inline out is unsupported; inline over follows line changes. Returns explicit completed/reason, stopped PC, source and last 32 instruction steps.',
     sourceStepOptions.shape, (options, extra) => run(async () => {
       const client = getClient();

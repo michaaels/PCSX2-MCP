@@ -2,7 +2,7 @@
 
 This extension adds three MCP tools and requires the updated native PCSX2 patch
 for installation/removal. For execution control see [source stepping](source-stepping.md).
-Local variables remain a separate stage.
+Current-frame locals have a separate [variables tool](variables.md).
 
 | Tool | Behavior |
 |---|---|
@@ -147,4 +147,4 @@ explicit snapshot mappings. DWARF3 is
 accepted but not exercised by these live fixtures. Linux-host execution, IOP/IRX,
 compressed/split DWARF, commercial games and physical hardware are not validated
 for this extension. [Source stepping](source-stepping.md) is available separately;
-locals remain a later stage.
+current-frame locals are documented in [variables](variables.md).

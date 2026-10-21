@@ -122,6 +122,7 @@ namespace DebugServer
 	static FrameOperation s_operation;
 	// CPU-thread state; only the watchdog deadline crosses threads.
 	static uint64_t s_executionEpoch = 1, s_stepSequence = 0;
+	static uint64_t s_inspectionRevision = 1;
 	struct GuardedStep
 	{
 		uint64_t id = 0, epoch = 0;
@@ -570,6 +571,50 @@ namespace DebugServer
 
 	static std::string handleCommand(const std::string& jsonLine);
 
+	static std::string inspectEE(const std::unordered_map<std::string, JsonValue>& params)
+	{
+#ifdef _WIN32
+		const uint64_t process = GetCurrentProcessId();
+#else
+		const uint64_t process = getpid();
+#endif
+		if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused || getStr(params, "cpu", "ee") != "ee")
+			return failure("Variable inspection requires a paused EE VM");
+		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
+			getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+			getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC()) return failure("Variable inspection VM/ELF identity changed");
+		const auto revision = getNum(params, "expected_revision", -1);
+		if (revision != -1 && (revision != static_cast<int64_t>(s_inspectionRevision) || getNum(params, "expected_pc", -1) != r5900Debug.getPC()))
+			return failure("Paused inspection state changed; discard variable results");
+		const int64_t address = getNum(params, "address", -1), length = getNum(params, "length", 0);
+		if (length < 0 || length > 4096 || (length && (address < 0 || address > UINT32_MAX || static_cast<uint64_t>(address) + length > 0x100000000ULL)))
+			return failure("Variable memory read must be 1-4096 bytes without wraparound");
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("revision", s_inspectionRevision);
+		j.kv("execution_epoch", s_executionEpoch); j.key("pc"); j.valHex32(r5900Debug.getPC());
+		j.key("gpr"); j.startArray(); for (int reg = 0; reg < 32; ++reg) j.valHex128(r5900Debug.getRegister(0, reg));
+		j.endArray();
+		if (length)
+		{
+			// Deliberately exclude MMIO/ROM/TLB aliases: inspection must not trigger device reads.
+			const bool ram = static_cast<uint64_t>(address) + length <= 0x02000000ULL;
+			bool valid = ram; std::string hex;
+			if (ram) for (int64_t i = 0; i < length; ++i)
+			{
+				bool byteValid = false; const auto byte = r5900Debug.read8(static_cast<u32>(address + i), byteValid);
+				if (!byteValid) { valid = false; break; }
+				char encoded[3]; std::snprintf(encoded, sizeof(encoded), "%02x", byte); hex += encoded;
+			}
+			j.key("memory"); j.startObject(); j.key("address"); j.valHex32(static_cast<u32>(address));
+			j.kv("length", length); j.kv("valid", valid);
+			if (valid) j.kv("hex", hex);
+			else j.kv("reason", ram ? "invalid_memory" : "unsupported_memory_region");
+			j.endObject();
+		}
+		j.endObject(); return j.str();
+	}
+
 	static void finishGuardedStep(const char* reason)
 	{
 		if (!s_step.active) return;
@@ -969,6 +1014,8 @@ namespace DebugServer
 		}
 		if (s_step.active && cmd != "status" && cmd != "capabilities" && cmd != "read_events" && cmd != "read_logs")
 			return failure("A guarded instruction operation owns execution; poll or cancel it first");
+		if (cmd == "inspect_ee") return inspectEE(params);
+		if (cmd == "write_register" || cmd == "write_memory" || cmd == "set_pc") ++s_inspectionRevision;
 		std::string cpuName = getStr(params, "cpu", "ee");
 		DebugInterface* cpu = getCpu(cpuName);
 		if (cpuName != "ee" && cpuName != "iop") return failure("cpu must be ee or iop");
@@ -1070,7 +1117,7 @@ namespace DebugServer
 				j.kv("execution_epoch", s_executionEpoch);
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -1901,6 +1948,7 @@ namespace DebugServer
 
 	void OnVMStateChanged(int state)
 	{
+		++s_inspectionRevision;
 		if (!s_running.load()) return;
 		if (state == static_cast<int>(VMState::Paused) && s_operation.active)
 			finishOperation(s_videoFrame >= s_operation.target ? "completed" : "paused_early");
@@ -1942,6 +1990,7 @@ namespace DebugServer
 
 	void OnVMReset()
 	{
+		++s_inspectionRevision;
 		finishGuardedStep("vm_reset"); ++s_executionEpoch;
 		finishOperation("vm_reset");
 	}

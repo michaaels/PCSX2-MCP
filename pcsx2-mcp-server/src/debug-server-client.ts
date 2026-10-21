@@ -255,6 +255,22 @@ export class DebugServerClient {
     catch (error) { throw Object.assign(new Error(`Invalid guarded step response: ${String(error)}`), { operation_id: response.operation_id }); }
   }
 
+  async inspectEE(expected: StepIdentity, guard?: { revision: number; pc: string }, addressValue?: string, length?: number) {
+    if (addressValue !== undefined) { address.parse(addressValue); z.number().int().min(1).max(4096).parse(length); }
+    const response = await this.sessionCommand({ cmd: 'inspect_ee', cpu: 'ee', expected_process_id: expected.process_id,
+      expected_session: expected.session, expected_execution_epoch: expected.execution_epoch, expected_elf: expected.elf, expected_elf_crc: expected.elf_crc,
+      ...(guard ? { expected_revision: guard.revision, expected_pc: guard.pc } : {}),
+      ...(addressValue !== undefined ? { address: addressValue, length } : {}) });
+    const memory = z.object({ address, length: z.number().int().min(1).max(4096), valid: z.boolean(), hex: z.string().regex(/^(?:[\da-f]{2})+$/).optional(), reason: z.string().optional() });
+    const result = z.object({ ok: z.literal(true), revision: z.number().int().nonnegative().safe(), execution_epoch: z.number().int().nonnegative().safe(), pc: address,
+      gpr: z.array(z.string().regex(/^(?:0x)?[\da-fA-F]{32}$/).transform(value => '0x' + value.replace(/^0x/, '').toLowerCase())).length(32), memory: memory.optional() }).parse(response);
+    if (result.execution_epoch !== expected.execution_epoch || (guard && (result.revision !== guard.revision || Number(result.pc) !== Number(guard.pc))))
+      throw new Error('Unexpected guarded inspection state');
+    if (addressValue !== undefined && (!result.memory || result.memory.address !== addressValue || result.memory.length !== length ||
+      (result.memory.valid && result.memory.hex?.length !== length! * 2) || (!result.memory.valid && result.memory.hex !== undefined))) throw new Error('Invalid guarded inspection memory response');
+    return result;
+  }
+
   async guardedStepStatus(operationId: number, cancel = false) {
     z.number().int().positive().safe().parse(operationId);
     const result = guardedStepResponse.parse(await this.sessionCommand({ cmd: cancel ? 'guarded_step_cancel' : 'guarded_step_status', operation_id: operationId }));

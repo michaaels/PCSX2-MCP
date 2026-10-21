@@ -118,4 +118,5 @@ Local reports: `release/source-step-validation/*/source-step-*/validation.json`.
 Automated protocol tests cover nested/mismatched returns, limits, cancellation,
 deadline cancellation, identity changes and uncertain cleanup. IOP stepping,
 all branch-likely/indirect-branch variants, host Linux and PS2 hardware have not
-been validated by this acceptance run. No variables/locals support is implied.
+been validated by this acceptance run. [Variables](variables.md) are inspected
+separately using their own supported subset.

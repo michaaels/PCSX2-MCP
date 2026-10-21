@@ -321,6 +321,7 @@ For exact file/line breakpoints and explicit source snapshot mappings, see
 [source breakpoints](docs/source-breakpoints.md). The optional inverse-lookup
 backend uses an isolated Python environment and the rebuilt native patch.
 For bounded EE into/over/out execution, see [source stepping](docs/source-stepping.md).
+For read-only current-frame arguments, locals and types, see [variables](docs/variables.md).
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>
