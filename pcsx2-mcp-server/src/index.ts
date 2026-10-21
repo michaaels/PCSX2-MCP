@@ -24,6 +24,7 @@ import { registerWorkflowTools } from './workflow-tools.js';
 import { registerSourceTools } from './source-tools.js';
 import { registerExceptionTools } from './exception-tools.js';
 import { registerProgressTools } from './progress-tools.js';
+import { registerIopModuleTools } from './iop-module-tools.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -76,6 +77,7 @@ registerWorkflowTools(server, () => debugServer);
 registerSourceTools(server, () => debugServer);
 registerExceptionTools(server, () => debugServer);
 registerProgressTools(server, () => debugServer);
+registerIopModuleTools(server, () => debugServer);
 registerAutomationTools(server, () => debugServer, client => { debugServer?.disconnect(); debugServer = client; });
 process.stdin.once('end', () => { debugServer?.disconnect(); pine?.disconnect(); });
 

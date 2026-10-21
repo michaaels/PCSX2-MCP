@@ -28,6 +28,7 @@ import { address, symbolOptions, symbolsResponse, resolvedResponse, symbolBreakp
 import { guardedStepResponse, type StepIdentity } from './guarded-step.js';
 import { exceptionOptions, exceptionState, watchId } from './exceptions.js';
 import { progressOptions, progressState } from './progress.js';
+import { parseIopModuleSnapshot } from './iop-modules.js';
 
 export interface DebugRegister {
   name: string;
@@ -688,6 +689,15 @@ export class DebugServerClient {
     const resp = await this.send({ cmd: 'get_threads', cpu });
     if (!resp.ok) throw new Error(resp.error);
     return resp.threads;
+  }
+
+  async iopModuleSnapshot(expected: StepIdentity & { iop_reset_epoch: number }) {
+    const result = parseIopModuleSnapshot(await this.sessionCommand({ cmd: 'iop_module_snapshot',
+      expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
+      expected_iop_reset_epoch: expected.iop_reset_epoch, expected_elf: expected.elf, expected_elf_crc: expected.elf_crc }));
+    if (result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.iop_reset_epoch !== expected.iop_reset_epoch ||
+        result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc)) throw new Error('IOP module snapshot identity mismatch');
+    return result;
   }
 
   async getModules(cpu: CpuTarget = 'iop'): Promise<Array<{ name: string; version: number }>> {

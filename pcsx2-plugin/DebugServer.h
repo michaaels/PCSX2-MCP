@@ -46,6 +46,7 @@ namespace DebugServer
 	void OnEEException(uint32_t code, uint32_t pc, bool branchDelay, bool nested);
 	void OnIOPException(uint32_t code, uint32_t pc, bool branchDelay, uint32_t previousStatus);
 	void OnIOPReset();
+	void OnIOPModuleListLocated(uint32_t address);
 	bool IOPExceptionCaptured();
 	// JIT trap call sites: preserve provenance without changing guest PC/CP0/BD.
 	// taggedInstructionPC: aligned PC with bit 0 carrying the delay-slot flag.

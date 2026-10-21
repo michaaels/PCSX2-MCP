@@ -36,7 +36,7 @@ function symbol(bytes, name) {
       const start = stringOffset + bytes.readUInt32LE(entry);
       if (bytes.subarray(start, bytes.indexOf(0, start)).toString('utf8') !== name) continue;
       const value = bytes.readUInt32LE(entry + 4), section = offset + bytes.readUInt16LE(entry + 14) * stride;
-      return { address: value, file_offset: bytes.readUInt32LE(section + 16) + value - bytes.readUInt32LE(section + 12) };
+      return { address: value, section_address: bytes.readUInt32LE(section + 12), file_offset: bytes.readUInt32LE(section + 16) + value - bytes.readUInt32LE(section + 12) };
     }
   }
   throw new Error('Fixture symbol not found: ' + name);
@@ -94,10 +94,47 @@ try {
   report.initial = await boot('normal');
   const caps = await inspector.getCapabilities(); assert.ok(caps.features.includes('iop_exception_watch'));
   assert.ok(caps.features.includes('iop_trap_provenance'));
+  assert.ok(caps.features.includes('iop_module_snapshot'));
   const rejectedId = 'a'.repeat(32), status = await inspector.getStatus();
   await assert.rejects(inspector.startExceptionWatch(rejectedId, { ...caps, iop_reset_epoch: caps.iop_reset_epoch + 1 }, { cpu: 'iop' }), /epoch changed/);
   assert.deepEqual(await inspector.getStatus(), status);
   passed('loaded resident IRX through real SifLoadModule; stale IOP reset epoch refuses arming without resuming');
+  const modules = await call('pcsx2_iop_modules'); report.modules = modules;
+  assert.equal(modules.status, 'observed', JSON.stringify(modules));
+  const fixture = modules.modules.filter(m => m.name === 'mcp_exception_fixture'); assert.equal(fixture.length, 1);
+  const runtime = fixture[0], irx = await fs.readFile(path.join(fixtureDirectory, 'iop-exceptions.irx'));
+  assert.equal(runtime.version, 0x0101);
+  const start = symbol(irx, '_start'), breakSymbol = symbol(irx, 'fixture_iop_break');
+  assert.equal(Number(runtime.entry) - Number(runtime.text_address), start.address - start.section_address);
+  const fixtureBreakPC = Number(runtime.text_address) + breakSymbol.address - breakSymbol.section_address;
+  const resolved = await call('pcsx2_iop_modules', { address: hex(fixtureBreakPC) });
+  assert.equal(resolved.association.status, 'matched_runtime_range'); assert.equal(resolved.association.module.name, runtime.name);
+  assert.equal(resolved.association.segment, 'text'); assert.equal(resolved.artifact_identity, null); assert.equal(resolved.source_mapping, null);
+  assert.deepEqual(await inspector.getStatus(), status);
+  await assert.rejects(inspector.iopModuleSnapshot({ ...caps, iop_reset_epoch: caps.iop_reset_epoch + 1 }), /identity changed/);
+  passed('paused module table exposes real IRX range/version/entry matching linked IRX offsets without guest mutation or artifact/source claims');
+  const corruptions = [
+    [Number(modules.modules[0].record_address), Number(modules.modules[0].record_address), 'module_list_cycle'],
+    [Number(modules.modules[0].record_address), 0x1f801000, 'module_record_unreadable_or_excluded'],
+    [Number(modules.modules[0].record_address) + 4, 0x1f801000, 'module_name_unreadable_or_excluded'],
+  ];
+  report.invalid_lists = [];
+  for (const [address, value, reason] of corruptions) {
+    const original = await inspector.readMemory(hex(address), 4, 'iop'), replacement = Buffer.alloc(4); replacement.writeUInt32LE(value);
+    try {
+      await inspector.writeMemory(hex(address), replacement.toString('hex'), 'iop');
+      const invalid = await call('pcsx2_iop_modules', { address: hex(fixtureBreakPC) }); report.invalid_lists.push(invalid);
+      assert.equal(invalid.status, 'unavailable'); assert.equal(invalid.reason, reason); assert.deepEqual(invalid.modules, []);
+      assert.equal(invalid.association.status, 'unavailable');
+    } finally { await inspector.writeMemory(hex(address), original, 'iop'); }
+    assert.equal(await inspector.readMemory(hex(address), 4, 'iop'), original);
+  }
+  assert.equal((await call('pcsx2_iop_modules')).status, 'observed');
+  passed('cyclic list, excluded next pointer and MMIO name pointer yield unavailable evidence; test bytes are restored before guest resumes');
+  await inspector.resume();
+  assert.equal((await mcp.callTool({ name: 'pcsx2_iop_modules', arguments: {} })).isError, true);
+  assert.equal((await inspector.getStatus()).paused, false); await inspector.pause();
+  passed('module inspection refuses a running VM without pausing or resuming it');
   const sentinel = '0x001f0000'; await inspector.setBreakpoint(sentinel, { cpu: 'iop', description: 'foreign IOP exception sentinel' });
   const before = await inspector.listBreakpoints('iop');
   const watch = await call('pcsx2_exception_watch_start', { cpu: 'iop', exception_codes: [9], timeout_ms: 15000, screenshot: true });
@@ -109,8 +146,12 @@ try {
   assert.equal(Number(BigInt(normalCore.gpr[8])), 0x13579bdf);
   assert.equal(normalCore.requested_branch_delay, false);
   const window = normal.report.memory.code, opcode = Buffer.from(window.hex, 'hex').readUInt32LE(Number(normalCore.exception_pc) - Number(window.address));
-  const irx = await fs.readFile(path.join(fixtureDirectory, 'iop-exceptions.irx'));
   assert.equal(opcode, irx.readUInt32LE(symbol(irx, 'fixture_iop_break').file_offset));
+  assert.equal(Number(normalCore.exception_pc), fixtureBreakPC);
+  assert.equal(normal.report.module_observation.status, 'observed');
+  assert.equal(normal.report.module_evidence.status, 'matched_runtime_range');
+  assert.equal(normal.report.module_evidence.module.name, 'mcp_exception_fixture');
+  assert.equal(normal.report.module_evidence.address_basis, 'verified_jit_instruction');
   assert.equal(Number(normal.report.instruction_evidence.opcode), opcode);
   assert.equal(normal.report.instruction_evidence.branch_delay, false);
   assert.deepEqual(await inspector.listBreakpoints('iop'), before);
@@ -178,6 +219,9 @@ try {
   report.results.push(hardReset); assert.equal(hardReset.state, 'cpu_reset', JSON.stringify(hardReset));
   assert.ok((await inspector.getCapabilities()).iop_reset_epoch > hardWatch.iop_reset_epoch); await inspector.pause();
   passed('verified guest MMIO CPU reset advances IOP epoch and disarms its watch with cpu_reset independently of EE identity');
+  const resetModules = await call('pcsx2_iop_modules'); report.modules_after_cpu_reset = resetModules;
+  assert.equal(resetModules.status, 'unavailable'); assert.equal(resetModules.reason, 'loadcore_list_not_located_since_reset');
+  passed('native CPU reset clears the module locator instead of reusing a previous loadcore list');
   report.passed = true;
 } catch (error) {
   report.passed = false; report.error = String(error); report.error_stack = error.stack; process.exitCode = 1;

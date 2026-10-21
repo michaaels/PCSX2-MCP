@@ -113,6 +113,14 @@ def main() -> None:
         block = block[:-2] + '\n' + hook + '\n}'
     iop_text = iop_text[:start] + block + iop_text[end:]
     breakpoint_files[iop_source] = iop_text
+    iop_bios = source / 'pcsx2/IopBios.cpp'
+    bios_text = replace_once(iop_bios.read_text(encoding='utf-8'), '#include "IopBios.h"',
+        '#include "IopBios.h"\n#include "DebugTools/DebugServer.h"', str(iop_bios))
+    bios_text = replace_once(bios_text,
+        '\t\t\tCurrentBiosInformation.iopModListAddr = GetModList(a0);',
+        '\t\t\tCurrentBiosInformation.iopModListAddr = GetModList(a0);\n'
+        '\t\t\tDebugServer::OnIOPModuleListLocated(CurrentBiosInformation.iopModListAddr);', str(iop_bios))
+    breakpoint_files[iop_bios] = bios_text
     for filename, functions in {
         'pcsx2/Interpreter.cpp': [('void intBreakpoint(bool memcheck)', False, 'memcheck')],
         'pcsx2/R3000AInterpreter.cpp': [('void psxBreakpoint(bool memcheck)', True, 'memcheck')],

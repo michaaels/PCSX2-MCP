@@ -126,6 +126,8 @@ namespace DebugServer
 	static uint64_t s_executionEpoch = 1, s_stepSequence = 0;
 	static uint64_t s_inspectionRevision = 1;
 	static uint64_t s_iopResetEpoch = 1;
+	static u32 s_iopModuleRoot = 0;
+	static uint64_t s_iopModuleDiscovery = 0, s_iopModuleSnapshot = 0;
 	struct GuardedStep
 	{
 		uint64_t id = 0, epoch = 0;
@@ -1131,6 +1133,98 @@ namespace DebugServer
 		j.endObject();
 	}
 
+	// Read the layout used by upstream BiosDebugData::getIOPModules, with bounded
+	// valid reads and no live symbol database or guessed fixed BIOS list address.
+	static std::string iopModuleSnapshot()
+	{
+		struct Module { u32 record, next, nameAddress, version, entry, gp, text, textSize, dataSize, bssSize; std::string name; };
+		std::vector<Module> modules;
+		std::string reason;
+		const u32 root = s_iopModuleRoot;
+		u32 head = 0;
+		auto word = [&](u32 address, u32& value) {
+			if ((address & 3) || address > 0x00200000u - 4) return false;
+			bool valid = false; value = r3000Debug.read32(address, valid); return valid;
+		};
+		if (!root) reason = "loadcore_list_not_located_since_reset";
+		else if (!word(root, head)) reason = "list_root_unreadable_or_excluded";
+		else
+		{
+			u32 current = head;
+			while (current && reason.empty())
+			{
+				if (modules.size() >= 256) { reason = "module_limit_exceeded"; break; }
+				if (std::any_of(modules.begin(), modules.end(), [&](const auto& m) { return m.record == current; }))
+				{ reason = "module_list_cycle"; break; }
+				Module m{}; m.record = current;
+				if (current > 0x00200000u - 40 || !word(current, m.next) || !word(current + 4, m.nameAddress) ||
+					!word(current + 8, m.version) || !word(current + 0x10, m.entry) || !word(current + 0x14, m.gp) ||
+					!word(current + 0x18, m.text) || !word(current + 0x1c, m.textSize) ||
+					!word(current + 0x20, m.dataSize) || !word(current + 0x24, m.bssSize))
+				{ reason = "module_record_unreadable_or_excluded"; break; }
+				m.version &= 0xffff;
+				if (m.nameAddress)
+				{
+					bool terminated = false;
+					for (u32 offset = 0; offset < 128; ++offset)
+					{
+						const uint64_t address = static_cast<uint64_t>(m.nameAddress) + offset;
+						const u32 physical = static_cast<u32>(address) & 0x1fffffff;
+						const bool ram = address < 0x00200000;
+						const bool rom = address <= UINT32_MAX && physical >= 0x1fc00000 && physical < 0x20000000 &&
+							(address < 0x20000000 || (address >= 0x9fc00000 && address < 0xa0000000) || (address >= 0xbfc00000 && address < 0xc0000000));
+						if (!ram && !rom) { reason = "module_name_unreadable_or_excluded"; break; }
+						bool valid = false; const auto c = r3000Debug.read8(static_cast<u32>(address), valid);
+						if (!valid) { reason = "module_name_unreadable_or_excluded"; break; }
+						if (!c) { terminated = true; break; }
+						if (c < 32 || c > 126) { reason = "module_name_encoding_unsupported"; break; }
+						m.name += static_cast<char>(c);
+					}
+					if (reason.empty() && !terminated) reason = "module_name_limit_exceeded";
+				}
+				modules.push_back(std::move(m)); current = modules.back().next;
+			}
+		}
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("cpu", "iop");
+		j.kv("snapshot_id", ++s_iopModuleSnapshot); j.kv("timestamp_ms", timestampMillis());
+		j.kv("session", s_session.load()); j.kv("execution_epoch", s_executionEpoch); j.kv("iop_reset_epoch", s_iopResetEpoch);
+		j.kv("iop_reset_scope", "cpu_reset_only"); j.kv("revision", s_inspectionRevision);
+		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.kv("elf_role", "ee_boot_affinity_only"); j.kv("scope", "paused_runtime_observation_only");
+		j.kv("source", "pcsx2_detected_loadcore_list"); j.kv("root_discovery_sequence", s_iopModuleDiscovery);
+		j.key("list_address"); j.valHex32(root); j.key("head_address"); j.valHex32(head);
+		j.kv("status", reason.empty() ? "observed" : "unavailable");
+		j.key("reason"); if (reason.empty()) j.valJson("null"); else j.valStr(reason);
+		j.key("modules"); j.startArray();
+		if (reason.empty()) for (const auto& m : modules)
+		{
+			j.startObject(); j.key("record_address"); j.valHex32(m.record); j.key("next_address"); j.valHex32(m.next);
+			j.key("name_address"); j.valHex32(m.nameAddress); j.key("name"); if (m.nameAddress) j.valStr(m.name); else j.valJson("null");
+			j.kv("version", m.version); j.key("entry"); j.valHex32(m.entry); j.key("gp"); j.valHex32(m.gp);
+			j.key("text_address"); j.valHex32(m.text); j.kv("text_size", m.textSize); j.kv("data_size", m.dataSize); j.kv("bss_size", m.bssSize);
+			j.endObject();
+		}
+		j.endArray(); j.endObject(); return j.str();
+	}
+
+	static std::string guardedIopModules(const std::unordered_map<std::string, JsonValue>& params)
+	{
+		if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused || s_step.active || s_operation.active)
+			return failure("IOP module snapshot requires a paused VM without active execution operation");
+#ifdef _WIN32
+		const uint64_t process = GetCurrentProcessId();
+#else
+		const uint64_t process = getpid();
+#endif
+		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
+			getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
+			getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			return failure("IOP module snapshot VM/ELF/reset identity changed");
+		return iopModuleSnapshot();
+	}
+
 	static void finalizeException(uint64_t sequence)
 	{
 		if (s_exception.sequence != sequence || s_exception.state != "capturing") return;
@@ -1183,6 +1277,7 @@ namespace DebugServer
 		j.key("gpr"); j.startArray(); for (const auto& reg : s_exception.gpr) j.valHex128(reg); j.endArray();
 		j.key("cp0"); j.startArray(); for (u32 reg : s_exception.cp0) j.valHex32(reg); j.endArray(); j.endObject();
 		const std::string corePrefix = j.str();
+		if (s_exception.iop && matches) { j.key("module_observation"); j.valJson(iopModuleSnapshot()); }
 		j.key("memory"); j.startObject();
 		if (matches)
 		{
@@ -1368,6 +1463,7 @@ namespace DebugServer
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
+		if (cmd == "iop_module_snapshot") return guardedIopModules(params);
 		if (cmd == "progress_watch_start" || cmd == "progress_watch_status" || cmd == "progress_watch_cancel") return progressWatch(params, cmd);
 		if (cmd == "exception_watch_start" || cmd == "exception_watch_status" || cmd == "exception_watch_cancel") return exceptionWatch(params, cmd);
 		if (cmd == "guarded_step") return startGuardedStep(params);
@@ -1491,7 +1587,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2267,6 +2363,7 @@ namespace DebugServer
 		s_step = {}; s_stepDeadline.store(0); ++s_executionEpoch;
 		s_exception = {}; s_exceptionDeadline.store(0); s_exceptionPending.store(0);
 		s_progress = {}; s_progressNext.store(0); s_progressQueued.store(0);
+		s_iopModuleRoot = 0;
 		s_eeOrigin = {}; s_iopOrigin = {};
 		++s_session;
 		const uint64_t watchdogSession = s_session.load();
@@ -2399,6 +2496,7 @@ namespace DebugServer
 
 	void OnVMReset()
 	{
+		s_iopModuleRoot = 0;
 		if (s_progress.state == "armed") s_progress.state = "vm_changed";
 		s_progressNext.store(0);
 		s_eeOrigin = {}; s_iopOrigin = {};
@@ -2488,8 +2586,14 @@ namespace DebugServer
 		Cpu->ExitExecution();
 	}
 
+	void OnIOPModuleListLocated(uint32_t address)
+	{
+		s_iopModuleRoot = address; ++s_iopModuleDiscovery;
+	}
+
 	void OnIOPReset()
 	{
+		s_iopModuleRoot = 0;
 		s_iopOrigin = {};
 		if (s_exception.iop && s_exception.state == "capturing") finalizeException(s_exception.sequence);
 		if (s_exception.iop && s_exception.state == "armed")

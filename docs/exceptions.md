@@ -11,6 +11,9 @@ IOP capture is now available through the same tools with `cpu: iop` and capabili
 `iop_exception_watch`. See [IOP identity, registers and validation](iop-exceptions.md)
 for its different Status/reset semantics and explicit unknown module identity.
 The EE-specific provenance below continues to apply to EE only.
+New native builds can also freeze a bounded IOP `module_observation` and derive
+runtime range membership in `module_evidence`; [artifact/source identity remains
+separate](iop-modules.md).
 
 ## Use
 

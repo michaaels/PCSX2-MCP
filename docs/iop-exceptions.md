@@ -25,8 +25,10 @@ IOP reports explicitly identify `cpu: iop` and
 `elf_role: ee_boot_affinity_only`. The `elf`/CRC fields identify the VM's EE boot
 context; they are **not** the executing IRX's ELF, symbols or source map.
 `module_identity: null` and `iop_module_identity_unavailable` keep every current
-IOP report partial until actual module identity/mapping is implemented. Do not
-feed its PC to the EE source/variable resolver.
+IOP report partial until artifact/source identity is proven. A matching paused
+stop can now retain `module_observation` and `module_evidence` from the bounded
+[runtime module table](iop-modules.md). A range match is not a local IRX file,
+load generation or source binding. Do not feed its PC to the EE source/variable resolver.
 
 Start checks process/session/EE boot identity/execution epoch and an additional
 `iop_reset_epoch`. Native `psxReset` increments that epoch, disarming an armed
@@ -129,5 +131,5 @@ source hashes. Reports:
 `trap-provenance-step/source-step-4fwrhQ/validation.json` under the same parent.
 No SMS runtime/decoder/Bridge changes, playback/audio or hardware acceptance.
 IOP interpreter, Linux host, full code coverage, IRX/source mapping, software
-reboot generations and IOP no-progress monitoring remain pending. The separate
+reboot generations, IRX artifact/source binding and IOP no-progress monitoring remain pending. The separate
 [progress watch](progress-watches.md) observes an explicit EE RAM signal only.

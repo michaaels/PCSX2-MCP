@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { address } from './symbols.js';
 import { eventsResponse, parseContext } from './debug-session.js';
+import { parseIopModuleSnapshot, resolveIopModule } from './iop-modules.js';
 
 export const watchId = z.string().regex(/^[\da-f]{32}$/);
 export const exceptionOptions = z.object({
@@ -21,6 +22,7 @@ export function parseExceptionReport(value: unknown) {
   const report = z.object({ watch_id: watchId, cpu: z.enum(['ee', 'iop']), timestamp_ms: counter,
     iop_reset_epoch: counter.optional(), elf_role: z.enum(['ee_executable', 'ee_boot_affinity_only']).optional(), module_identity: z.null().optional(),
     iop_reset_scope: z.literal('cpu_reset_only').optional(),
+    module_observation: z.unknown().optional(),
     session: counter, execution_epoch: counter, elf: z.string(), elf_crc: address, context_matches_stop: z.boolean(), screenshot_requested: z.boolean(),
     core: z.object({ exception_pc: address, post_exception_pc: address, raw_code: address, exception_code: z.number().int().min(0).max(31),
       requested_branch_delay: z.boolean(), previous_exl: z.boolean().nullable(), previous_status: address.optional(), hi: address.optional(), lo: address.optional(),
@@ -41,6 +43,10 @@ export function parseExceptionReport(value: unknown) {
     if (Number(report.core[name]) !== Number(report.core.cp0[reg])) throw new Error('Inconsistent exception CP0 registers');
   }
   const origin = report.core.instruction;
+  const moduleObservation = report.module_observation === undefined ? undefined : parseIopModuleSnapshot(report.module_observation);
+  if (moduleObservation && (report.cpu !== 'iop' || !report.context_matches_stop || moduleObservation.session !== report.session ||
+      moduleObservation.execution_epoch !== report.execution_epoch || moduleObservation.iop_reset_epoch !== report.iop_reset_epoch ||
+      moduleObservation.elf !== report.elf || moduleObservation.elf_crc !== report.elf_crc)) throw new Error('Exception module observation identity mismatch');
   if (origin) {
     const syscall = origin.source.endsWith('_syscall');
     if (!origin.source.startsWith(report.cpu + '_') || report.core.exception_code !== (syscall ? 8 : 9) ||
@@ -75,6 +81,10 @@ export function parseExceptionReport(value: unknown) {
     ...(report.cpu === 'iop' ? ['iop_module_identity_unavailable'] : []),
   ];
   return { ...report, context, observation: report.cpu === 'ee' ? 'configured_ee_exception' as const : 'configured_iop_exception' as const,
+    ...(moduleObservation ? { module_observation: moduleObservation, module_evidence: {
+      ...resolveIopModule(moduleObservation, origin?.opcode_matches_memory ? origin.pc : report.core.exception_pc),
+      address_basis: origin?.opcode_matches_memory ? 'verified_jit_instruction' : 'raw_exception_entry',
+    } } : {}),
     instruction_evidence: instructionEvidence,
     pc_semantics: report.cpu === 'ee' ? 'cpuException_entry_PC_not_independently_verified_faulting_instruction' : 'psxException_entry_PC_not_independently_verified_faulting_instruction',
     branch_delay_semantics: report.cpu === 'ee' ? 'cpuException_bd_argument' : 'psxException_bd_argument',
