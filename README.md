@@ -335,6 +335,8 @@ with no claim of deadlock diagnosis from the symptom alone.
 For bounded paused IOP inventory and address-to-runtime-module association, see
 [IOP module observations](docs/iop-modules.md). Exception reports can retain the
 same runtime evidence; local IRX artifact/source binding remains unavailable.
+For the delivered improvements, implementation commits and next work, see
+[MCP development progress](docs/development-status.md).
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>
