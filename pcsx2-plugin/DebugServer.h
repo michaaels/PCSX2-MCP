@@ -44,6 +44,9 @@ namespace DebugServer
 	void OnInputPoll();
 	void OnVMReset();
 	void OnEEException(uint32_t code, uint32_t pc, bool branchDelay, bool nested);
+	// JIT BREAK call site: preserve provenance without changing guest PC/CP0/BD.
+	// taggedInstructionPC: aligned PC with bit 0 carrying the delay-slot flag.
+	void ExecuteEEBreak(uint32_t taggedInstructionPC, uint32_t opcode);
 	bool PreserveStepWatchpoints();
 
 } // namespace DebugServer

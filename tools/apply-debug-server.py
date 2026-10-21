@@ -109,6 +109,13 @@ def main() -> None:
         text = replace_once(text, '#include "VMManager.h"',
             '#include "VMManager.h"\n#include "DebugTools/DebugServer.h"', filename)
         if filename == 'pcsx2/x86/ix86-32/iR5900.cpp':
+            text = replace_once(text,
+                '\trecCall(R5900::Interpreter::OpcodeImpl::BREAK);',
+                '\t// Carry the JIT instruction address/BD separately; preserve upstream BREAK semantics.\n'
+                '\tiFlushCall(FLUSH_INTERPRETER);\n'
+                '\t// The emitter accepts two arguments; aligned PC bit 0 carries BD.\n'
+                '\txFastCall((void*)DebugServer::ExecuteEEBreak, (g_recompilingDelaySlot ? pc | 1u : pc - 4),\n'
+                '\t\tstatic_cast<u32>(cpuRegs.code));', filename)
             text = replace_once(text, '\t\tif(encodeBreakpoint() || encodeMemcheck())',
                 '\t\t// Emit both checks: an execute breakpoint must not hide a watchpoint.\n'
                 '\t\tconst bool executeCheck = encodeBreakpoint();\n'

@@ -12,18 +12,32 @@ export const exceptionState = z.object({ ok: z.literal(true), watch_id: watchId,
   state: z.enum(['armed', 'capturing', 'captured', 'expired', 'cancelled', 'vm_changed', 'vm_stopped']), active: z.boolean(),
   session: counter, execution_epoch: counter, elf: z.string(), elf_crc: address, report: z.unknown().nullable() });
 const memory = z.object({ address, length: z.number().int().min(1).max(256), valid: z.boolean(), hex: z.string().regex(/^(?:[\da-f]{2})+$/).optional(), reason: z.string().optional() });
+const instructionOrigin = z.object({ source: z.literal('ee_recompiler_break'), pc: address, opcode: address,
+  branch_delay: z.boolean(), opcode_matches_memory: z.boolean() });
 export function parseExceptionReport(value: unknown) {
   const report = z.object({ watch_id: watchId, cpu: z.literal('ee'), timestamp_ms: counter,
     session: counter, execution_epoch: counter, elf: z.string(), elf_crc: address, context_matches_stop: z.boolean(), screenshot_requested: z.boolean(),
     core: z.object({ exception_pc: address, post_exception_pc: address, raw_code: address, exception_code: z.number().int().min(0).max(31),
       requested_branch_delay: z.boolean(), previous_exl: z.boolean(), cause: address, epc: address, bad_vaddr: address, status: address,
-      bad_vaddr_relevant: z.boolean(), gpr: z.array(z.string().regex(/^(?:0x)?[\da-fA-F]{32}$/).transform(value => '0x' + value.replace(/^0x/, '').toLowerCase())).length(32), cp0: z.array(address).length(32) }),
+      bad_vaddr_relevant: z.boolean(), instruction: instructionOrigin.nullable().optional(),
+      gpr: z.array(z.string().regex(/^(?:0x)?[\da-fA-F]{32}$/).transform(value => '0x' + value.replace(/^0x/, '').toLowerCase())).length(32), cp0: z.array(address).length(32) }),
     memory: z.object({ code: memory.optional(), stack: memory.optional() }), events: eventsResponse.optional(), context: z.unknown(),
   }).parse(value);
   if (report.core.exception_code !== ((Number(report.core.raw_code) >>> 2) & 31)) throw new Error('Inconsistent exception code');
   for (const [name, reg] of [['cause', 13], ['epc', 14], ['bad_vaddr', 8], ['status', 12]] as const) {
     if (Number(report.core[name]) !== Number(report.core.cp0[reg])) throw new Error('Inconsistent exception CP0 registers');
   }
+  const origin = report.core.instruction;
+  if (origin && (report.core.exception_code !== 9 || (Number(origin.pc) & 3) !== 0 ||
+      (Number(origin.opcode) & 0xfc00003f) !== 13)) throw new Error('Invalid BREAK instruction provenance');
+  const instructionEvidence = origin ? { ...origin, status: origin.opcode_matches_memory ? 'verified' as const : 'unverified' as const,
+    ...(!origin.opcode_matches_memory ? { reason: 'opcode_unreadable_excluded_or_changed' } : {}),
+    consistency: {
+      entry_pc_matches: Number(report.core.exception_pc) === Number(origin.pc),
+      bd_argument_matches: report.core.requested_branch_delay === origin.branch_delay,
+      epc_matches: report.core.previous_exl ? null : Number(report.core.epc) === ((Number(origin.pc) - (origin.branch_delay ? 4 : 0)) >>> 0),
+      cause_bd_matches: report.core.previous_exl ? null : (Number(report.core.cause) >>> 31) === Number(origin.branch_delay),
+    } } : { status: 'unavailable' as const, reason: 'exception_path_has_no_instruction_provenance' };
   for (const window of [report.memory.code, report.memory.stack]) {
     if (window && ((window.valid && window.hex?.length !== window.length * 2) || (!window.valid && window.hex !== undefined))) throw new Error('Invalid exception memory window');
   }
@@ -37,8 +51,10 @@ export function parseExceptionReport(value: unknown) {
     ...(!context.ok ? [context.error] : report.screenshot_requested && !context.screenshot.ok ? [context.screenshot.error] : []),
     ...(['code', 'stack'] as const).filter(key => !report.memory[key]?.valid).map(key => `${key}_memory_unavailable`),
     ...(!report.events ? ['event_history_unavailable'] : []),
+    ...(origin && !origin.opcode_matches_memory ? ['break_instruction_opcode_not_verified'] : []),
   ];
   return { ...report, context, observation: 'configured_ee_exception' as const,
+    instruction_evidence: instructionEvidence,
     pc_semantics: 'cpuException_entry_PC_not_independently_verified_faulting_instruction' as const,
     branch_delay_semantics: 'cpuException_bd_argument' as const,
     complete: partial.length === 0, partial_reasons: partial };

@@ -75,6 +75,39 @@ test('lost extended state and missing GS frame remain explicit partial evidence'
   const parsed = parseExceptionReport(changed); assert.equal(parsed.complete, false);
   assert.equal(parsed.core.exception_pc, '0x00100000'); assert.equal(parsed.partial_reasons.length, 5);
 });
+test('BREAK provenance preserves JIT PC/opcode/BD independently from raw hook and CP0 disagreement', () => {
+  const value = report();
+  value.core.instruction = { source: 'ee_recompiler_break', pc: '0x00100000', opcode: '0x0000000d', branch_delay: false, opcode_matches_memory: true };
+  const normal = parseExceptionReport(value);
+  assert.equal(normal.instruction_evidence.status, 'verified');
+  assert.deepEqual(normal.instruction_evidence.consistency,
+    { entry_pc_matches: true, bd_argument_matches: true, epc_matches: true, cause_bd_matches: true });
+  value.core.instruction.pc = '0x00100004'; value.core.instruction.branch_delay = true;
+  const delayed = parseExceptionReport(value);
+  assert.deepEqual(delayed.instruction_evidence.consistency,
+    { entry_pc_matches: false, bd_argument_matches: false, epc_matches: true, cause_bd_matches: false });
+  assert.equal(delayed.core.epc, value.core.epc); assert.equal(delayed.core.exception_pc, '0x00100000');
+  assert.equal(delayed.core.requested_branch_delay, false); // Observed architectural fields are never repaired.
+});
+test('nested EXL, old servers and unverified instruction bytes do not invent architectural provenance', () => {
+  assert.equal(parseExceptionReport(report()).instruction_evidence.status, 'unavailable');
+  const value = report(); value.core.previous_exl = true;
+  value.core.instruction = { source: 'ee_recompiler_break', pc: '0x00100004', opcode: '0x0000000d', branch_delay: true, opcode_matches_memory: true };
+  const nested = parseExceptionReport(value);
+  assert.equal(nested.instruction_evidence.consistency.epc_matches, null);
+  assert.equal(nested.instruction_evidence.consistency.cause_bd_matches, null);
+  value.core.instruction.opcode_matches_memory = false;
+  const changed = parseExceptionReport(value);
+  assert.equal(changed.instruction_evidence.status, 'unverified'); assert.equal(changed.complete, false);
+  assert.ok(changed.partial_reasons.includes('break_instruction_opcode_not_verified'));
+});
+test('rejects malformed provenance and stale BREAK origin on another exception code', () => {
+  for (const mutate of [r => r.core.instruction.pc = '0x00100001', r => r.core.instruction.opcode = '0x0000000c',
+    r => { r.core.exception_code = 8; r.core.raw_code = '0x00000020'; }, r => r.core.instruction.source = 'guessed_epc']) {
+    const value = report(); value.core.instruction = { source: 'ee_recompiler_break', pc: '0x00100000', opcode: '0x0000000d', branch_delay: false, opcode_matches_memory: true };
+    mutate(value); assert.throws(() => parseExceptionReport(value));
+  }
+});
 test('read wait releases command ownership so another caller can resume and trigger capture', async t => {
   let captured = false;
   const { client } = await workflowFixture(t, request => {

@@ -49,6 +49,7 @@ typedef int socket_t;
 #include "MipsStackWalk.h"
 #include "MIPSAnalyst.h"
 #include "R5900.h"
+#include "R5900OpcodeTables.h"
 #include "SymbolGuardian.h"
 #include "SymbolImporter.h"
 #include "Host.h"
@@ -133,6 +134,14 @@ namespace DebugServer
 	static GuardedStep s_step;
 	static std::atomic<int64_t> s_stepDeadline{0};
 	static std::atomic<uint64_t> s_stepWatchId{0};
+	// CPU-thread POD only: cpuException may safe-exit via longjmp. Its hook
+	// consumes this before pausing; no RAII lifetime may cross that exit.
+	struct EEBreakOrigin
+	{
+		bool active = false, branchDelay = false, opcodeMatchesMemory = false;
+		u32 pc = 0, opcode = 0;
+	};
+	static EEBreakOrigin s_eeBreakOrigin;
 	struct ExceptionWatch
 	{
 		std::string id, state, elf, report;
@@ -142,6 +151,7 @@ namespace DebugServer
 		int64_t deadline = 0, timestamp = 0;
 		std::array<u128, 32> gpr{};
 		std::array<u32, 32> cp0{};
+		EEBreakOrigin instruction;
 	};
 	static ExceptionWatch s_exception;
 	static uint64_t s_exceptionSequence = 0;
@@ -1102,6 +1112,16 @@ namespace DebugServer
 		for (const auto [name, reg] : {std::pair{"cause", 13}, {"epc", 14}, {"bad_vaddr", 8}, {"status", 12}})
 		{ j.key(name); j.valHex32(s_exception.cp0[reg]); }
 		j.kv("bad_vaddr_relevant", ((s_exception.code >> 2) & 31) >= 1 && ((s_exception.code >> 2) & 31) <= 5);
+		j.key("instruction");
+		if (s_exception.instruction.active)
+		{
+			j.startObject(); j.kv("source", "ee_recompiler_break");
+			j.key("pc"); j.valHex32(s_exception.instruction.pc);
+			j.key("opcode"); j.valHex32(s_exception.instruction.opcode);
+			j.kv("branch_delay", s_exception.instruction.branchDelay);
+			j.kv("opcode_matches_memory", s_exception.instruction.opcodeMatchesMemory); j.endObject();
+		}
+		else j.valJson("null");
 		j.key("gpr"); j.startArray(); for (const auto& reg : s_exception.gpr) j.valHex128(reg); j.endArray();
 		j.key("cp0"); j.startArray(); for (u32 reg : s_exception.cp0) j.valHex32(reg); j.endArray(); j.endObject();
 		const std::string corePrefix = j.str();
@@ -1250,7 +1270,7 @@ namespace DebugServer
 				j.kv("execution_epoch", s_executionEpoch);
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2025,6 +2045,7 @@ namespace DebugServer
 		s_sourceGroups.clear();
 		s_step = {}; s_stepDeadline.store(0); ++s_executionEpoch;
 		s_exception = {}; s_exceptionDeadline.store(0); s_exceptionPending.store(0);
+		s_eeBreakOrigin = {};
 		++s_session;
 		const uint64_t watchdogSession = s_session.load();
 		std::thread([watchdogSession]() {
@@ -2143,6 +2164,7 @@ namespace DebugServer
 
 	void OnVMReset()
 	{
+		s_eeBreakOrigin = {};
 		if (s_exception.state == "capturing") finalizeException(s_exception.sequence);
 		if (s_exception.state == "armed") s_exception.state = "vm_changed";
 		s_exceptionDeadline.store(0);
@@ -2151,8 +2173,29 @@ namespace DebugServer
 		finishOperation("vm_reset");
 	}
 
+	void ExecuteEEBreak(uint32_t taggedInstructionPC, uint32_t opcode)
+	{
+		const u32 instructionPC = taggedInstructionPC & ~3u;
+		s_eeBreakOrigin = {};
+		if (s_exception.state == "armed")
+		{
+			s_eeBreakOrigin.active = true; s_eeBreakOrigin.pc = instructionPC;
+			s_eeBreakOrigin.opcode = opcode; s_eeBreakOrigin.branchDelay = (taggedInstructionPC & 1) != 0;
+			if (!(instructionPC & 3) && instructionPC <= 0x02000000u - 4)
+			{
+				bool valid = false; const auto memoryOpcode = r5900Debug.read32(instructionPC, valid);
+				s_eeBreakOrigin.opcodeMatchesMemory = valid && memoryOpcode == opcode;
+			}
+		}
+		// Preserve upstream BREAK exactly, including its exception PC/BD behavior.
+		R5900::Interpreter::OpcodeImpl::BREAK();
+		s_eeBreakOrigin = {};
+	}
+
 	void OnEEException(uint32_t code, uint32_t pc, bool branchDelay, bool nested)
 	{
+		const EEBreakOrigin origin = s_eeBreakOrigin;
+		s_eeBreakOrigin = {};
 		bool capture = false;
 		if (s_exception.state == "armed")
 		{
@@ -2164,6 +2207,7 @@ namespace DebugServer
 				capture = true; s_exception.state = "capturing"; s_exceptionDeadline.store(0);
 				s_exception.code = code; s_exception.exceptionPC = pc; s_exception.postPC = r5900Debug.getPC();
 				s_exception.branchDelay = branchDelay; s_exception.nested = nested; s_exception.timestamp = timestampMillis();
+				if (((code >> 2) & 31) == 9) s_exception.instruction = origin;
 				for (int i = 0; i < 32; ++i) { s_exception.gpr[i] = r5900Debug.getRegister(0, i); s_exception.cp0[i] = r5900Debug.getRegister(1, i)._u32[0]; }
 				recordEvent("ee_exception", "ee", pc, s_exception.id);
 			}
