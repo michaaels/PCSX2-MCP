@@ -42,6 +42,13 @@ local IRX artifact identity or EE source mappings.
 
 ## Next work, in order
 
+The user authorized implementing the candidates from the
+[fork review dated 2026-10-21](fork-review-2026-10-21.md), then resuming the
+original sequence below. Follow [IMPLEMENTATION-PLAN](IMPLEMENTATION-PLAN.md):
+each validated delivery must be committed and published to `main` of
+`michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay remains
+dependent on reset/save-state identity and module lifetime handling.
+
 1. **Bind an exact IRX artifact to an observed IOP load.** Validate file identity
    and loaded bytes while accounting for relocations. Name/version or an assumed
    load bias is insufficient. Source lookup must use guarded validated bindings.
