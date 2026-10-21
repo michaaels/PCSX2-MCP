@@ -98,6 +98,21 @@ def main() -> None:
         block = block.replace('cpuUpdateOperationMode();', 'cpuUpdateOperationMode();\n\t' + hook)
     ee_text = ee_text[:start] + block + ee_text[end:]
     breakpoint_files[ee] = ee_text
+    iop_source = source / 'pcsx2/R3000A.cpp'
+    iop_text = replace_once(iop_source.read_text(encoding='utf-8'), '#include "R3000A.h"',
+        '#include "R3000A.h"\n#include "DebugTools/DebugServer.h"', str(iop_source))
+    iop_text = replace_once(iop_text, 'void psxReset()\n{',
+        'void psxReset()\n{\n\tDebugServer::OnIOPReset();', str(iop_source))
+    start = iop_text.index('void psxException(u32 code, u32 bd)')
+    end = iop_text.index('\n}', start) + 2
+    block = iop_text[start:end]
+    block = replace_once(block, 'void psxException(u32 code, u32 bd)\n{',
+        'void psxException(u32 code, u32 bd)\n{\n\tconst u32 mcpIOPExceptionPC = psxRegs.pc;\n\tconst u32 mcpIOPPreviousStatus = psxRegs.CP0.n.Status;', str(iop_source))
+    hook = '\tDebugServer::OnIOPException(code, mcpIOPExceptionPC, bd != 0, mcpIOPPreviousStatus);'
+    if hook not in block:
+        block = block[:-2] + '\n' + hook + '\n}'
+    iop_text = iop_text[:start] + block + iop_text[end:]
+    breakpoint_files[iop_source] = iop_text
     for filename, functions in {
         'pcsx2/Interpreter.cpp': [('void intBreakpoint(bool memcheck)', False, 'memcheck')],
         'pcsx2/R3000AInterpreter.cpp': [('void psxBreakpoint(bool memcheck)', True, 'memcheck')],
@@ -121,6 +136,13 @@ def main() -> None:
                 '\t\tconst bool executeCheck = encodeBreakpoint();\n'
                 '\t\tconst bool memoryCheck = encodeMemcheck();\n'
                 '\t\tif (executeCheck || memoryCheck)', filename)
+        if filename == 'pcsx2/x86/iR3000A.cpp':
+            for code in ('0x20', '0x24'):
+                call = '\txFastCall((void*)psxException, ' + code + ', psxbranch == 1);'
+                text = replace_once(text, call, call + '\n'
+                    '\t// A selected MCP exception stops before executing its IOP handler.\n'
+                    '\txFastCall((void*)DebugServer::IOPExceptionCaptured);\n'
+                    '\txTEST(al, al);\n\txJNZ(iopExitRecompiledCode);', filename)
         for signature, iop, watch in functions:
             # Accept extra arguments on the dynarec functions, while keeping the
             # replacement confined to the correct function body.

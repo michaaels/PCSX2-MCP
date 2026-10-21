@@ -13,7 +13,9 @@ export async function startExceptionWatch(client: DebugServerClient, input: z.in
   return client.withExclusiveSession(async () => {
     signal?.throwIfAborted();
     const caps = await client.getCapabilities();
-    if (!caps.features.includes('ee_exception_watch') || caps.process_id === undefined || caps.execution_epoch === undefined) throw new Error('Rebuild PCSX2: ee_exception_watch capability required');
+    const feature = options.cpu === 'iop' ? 'iop_exception_watch' : 'ee_exception_watch';
+    if (!caps.features.includes(feature) || caps.process_id === undefined || caps.execution_epoch === undefined ||
+      (options.cpu === 'iop' && (caps.iop_reset_epoch === undefined || caps.iop_reset_scope !== 'cpu_reset_only'))) throw new Error(`Rebuild PCSX2: ${feature} capability and CPU identity required`);
     const id = randomUUID().replaceAll('-', '');
     try {
       const result = await client.startExceptionWatch(id, { ...caps, process_id: caps.process_id, execution_epoch: caps.execution_epoch }, options);
@@ -40,7 +42,8 @@ export async function readExceptionReport(client: DebugServerClient, id: string,
     if (result.state === 'captured') {
       const report = parseExceptionReport(result.report);
       if (report.watch_id !== id || report.session !== result.session || report.execution_epoch !== result.execution_epoch ||
-          report.elf !== result.elf || Number(report.elf_crc) !== Number(result.elf_crc)) throw new Error('Unexpected exception report identity');
+          report.elf !== result.elf || Number(report.elf_crc) !== Number(result.elf_crc) || report.cpu !== result.cpu ||
+          (report.cpu === 'iop' && report.iop_reset_epoch !== result.iop_reset_epoch)) throw new Error('Unexpected exception report identity');
       return { ...result, timed_out: false, report };
     }
     if (!result.active || performance.now() >= deadline) return { ...result, report: null, timed_out: result.active };
@@ -72,7 +75,7 @@ export function registerExceptionTools(server: McpServer, getClient: () => Debug
     } catch (error) { return { content: [{ type: 'text' as const, text: JSON.stringify({ error: String(error),
       ...(error instanceof Error && 'cleanup' in error ? { cleanup: error.cleanup } : {}) }) }], isError: true }; }
   }
-  server.tool('pcsx2_exception_watch_start', 'Arm one bounded native EE exception capture for the loaded VM/ELF. Does not resume. Default codes exclude interrupts, TLB refills and syscalls. A matching observation pauses the VM and freezes PC, CP0/GPRs, bounded code/stack RAM, context/backtrace/logs/events and optional frame. One shot; expires after timeout_ms. Survives client disconnect, retaining one report until another watch or VM shutdown. Not a fatal-fault classifier. Return watch_id is required for fetch/cancel.',
+  server.tool('pcsx2_exception_watch_start', 'Arm one bounded native EE (default) or IOP exception capture for this VM. Does not resume. Default codes exclude interrupts, TLB refills and syscalls. A matching CPU/code observation pauses and freezes PC, CP0/GPRs, bounded code/stack RAM, context/backtrace/logs/events and optional frame. IOP requires both recompilers; its ELF is EE boot affinity only, module identity remains unknown, and reset epoch covers CPU resets, not software SifIopReset. One shot with TTL, surviving client disconnect until another watch or VM shutdown. Not a fatal-fault classifier. Keep watch_id to fetch/cancel.',
     exceptionOptions.shape, (options, extra) => run(client => startExceptionWatch(client, options, extra.signal)));
   server.tool('pcsx2_exception_report', 'Read/wait for the immutable report of a watch_id, including after reconnect. Native capture is automatic; this call never resumes or captures a new live VM context. Returns explicit expiry/cancel/VM-change/wait timeout, partial context and memory unavailability. instruction_evidence identifies verified EE recompiler BREAK call-site PC/opcode/BD separately from raw exception PC/CP0; consistency reports disagreement without repairing architectural state. Other paths may lack provenance. Cancelling this wait leaves the watch armed until its TTL or explicit cancel. Optional output_directory saves JSON/PNG in a unique directory.',
     { watch_id: watchId, wait_ms: z.number().int().min(0).max(30000).default(0), output_directory: z.string().min(1).optional() },

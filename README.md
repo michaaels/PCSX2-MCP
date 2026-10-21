@@ -324,6 +324,8 @@ For bounded EE into/over/out execution, see [source stepping](docs/source-steppi
 For read-only current-frame arguments, locals and types, see [variables](docs/variables.md).
 For one-shot automatic EE exception evidence, filters and partial reports, see
 [exception watches](docs/exceptions.md).
+The same tools now select EE or [IOP exceptions](docs/iop-exceptions.md), with
+separate CPU/reset semantics and no attribution of IOP PCs to the EE ELF.
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>

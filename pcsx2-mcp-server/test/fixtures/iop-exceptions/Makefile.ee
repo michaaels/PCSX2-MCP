@@ -1,0 +1,8 @@
+EE_BIN = $(NAME).elf
+EE_OBJS = ee-$(NAME).o
+EE_CFLAGS = -g -O0 -DFIXTURE_MODE=$(MODE)
+all: $(EE_BIN)
+include $(PS2SDK)/samples/Makefile.pref
+include $(PS2SDK)/samples/Makefile.eeglobal
+ee-$(NAME).o: ee-iop-exceptions.c
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@

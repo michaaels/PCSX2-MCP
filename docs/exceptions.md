@@ -2,9 +2,14 @@
 
 Rebuild both PCSX2 (integration script + native build) and `pcsx2-mcp-server`
 (`npm run build`). Restart the MCP client to discover these tools. The native
-capabilities are `ee_exception_watch` and `ee_break_provenance`; this is a PCSX2
+EE capabilities are `ee_exception_watch` and `ee_break_provenance`; this is a PCSX2
 backend, not a physical PS2
 debugger or a no-progress detector.
+
+IOP capture is now available through the same tools with `cpu: iop` and capability
+`iop_exception_watch`. See [IOP identity, registers and validation](iop-exceptions.md)
+for its different Status/reset semantics and explicit unknown module identity.
+The EE-specific provenance below continues to apply to EE only.
 
 ## Use
 
@@ -101,7 +106,7 @@ Reconnect with the ID while that VM still exists. Lost start replies trigger
 cleanup of the chosen ID only; unconfirmed cleanup returns `pending_watch_id`.
 
 States: `armed`, `capturing`, `captured`, `expired`, `cancelled`, `vm_changed`,
-`vm_stopped`. Fetch after shutdown/another watch can fail with unknown ID or a
+`vm_stopped`, plus `cpu_reset` for an armed IOP watch whose CPU resets. Fetch after shutdown/another watch can fail with unknown ID or a
 lost connection. `complete` describes evidence collection; it does not classify
 the exception as a crash. Always inspect `partial_reasons` and state.
 
@@ -147,6 +152,7 @@ and malformed provenance are covered by unit tests, not a live stale-JIT case.
 Reapplying integration preserved the hashes of native sources (idempotence).
 Local reports: `release/exception-validation/provenance-dwarf5/` and
 `release/exception-validation/provenance-regression/`.
-IOP exceptions, independent no-progress monitoring, comprehensive exception-code
-coverage, Linux host and physical PS2 remain pending. No deliberate fault was
+IOP exceptions were added in 4B2 with separate validation. Independent no-progress
+monitoring, comprehensive exception-code coverage, Linux host and physical PS2
+remain pending. No deliberate fault was
 injected into SMS and no playback/audio acceptance is claimed by this fixture.

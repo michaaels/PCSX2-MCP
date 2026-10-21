@@ -27,6 +27,56 @@ function report() {
       stack: { address: '0x00101000', length: 256, valid: true, hex: 'ab'.repeat(256) } },
     events: history('events', [{ sequence: 1, timestamp_ms: 1, type: 'ee_exception', cpu: 'ee', pc: '0x00100000', detail: id }]), context };
 }
+function iopReport() {
+  const r = report(); r.cpu = 'iop'; r.context.cpu = 'iop';
+  r.iop_reset_epoch = 3; r.iop_reset_scope = 'cpu_reset_only'; r.elf_role = 'ee_boot_affinity_only'; r.module_identity = null;
+  r.core.previous_exl = null; r.core.previous_status = '0x00400401';
+  r.core.status = '0x00400404'; r.core.cp0[12] = r.core.status; r.core.hi = '0x00000001'; r.core.lo = '0x00000002';
+  r.events.events[0].cpu = 'iop'; r.events.events[0].type = 'iop_exception';
+  return r;
+}
+const iopCaps = { ...caps, features: ['iop_exception_watch'], iop_reset_epoch: 3, iop_reset_scope: 'cpu_reset_only' };
+const iopState = (phase = 'armed', value = null, watch_id = id) => ({ ...state(phase, value, watch_id), cpu: 'iop', iop_reset_epoch: 3, iop_reset_scope: 'cpu_reset_only' });
+
+test('IOP watcher passes its own CPU/reset identity and retains captured evidence independently of current capabilities', async t => {
+  let chosen;
+  const { client, mock } = await workflowFixture(t, request => {
+    if (request.cmd === 'capabilities') return iopCaps;
+    if (request.cmd === 'exception_watch_start') { chosen = request.watch_id; return iopState('armed', null, chosen); }
+    if (request.cmd === 'exception_watch_status') { const r = iopReport(); r.watch_id = chosen; return iopState('captured', r, chosen); }
+  });
+  const started = await startExceptionWatch(client, { cpu: 'iop', exception_codes: [9] });
+  const sent = mock.requests.find(r => r.cmd === 'exception_watch_start');
+  assert.equal(sent.cpu, 'iop'); assert.equal(sent.expected_iop_reset_epoch, 3); assert.equal(started.cpu, 'iop');
+  const result = await readExceptionReport(client, chosen);
+  assert.equal(result.report.observation, 'configured_iop_exception'); assert.equal(result.report.core.previous_exl, null);
+  assert.equal(result.report.elf_role, 'ee_boot_affinity_only');
+  assert.ok(result.report.partial_reasons.includes('iop_module_identity_unavailable'));
+});
+test('IOP report requires CPU-specific mode stack, 32-bit GPRs and explicit unknown module identity', () => {
+  const parsed = parseExceptionReport(iopReport()); assert.equal(parsed.cpu, 'iop');
+  for (const mutate of [r => delete r.iop_reset_epoch, r => delete r.iop_reset_scope, r => r.elf_role = 'ee_executable',
+    r => delete r.module_identity, r => r.core.previous_exl = false, r => delete r.core.previous_status,
+    r => delete r.core.hi, r => r.core.gpr[8] = '00000000000000000000000100000000',
+    r => r.core.previous_status = '0x00400400', r => r.context.cpu = 'ee',
+    r => r.memory.code.address = '0x00200000']) {
+    const value = iopReport(); mutate(value); assert.throws(() => parseExceptionReport(value));
+  }
+});
+test('old native builds refuse IOP before mutation; IOP CPU reset/cancel states and report epoch mismatches stay explicit', async t => {
+  let value = iopState('cpu_reset');
+  const { client, mock } = await workflowFixture(t, request => {
+    if (request.cmd === 'capabilities') return caps;
+    if (request.cmd === 'exception_watch_status') return value;
+  });
+  await assert.rejects(startExceptionWatch(client, { cpu: 'iop' }), /iop_exception_watch/);
+  assert.ok(mock.requests.every(r => r.cmd === 'capabilities'));
+  const reset = await readExceptionReport(client, id); assert.equal(reset.state, 'cpu_reset'); assert.equal(reset.timed_out, false);
+  const stale = iopReport(); stale.iop_reset_epoch++; value = iopState('captured', stale);
+  await assert.rejects(readExceptionReport(client, id), /identity/);
+  value = { ...iopState('captured', iopReport()), cpu: 'ee' };
+  await assert.rejects(readExceptionReport(client, id), /identity/);
+});
 
 test('exception defaults exclude normal interrupts, syscalls and TLB refills; filter is bounded', () => {
   const options = exceptionOptions.parse({});

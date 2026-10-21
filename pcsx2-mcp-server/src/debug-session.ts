@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { parseScreenshot } from './screenshot.js';
 
 const cursor = z.number().int().nonnegative().safe();
-export const eventTypes = ['vm_started', 'vm_stopping', 'paused', 'resumed', 'breakpoint', 'watchpoint', 'elf_load_requested', 'automation_completed', 'automation_interrupted', 'ee_exception'] as const;
+export const eventTypes = ['vm_started', 'vm_stopping', 'paused', 'resumed', 'breakpoint', 'watchpoint', 'elf_load_requested', 'automation_completed', 'automation_interrupted', 'ee_exception', 'iop_exception', 'iop_reset'] as const;
 export type DebugEventType = typeof eventTypes[number];
 const event = z.object({
   sequence: cursor, timestamp_ms: cursor, type: z.enum(eventTypes),
@@ -22,6 +22,8 @@ export const capabilitiesResponse = z.object({
   ok: z.literal(true), protocol_version: z.number().int(), session: cursor,
   process_id: z.number().int().positive().optional(),
   execution_epoch: cursor.optional(),
+  iop_reset_epoch: cursor.optional(),
+  iop_reset_scope: z.literal('cpu_reset_only').optional(),
   elf: z.string(), elf_crc: z.string(), features: z.array(z.string()),
 });
 export type Events = z.infer<typeof eventsResponse>;

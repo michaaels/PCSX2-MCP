@@ -50,6 +50,7 @@ typedef int socket_t;
 #include "MIPSAnalyst.h"
 #include "R5900.h"
 #include "R5900OpcodeTables.h"
+#include "R3000A.h"
 #include "SymbolGuardian.h"
 #include "SymbolImporter.h"
 #include "Host.h"
@@ -124,6 +125,7 @@ namespace DebugServer
 	// CPU-thread state; only the watchdog deadline crosses threads.
 	static uint64_t s_executionEpoch = 1, s_stepSequence = 0;
 	static uint64_t s_inspectionRevision = 1;
+	static uint64_t s_iopResetEpoch = 1;
 	struct GuardedStep
 	{
 		uint64_t id = 0, epoch = 0;
@@ -148,6 +150,9 @@ namespace DebugServer
 		uint64_t sequence = 0, session = 0, epoch = 0, revision = 0;
 		u32 crc = 0, mask = 0, code = 0, exceptionPC = 0, postPC = 0;
 		bool branchDelay = false, nested = false, screenshot = true;
+		bool iop = false;
+		uint64_t iopEpoch = 0;
+		u32 previousStatus = 0, hi = 0, lo = 0;
 		int64_t deadline = 0, timestamp = 0;
 		std::array<u128, 32> gpr{};
 		std::array<u32, 32> cp0{};
@@ -608,12 +613,16 @@ namespace DebugServer
 			return failure("Invalid exception watch ID");
 		if (cmd == "exception_watch_start")
 		{
+			const auto cpu = getStr(params, "cpu", "ee");
+			if (cpu != "ee" && cpu != "iop") return failure("cpu must be ee or iop");
+			const bool iop = cpu == "iop";
 #ifdef _WIN32
 			const uint64_t process = GetCurrentProcessId();
 #else
 			const uint64_t process = getpid();
 #endif
 			if (s_step.active || s_operation.active) return failure("An execution operation is active; finish or cancel it before arming");
+			if (iop && (!CHECK_EEREC || psxCpu != &psxRec)) return failure("IOP exception watch requires EE and IOP recompilers");
 			if (s_exception.state == "armed" && steadyMillis() >= s_exception.deadline) s_exception.state = "expired";
 			if (s_exception.state == "armed" || s_exception.state == "capturing") return failure("An exception watch is already active");
 			if (!VMManager::HasValidVM() || VMManager::GetCurrentELF().empty()) return failure("Boot an EE ELF before arming an exception watch");
@@ -622,11 +631,14 @@ namespace DebugServer
 				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
 				getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 				return failure("Exception watch VM/ELF identity changed");
+			if (iop && getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch))
+				return failure("IOP reset epoch changed before arming");
 			const auto mask = getNum(params, "exception_mask", 0), timeout = getNum(params, "timeout_ms", 30000);
 			if (mask < 1 || mask > UINT32_MAX || timeout < 100 || timeout > 300000) return failure("Invalid exception mask or timeout (100-300000 ms)");
 			s_exception = {}; s_exception.id = id; s_exception.sequence = ++s_exceptionSequence;
 			s_exception.state = "armed"; s_exception.mask = static_cast<u32>(mask); s_exception.deadline = steadyMillis() + timeout;
 			s_exception.session = s_session.load(); s_exception.epoch = s_executionEpoch;
+			s_exception.iop = iop; s_exception.iopEpoch = s_iopResetEpoch;
 			s_exception.elf = VMManager::GetCurrentELF(); s_exception.crc = VMManager::GetCurrentCRC();
 			s_exception.screenshot = getBool(params, "screenshot", true);
 			s_exceptionWatchId.store(s_exception.sequence); s_exceptionDeadline.store(s_exception.deadline);
@@ -642,6 +654,8 @@ namespace DebugServer
 			}
 		}
 		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("watch_id", id); j.kv("state", s_exception.state);
+		j.kv("cpu", s_exception.iop ? "iop" : "ee"); j.kv("iop_reset_epoch", s_exception.iopEpoch);
+		j.kv("iop_reset_scope", "cpu_reset_only");
 		j.kv("active", s_exception.state == "armed" || s_exception.state == "capturing");
 		j.kv("session", s_exception.session); j.kv("execution_epoch", s_exception.epoch);
 		j.kv("elf", s_exception.elf); j.key("elf_crc"); j.valHex32(s_exception.crc);
@@ -1077,14 +1091,14 @@ namespace DebugServer
 		j.endObject(); return j.str();
 	}
 
-	static void exceptionMemory(JsonBuilder& j, u32 address, u32 length)
+	static void exceptionMemory(JsonBuilder& j, u32 address, u32 length, bool iop)
 	{
 		j.startObject(); j.key("address"); j.valHex32(address); j.kv("length", length);
-		bool valid = static_cast<uint64_t>(address) + length <= 0x02000000ULL;
+		bool valid = static_cast<uint64_t>(address) + length <= (iop ? 0x00200000ULL : 0x02000000ULL);
 		std::string hex;
 		if (valid) for (u32 i = 0; i < length; ++i)
 		{
-			bool readable = false; const auto value = r5900Debug.read8(address + i, readable);
+			bool readable = false; const auto value = getCpu(iop ? "iop" : "ee")->read8(address + i, readable);
 			if (!readable) { valid = false; break; }
 			char encoded[3]; std::snprintf(encoded, sizeof(encoded), "%02x", value); hex += encoded;
 		}
@@ -1096,19 +1110,35 @@ namespace DebugServer
 	{
 		if (s_exception.sequence != sequence || s_exception.state != "capturing") return;
 		s_exceptionPending.store(0);
+		DebugInterface* cpu = getCpu(s_exception.iop ? "iop" : "ee");
 		bool matches = VMManager::GetState() == VMState::Paused && s_exception.session == s_session.load() &&
 			s_exception.epoch == s_executionEpoch && s_exception.elf == VMManager::GetCurrentELF() &&
-			s_exception.crc == VMManager::GetCurrentCRC() && s_exception.revision == s_inspectionRevision && s_exception.postPC == r5900Debug.getPC();
+			s_exception.crc == VMManager::GetCurrentCRC() && s_exception.revision == s_inspectionRevision && s_exception.postPC == cpu->getPC() &&
+			(!s_exception.iop || s_exception.iopEpoch == s_iopResetEpoch);
 		for (int i = 0; matches && i < 32; ++i)
-			matches = std::memcmp(&s_exception.gpr[i], &cpuRegs.GPR.r[i], sizeof(u128)) == 0;
-		JsonBuilder j; j.startObject(); j.kv("watch_id", s_exception.id); j.kv("cpu", "ee");
+		{
+			const auto current = cpu->getRegister(0, i);
+			matches = std::memcmp(&s_exception.gpr[i], &current, sizeof(u128)) == 0;
+			if (matches && s_exception.iop) matches = s_exception.cp0[i] == psxRegs.CP0.r[i];
+		}
+		if (matches && s_exception.iop) matches = s_exception.hi == psxRegs.GPR.n.hi && s_exception.lo == psxRegs.GPR.n.lo;
+		JsonBuilder j; j.startObject(); j.kv("watch_id", s_exception.id); j.kv("cpu", s_exception.iop ? "iop" : "ee");
+		j.kv("iop_reset_epoch", s_exception.iopEpoch);
+		j.kv("iop_reset_scope", "cpu_reset_only");
+		j.kv("elf_role", s_exception.iop ? "ee_boot_affinity_only" : "ee_executable");
+		if (s_exception.iop) { j.key("module_identity"); j.valJson("null"); }
 		j.kv("timestamp_ms", s_exception.timestamp); j.kv("session", s_exception.session); j.kv("execution_epoch", s_exception.epoch);
 		j.kv("elf", s_exception.elf); j.key("elf_crc"); j.valHex32(s_exception.crc); j.kv("context_matches_stop", matches);
 		j.kv("screenshot_requested", s_exception.screenshot);
 		j.key("core"); j.startObject(); j.key("exception_pc"); j.valHex32(s_exception.exceptionPC);
 		j.key("post_exception_pc"); j.valHex32(s_exception.postPC); j.key("raw_code"); j.valHex32(s_exception.code);
 		j.kv("exception_code", (s_exception.code >> 2) & 31); j.kv("requested_branch_delay", s_exception.branchDelay);
-		j.kv("previous_exl", s_exception.nested);
+		j.key("previous_exl"); if (s_exception.iop) j.valJson("null"); else j.valBool(s_exception.nested);
+		if (s_exception.iop)
+		{
+			j.key("previous_status"); j.valHex32(s_exception.previousStatus);
+			j.key("hi"); j.valHex32(s_exception.hi); j.key("lo"); j.valHex32(s_exception.lo);
+		}
 		for (const auto [name, reg] : {std::pair{"cause", 13}, {"epc", 14}, {"bad_vaddr", 8}, {"status", 12}})
 		{ j.key(name); j.valHex32(s_exception.cp0[reg]); }
 		j.kv("bad_vaddr_relevant", ((s_exception.code >> 2) & 31) >= 1 && ((s_exception.code >> 2) & 31) <= 5);
@@ -1128,8 +1158,8 @@ namespace DebugServer
 		j.key("memory"); j.startObject();
 		if (matches)
 		{
-			j.key("code"); exceptionMemory(j, s_exception.exceptionPC >= 16 ? s_exception.exceptionPC - 16 : s_exception.exceptionPC, 64);
-			j.key("stack"); exceptionMemory(j, s_exception.gpr[29]._u32[0], 256);
+			j.key("code"); exceptionMemory(j, s_exception.exceptionPC >= 16 ? s_exception.exceptionPC - 16 : s_exception.exceptionPC, 64, s_exception.iop);
+			j.key("stack"); exceptionMemory(j, s_exception.gpr[29]._u32[0], 256, s_exception.iop);
 		}
 		j.endObject();
 		j.key("events");
@@ -1140,6 +1170,7 @@ namespace DebugServer
 		{
 			finishGuardedStep("exception");
 			auto params = parseJsonObject("{\"cpu\":\"ee\",\"width\":640,\"height\":480,\"memory_length\":0}");
+			params["cpu"].strVal = s_exception.iop ? "iop" : "ee";
 			params["skip_screenshot"].type = JsonValue::BOOL; params["skip_screenshot"].boolVal = !s_exception.screenshot;
 			j.valJson(captureContext(params));
 		}
@@ -1268,9 +1299,11 @@ namespace DebugServer
 #endif
 				j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
 				j.kv("execution_epoch", s_executionEpoch);
+				j.kv("iop_reset_epoch", s_iopResetEpoch);
+				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2177,7 +2210,7 @@ namespace DebugServer
 	{
 		const u32 instructionPC = taggedInstructionPC & ~3u;
 		s_eeBreakOrigin = {};
-		if (s_exception.state == "armed")
+		if (s_exception.state == "armed" && !s_exception.iop)
 		{
 			s_eeBreakOrigin.active = true; s_eeBreakOrigin.pc = instructionPC;
 			s_eeBreakOrigin.opcode = opcode; s_eeBreakOrigin.branchDelay = (taggedInstructionPC & 1) != 0;
@@ -2197,7 +2230,7 @@ namespace DebugServer
 		const EEBreakOrigin origin = s_eeBreakOrigin;
 		s_eeBreakOrigin = {};
 		bool capture = false;
-		if (s_exception.state == "armed")
+		if (s_exception.state == "armed" && !s_exception.iop)
 		{
 			if (steadyMillis() >= s_exception.deadline) { s_exception.state = "expired"; s_exceptionDeadline.store(0); }
 			else if (s_exception.epoch != s_executionEpoch || s_exception.elf != VMManager::GetCurrentELF() || s_exception.crc != VMManager::GetCurrentCRC())
@@ -2217,6 +2250,44 @@ namespace DebugServer
 		VMManager::SetPaused(true);
 		if (capture) { s_exception.revision = s_inspectionRevision; s_exceptionPending.store(s_exception.sequence); }
 		// The normal CPU safe-exit hook defers exit during cpuEventTest.
+		Cpu->ExitExecution();
+	}
+
+	void OnIOPReset()
+	{
+		if (s_exception.iop && s_exception.state == "capturing") finalizeException(s_exception.sequence);
+		if (s_exception.iop && s_exception.state == "armed")
+		{ s_exception.state = "cpu_reset"; s_exceptionDeadline.store(0); }
+		++s_iopResetEpoch;
+		if (s_running.load()) recordEvent("iop_reset", "iop");
+	}
+
+	bool IOPExceptionCaptured()
+	{
+		return s_exception.iop && s_exceptionPending.load() != 0;
+	}
+
+	void OnIOPException(uint32_t code, uint32_t pc, bool branchDelay, uint32_t previousStatus)
+	{
+		if (s_exception.state != "armed" || !s_exception.iop) return;
+		if (steadyMillis() >= s_exception.deadline)
+		{ s_exception.state = "expired"; s_exceptionDeadline.store(0); return; }
+		if (s_exception.iopEpoch != s_iopResetEpoch || s_exception.epoch != s_executionEpoch ||
+			s_exception.elf != VMManager::GetCurrentELF() || s_exception.crc != VMManager::GetCurrentCRC())
+		{ s_exception.state = "vm_changed"; s_exceptionDeadline.store(0); return; }
+		if (!(s_exception.mask & (1u << ((code >> 2) & 31)))) return;
+		s_exception.state = "capturing"; s_exceptionDeadline.store(0);
+		s_exception.code = code; s_exception.exceptionPC = pc; s_exception.postPC = psxRegs.pc;
+		s_exception.branchDelay = branchDelay; s_exception.previousStatus = previousStatus; s_exception.timestamp = timestampMillis();
+		s_exception.hi = psxRegs.GPR.n.hi; s_exception.lo = psxRegs.GPR.n.lo;
+		for (int i = 0; i < 32; ++i)
+		{ s_exception.gpr[i] = u128::From32(psxRegs.GPR.r[i]); s_exception.cp0[i] = psxRegs.CP0.r[i]; }
+		recordEvent("iop_exception", "iop", pc, s_exception.id);
+		if (s_step.active) s_step.reason = "exception";
+		VMManager::SetPaused(true); s_exception.revision = s_inspectionRevision;
+		s_exceptionPending.store(s_exception.sequence);
+		// Safe EE exit ends the IOP timeslice. The IOP JIT also checks the pending
+		// capture after BREAK/SYSCALL, returning before the handler can overwrite it.
 		Cpu->ExitExecution();
 	}
 

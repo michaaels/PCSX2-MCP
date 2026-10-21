@@ -272,24 +272,26 @@ export class DebugServerClient {
     return result;
   }
 
-  async startExceptionWatch(id: string, expected: StepIdentity, options: z.infer<typeof exceptionOptions>) {
+  async startExceptionWatch(id: string, expected: StepIdentity & { iop_reset_epoch?: number }, options: z.input<typeof exceptionOptions>) {
     watchId.parse(id); const parsed = exceptionOptions.parse(options);
-    const response = await this.send({ cmd: 'exception_watch_start', cpu: 'ee', watch_id: id,
+    const response = await this.send({ cmd: 'exception_watch_start', cpu: parsed.cpu, watch_id: id,
       exception_mask: [...new Set(parsed.exception_codes)].reduce((mask, code) => mask + 2 ** code, 0), timeout_ms: parsed.timeout_ms, screenshot: parsed.screenshot,
       expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
-      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc });
+      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc, expected_iop_reset_epoch: expected.iop_reset_epoch });
     if (!response.ok) throw Object.assign(new Error(response.error ?? 'Exception watch rejected'), { native_rejected: true });
     const result = exceptionState.parse(response);
     if (result.watch_id !== id || result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.elf !== expected.elf ||
-      Number(result.elf_crc) !== Number(expected.elf_crc) || result.state !== 'armed' || !result.active || result.report !== null) throw new Error('Unexpected exception watch identity/state');
+      Number(result.elf_crc) !== Number(expected.elf_crc) || result.state !== 'armed' || !result.active || result.report !== null || result.cpu !== parsed.cpu ||
+      (parsed.cpu === 'iop' && (result.iop_reset_epoch === undefined || result.iop_reset_epoch !== expected.iop_reset_epoch || result.iop_reset_scope !== 'cpu_reset_only'))) throw new Error('Unexpected exception watch identity/state');
     return result;
   }
 
   async exceptionWatchStatus(id: string, cancel = false) {
     watchId.parse(id);
-    const result = exceptionState.parse(await this.sessionCommand({ cmd: cancel ? 'exception_watch_cancel' : 'exception_watch_status', cpu: 'ee', watch_id: id }));
+    const result = exceptionState.parse(await this.sessionCommand({ cmd: cancel ? 'exception_watch_cancel' : 'exception_watch_status', watch_id: id }));
     if (result.watch_id !== id || result.active !== ['armed', 'capturing'].includes(result.state) || (result.state === 'captured' && result.report === null) ||
-      (result.state !== 'captured' && result.report !== null)) throw new Error('Inconsistent exception watch state');
+      (result.state !== 'captured' && result.report !== null) ||
+      (result.cpu === 'iop' && (result.iop_reset_epoch === undefined || result.iop_reset_scope !== 'cpu_reset_only'))) throw new Error('Inconsistent exception watch state');
     return result;
   }
 
