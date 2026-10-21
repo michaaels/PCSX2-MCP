@@ -64,6 +64,8 @@ typedef int socket_t;
 #include "common/Image.h"
 #include "common/Console.h"
 #include "common/FileSystem.h"
+#include "common/Path.h"
+#include "GS/Renderers/Common/GSRenderer.h"
 
 #include <cstring>
 #include <cstdlib>
@@ -600,6 +602,141 @@ namespace DebugServer
 				"CPU operation timed out after starting; query VM state before retrying");
 		}
 		return result.get();
+	}
+
+	struct DumpOperation
+	{
+		std::string id, base, path, elf, state, reason;
+		uint64_t session = 0, epoch = 0, bytes = 0, maxBytes = 0;
+		u32 crc = 0, frames = 0;
+		bool active = false, framesComplete = false;
+	};
+	static DumpOperation s_dump;
+	static std::mutex s_dumpMutex;
+	static std::atomic<int64_t> s_dumpDeadline{0};
+	static std::atomic<uint64_t> s_dumpSequence{0};
+	static std::atomic<bool> s_dumpActive{false};
+
+	void OnGSDumpOpened(const std::string& path, bool opened)
+	{
+		if (!s_dumpActive.load()) return;
+		std::lock_guard lock(s_dumpMutex);
+		if (!s_dump.active || s_dump.path != path || s_dump.state != "queued") return;
+		s_dump.state = opened ? "recording" : "failed";
+		if (!opened) { s_dump.reason = "open_failed"; s_dump.active = false; s_dumpActive.store(false); s_dumpDeadline.store(0); }
+	}
+
+	bool GSDumpWriteAllowed(const std::string& path, uint64_t bytes)
+	{
+		if (!s_dumpActive.load()) return true;
+		std::lock_guard lock(s_dumpMutex);
+		if (s_dump.path != path) return true;
+		if (s_dump.state != "recording") return false;
+		if (bytes > s_dump.maxBytes - s_dump.bytes)
+		{
+			s_dump.state = "cancelling"; s_dump.reason = "size_limit";
+			s_dumpDeadline.store(steadyMillis()); return false;
+		}
+		s_dump.bytes += bytes; return true;
+	}
+
+	void OnGSDumpFramesComplete(const std::string& path)
+	{
+		if (!s_dumpActive.load()) return;
+		std::lock_guard lock(s_dumpMutex);
+		if (s_dump.active && s_dump.path == path) s_dump.framesComplete = true;
+	}
+
+	void OnGSDumpClosed(const std::string& path, bool complete)
+	{
+		if (!s_dumpActive.load()) return;
+		std::lock_guard lock(s_dumpMutex);
+		if (!s_dump.active || s_dump.path != path || s_dump.state == "cancelling") return;
+		complete = complete && s_dump.framesComplete;
+		s_dump.state = complete ? "closed" : "failed";
+		s_dump.reason = complete ? "frames_recorded" : "incomplete_or_io_error";
+		s_dump.active = false; s_dumpActive.store(false); s_dumpDeadline.store(0);
+	}
+
+	// CPU thread only. Ownership remains active until GS cleanup is confirmed.
+	static void cancelDump(const std::string& reason)
+	{
+		std::string id, base;
+		{
+			std::lock_guard lock(s_dumpMutex);
+			if (!s_dump.active) return;
+			if (s_dump.reason.empty()) s_dump.reason = reason;
+			s_dump.state = "cancelling"; id = s_dump.id; base = s_dump.base;
+			s_dumpDeadline.store(0);
+		}
+		MTGS::RunOnGSThread([id, base]() {
+			if (g_gs_renderer) g_gs_renderer->CancelMCPDump(base);
+			std::lock_guard lock(s_dumpMutex);
+			if (s_dump.id != id || !s_dump.active) return;
+			s_dump.state = s_dump.reason == "cancelled" ? "cancelled" : s_dump.reason == "timeout" ? "expired" :
+				(s_dump.reason == "vm_reset" || s_dump.reason == "vm_stopped") ? "invalidated" : "failed";
+			s_dump.active = false; s_dumpActive.store(false);
+		});
+	}
+
+	static std::string dumpStatus()
+	{
+		std::lock_guard lock(s_dumpMutex);
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("operation_id", s_dump.id);
+		j.kv("state", s_dump.state); j.kv("active", s_dump.active); j.kv("reason", s_dump.reason);
+		j.kv("session", s_dump.session); j.kv("execution_epoch", s_dump.epoch);
+		j.kv("elf", s_dump.elf); j.key("elf_crc"); j.valHex32(s_dump.crc);
+		j.kv("path", s_dump.path); j.kv("frames_requested", static_cast<uint64_t>(s_dump.frames));
+		j.kv("bytes_submitted", s_dump.bytes); j.kv("max_bytes", s_dump.maxBytes);
+		j.kv("format", "uncompressed_gs"); j.endObject(); return j.str();
+	}
+
+	static std::string dumpCommand(const std::unordered_map<std::string, JsonValue>& params, const std::string& cmd)
+	{
+		const std::string id = getStr(params, "operation_id");
+		if (id.size() != 32 || id.find_first_not_of("0123456789abcdef") != std::string::npos) return failure("Invalid dump operation ID");
+		if (cmd != "gs_dump_start")
+		{
+			{ std::lock_guard lock(s_dumpMutex); if (s_dump.id != id) return failure("Unknown GS dump operation"); }
+			if (cmd == "gs_dump_cancel") cancelDump("cancelled");
+			else if (s_dumpDeadline.load() && steadyMillis() >= s_dumpDeadline.load()) cancelDump("timeout");
+			return dumpStatus();
+		}
+		const auto frames = getNum(params, "frames", 1), timeout = getNum(params, "timeout_ms", 15000), maxBytes = getNum(params, "max_bytes", 64 * 1024 * 1024);
+		if (frames < 1 || frames > 300 || timeout < 100 || timeout > 30000 || maxBytes < 1024 * 1024 || maxBytes > 256 * 1024 * 1024)
+			return failure("Dump requires 1-300 frames, 100-30000 ms and 1-256 MiB");
+		if (!MTGS::IsOpen() || (VMManager::GetState() != VMState::Running && VMManager::GetState() != VMState::Paused)) return failure("No active graphics renderer");
+		if (s_step.active || s_operation.active) return failure("An execution operation is active");
+#ifdef _WIN32
+		const uint64_t process = GetCurrentProcessId();
+#else
+		const uint64_t process = getpid();
+#endif
+		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
+			getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			return failure("GS dump VM identity changed");
+		const std::string directory = Path::Combine(EmuFolders::DataRoot, "mcp-gs-dumps");
+		const std::string base = Path::Combine(directory, id);
+		{
+			std::lock_guard lock(s_dumpMutex);
+			if (s_dump.active) return failure("A GS dump is active or cleanup is pending");
+			if (FileSystem::FileExists((base + ".gs").c_str())) return failure("Dump file already exists");
+			if (!FileSystem::CreateDirectoryPath(directory.c_str(), false)) return failure("Cannot create GS dump output directory");
+			s_dump = {}; s_dump.id = id; s_dump.base = base; s_dump.path = base + ".gs";
+			s_dump.session = s_session.load(); s_dump.epoch = s_executionEpoch; s_dump.elf = VMManager::GetCurrentELF(); s_dump.crc = VMManager::GetCurrentCRC();
+			s_dump.frames = static_cast<u32>(frames); s_dump.maxBytes = static_cast<uint64_t>(maxBytes); s_dump.active = true; s_dump.state = "queued";
+			++s_dumpSequence; s_dumpActive.store(true); s_dumpDeadline.store(steadyMillis() + timeout);
+		}
+		MTGS::RunOnGSThread([id, base, frames]() {
+			{ std::lock_guard lock(s_dumpMutex); if (s_dump.id != id || !s_dump.active || s_dump.state != "queued") return; }
+			if (g_gs_renderer && !FileSystem::FileExists((base + ".gs").c_str()) && g_gs_renderer->QueueMCPDump(base, static_cast<u32>(frames))) return;
+			std::lock_guard lock(s_dumpMutex);
+			if (s_dump.id == id && s_dump.state == "queued")
+			{ s_dump.state = "failed"; s_dump.reason = "renderer_busy_or_unavailable"; s_dump.active = false; s_dumpActive.store(false); s_dumpDeadline.store(0); }
+		});
+		return dumpStatus();
 	}
 
 	static std::string readHistory(bool events, uint64_t after, size_t limit, int waitMs = 0)
@@ -1472,6 +1609,7 @@ namespace DebugServer
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
+		if (cmd == "gs_dump_start" || cmd == "gs_dump_status" || cmd == "gs_dump_cancel") return dumpCommand(params, cmd);
 		if (cmd == "iop_module_snapshot") return guardedIopModules(params);
 		if (cmd == "progress_watch_start" || cmd == "progress_watch_status" || cmd == "progress_watch_cancel") return progressWatch(params, cmd);
 		if (cmd == "exception_watch_start" || cmd == "exception_watch_status" || cmd == "exception_watch_cancel") return exceptionWatch(params, cmd);
@@ -1597,7 +1735,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2425,7 +2563,7 @@ namespace DebugServer
 		++s_session;
 		const uint64_t watchdogSession = s_session.load();
 		std::thread([watchdogSession]() {
-			uint64_t queuedOperation = 0, queuedException = 0, queuedExpiry = 0;
+			uint64_t queuedOperation = 0, queuedException = 0, queuedExpiry = 0, queuedDump = 0;
 			while (s_running.load() && s_session.load() == watchdogSession)
 			{
 				std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -2437,6 +2575,15 @@ namespace DebugServer
 				const auto watchSequence = s_exceptionWatchId.load();
 				const auto progressDue = s_progressNext.load();
 				const auto progressId = s_progressWatchId.load();
+				const auto dumpExpiry = s_dumpDeadline.load();
+				const auto dumpSequence = s_dumpSequence.load();
+				if (dumpExpiry && now >= dumpExpiry && queuedDump != dumpSequence)
+				{
+					queuedDump = dumpSequence;
+					Host::RunOnCPUThread([watchdogSession, dumpSequence]() {
+						if (s_session.load() == watchdogSession && s_dumpSequence.load() == dumpSequence) cancelDump("timeout");
+					});
+				}
 				uint64_t idle = 0;
 				if (progressDue && now >= progressDue && s_progressQueued.compare_exchange_strong(idle, progressId))
 				{
@@ -2476,6 +2623,7 @@ namespace DebugServer
 
 	void Stop()
 	{
+		cancelDump("vm_stopped");
 		if (s_progress.state == "armed") s_progress.state = "vm_stopped";
 		s_progressNext.store(0);
 		if (s_exception.state == "capturing") finalizeException(s_exception.sequence);
@@ -2558,6 +2706,7 @@ namespace DebugServer
 
 	void OnVMReset()
 	{
+		cancelDump("vm_reset");
 		s_iopModuleRoot = 0;
 		if (s_progress.state == "armed") s_progress.state = "vm_changed";
 		s_progressNext.store(0);

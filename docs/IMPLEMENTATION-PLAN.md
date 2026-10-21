@@ -17,7 +17,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | Paso | Trabajo | Estado |
 |---|---|---|
 | F1 | Puertos por proceso, directorios de datos independientes y aislamiento de sockets/sesiones; dos instancias Windows | Implementado y probado; incluido en main con esta entrega |
-| F2 | GS dumps acotados con identidad, estados y archivos verificables | Pendiente |
+| F2 | GS dumps acotados con identidad, estados y archivos verificables | Implementado y probado; incluido en main con esta entrega |
 | F3 | Captura vídeo/audio con propiedad, límites y finalización comprobada | Pendiente |
 | F4 | Observadores de cambios de memoria EE/IOP en el hilo CPU | Pendiente |
 | 5A2 | Vincular IRX exacto y fuentes con evidencia que contemple relocaciones | Pendiente; retomar tras F1–F4 |
@@ -40,4 +40,8 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   live de instancias y 11 de regresión de automatización pasaron. Integración
   limpia/upgrade/reaplicada y checkout de build coinciden en 15 archivos.
   Contrato, límites y reproducción en [automation](automation.md#independent-instances).
-- Siguiente entrega: F2, GS dumps. Retomar 5A2 tras F1–F4; F5 exige 5A3.
+- F2: Windows v2.6.3 compilado, 102 pruebas Node, 8 comprobaciones live de
+  captura/propiedad/límites/reset y replay nativo con PNG; 11 de regresión de
+  automatización. Integración limpia/upgrade/reaplicada/build coincide en 18
+  archivos. [Contrato y reproducción](gs-dumps.md).
+- Siguiente entrega: F3, captura vídeo/audio. Retomar 5A2 tras F1–F4; F5 exige 5A3.

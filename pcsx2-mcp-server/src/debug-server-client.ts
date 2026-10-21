@@ -30,6 +30,7 @@ import { exceptionOptions, exceptionState, watchId } from './exceptions.js';
 import { progressOptions, progressState } from './progress.js';
 import { parseIopModuleSnapshot } from './iop-modules.js';
 import { defaultPorts, tcpPort } from './ports.js';
+import { dumpOptions, parseDump, type DumpOptions } from './gs-dump.js';
 
 export interface DebugRegister {
   name: string;
@@ -375,6 +376,25 @@ export class DebugServerClient {
       throw new Error(`${response.error}${hint}`);
     }
     return response;
+  }
+
+  async startGsDump(id: string, expected: { process_id: number; session: number; execution_epoch: number; elf: string; elf_crc: string }, options: DumpOptions = {}) {
+    watchId.parse(id);
+    const input = dumpOptions.parse(options);
+    const response = await this.send({ cmd: 'gs_dump_start', operation_id: id, ...input,
+      expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
+      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc });
+    if (!response.ok) throw Object.assign(new Error(response.error ?? 'GS dump start rejected'), { native_rejected: true });
+    const result = parseDump(response, id);
+    if (result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.elf !== expected.elf ||
+        Number(result.elf_crc) !== Number(expected.elf_crc) || result.frames_requested !== input.frames || result.max_bytes !== input.max_bytes)
+      throw new Error('GS dump response identity/bounds do not match the request');
+    return result;
+  }
+
+  async gsDumpStatus(id: string, cancel = false) {
+    watchId.parse(id);
+    return parseDump(await this.sessionCommand({ cmd: cancel ? 'gs_dump_cancel' : 'gs_dump_status', operation_id: id }), id);
   }
 
   async getCapabilities() {

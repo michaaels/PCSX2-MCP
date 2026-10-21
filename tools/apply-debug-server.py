@@ -203,6 +203,59 @@ def main() -> None:
             text = text[:start] + block + text[end:]
         breakpoint_files[target] = text
 
+    # Keep ownership inside GSRenderer; the TCP worker never inspects renderer
+    # internals. A natural end and fclose success are reported separately from
+    # merely seeing a file in the output directory.
+    renderer_h = source / 'pcsx2/GS/Renderers/Common/GSRenderer.h'
+    renderer = source / 'pcsx2/GS/Renderers/Common/GSRenderer.cpp'
+    dump = source / 'pcsx2/GS/GSDump.cpp'
+    renderer_h_text = renderer_h.read_text(encoding='utf-8')
+    renderer_h_text = replace_once(renderer_h_text, '\tvoid StopGSDump();',
+        '\tvoid StopGSDump();\n\tbool QueueMCPDump(const std::string& base, u32 frames);\n'
+        '\tvoid CancelMCPDump(const std::string& base);', str(renderer_h))
+    renderer_text = renderer.read_text(encoding='utf-8')
+    renderer_text = replace_once(renderer_text, '#include "VMManager.h"',
+        '#include "VMManager.h"\n#include "DebugTools/DebugServer.h"', str(renderer))
+    renderer_text = replace_once(renderer_text, 'static std::deque<std::thread> s_screenshot_threads;',
+        '// GS thread only; preserve GSRenderer and derived object layouts.\n'
+        'static std::string s_mcp_dump_base;\n\nstatic std::deque<std::thread> s_screenshot_threads;', str(renderer))
+    renderer_text = replace_once(renderer_text, '\ts_last_draw_rect = GSVector4::zero();',
+        '\ts_mcp_dump_base.clear();\n\ts_last_draw_rect = GSVector4::zero();', str(renderer))
+    renderer_text = replace_once(renderer_text, '\t\t\tif (GSConfig.GSDumpCompression == GSDumpCompressionMethod::Uncompressed)',
+        '\t\t\tif (GSConfig.GSDumpCompression == GSDumpCompressionMethod::Uncompressed || m_snapshot == s_mcp_dump_base)', str(renderer))
+    renderer_text = replace_once(renderer_text, '\t\tconst bool internal_resolution = (GSConfig.ScreenshotSize >= GSScreenshotSize::InternalResolution);',
+        '\t\t// MCP embeds a bounded image in the GS stream; do not also create an unbounded companion image.\n'
+        '\t\tif (m_snapshot != s_mcp_dump_base)\n\t\t{\n'
+        '\t\tconst bool internal_resolution = (GSConfig.ScreenshotSize >= GSScreenshotSize::InternalResolution);', str(renderer))
+    renderer_text = replace_once(renderer_text, '\n\t\tm_snapshot = {};\n\t}\n\telse if (m_dump)',
+        '\n\t\t}\n\t\tm_snapshot = {};\n\t}\n\telse if (m_dump)', str(renderer))
+    renderer_text = replace_once(renderer_text, 'void GSRenderer::StopGSDump()\n{',
+        'bool GSRenderer::QueueMCPDump(const std::string& base, u32 frames)\n{\n'
+        '\tif (!m_snapshot.empty() || m_dump) return false;\n'
+        '\ts_mcp_dump_base = base;\n\tQueueSnapshot(base + ".png", frames);\n\treturn true;\n}\n\n'
+        'void GSRenderer::CancelMCPDump(const std::string& base)\n{\n'
+        '\tif (m_snapshot == base) { m_snapshot.clear(); m_dump_frames = 0; }\n'
+        '\tif (m_dump && m_dump->GetPath() == base + ".gs") { m_dump.reset(); m_dump_frames = 0; }\n'
+        '\tif (s_mcp_dump_base == base) s_mcp_dump_base.clear();\n}\n\n'
+        'void GSRenderer::StopGSDump()\n{', str(renderer))
+    dump_text = dump.read_text(encoding='utf-8')
+    dump_text = replace_once(dump_text, '#include "GS/GSDump.h"',
+        '#include "GS/GSDump.h"\n#include "DebugTools/DebugServer.h"', str(dump))
+    dump_text = replace_once(dump_text, '\tm_gs = FileSystem::OpenCFile(m_filename.c_str(), "wb");',
+        '\tm_gs = FileSystem::OpenCFile(m_filename.c_str(), "wb");\n'
+        '\tDebugServer::OnGSDumpOpened(m_filename, m_gs != nullptr);', str(dump))
+    dump_text = replace_once(dump_text, 'GSDumpBase::~GSDumpBase()\n{\n\tif (m_gs)\n\t\tstd::fclose(m_gs);\n}',
+        'GSDumpBase::~GSDumpBase()\n{\n\tbool complete = m_gs && std::ferror(m_gs) == 0;\n'
+        '\tif (m_gs && std::fclose(m_gs) != 0) complete = false;\n'
+        '\tDebugServer::OnGSDumpClosed(m_filename, complete);\n}', str(dump))
+    dump_text = replace_once(dump_text, '\treturn (++m_frames & 1) == 0 && last && (m_extra_frames < 0);',
+        '\tconst bool complete = (++m_frames & 1) == 0 && last && (m_extra_frames < 0);\n'
+        '\tif (complete) DebugServer::OnGSDumpFramesComplete(m_filename);\n\treturn complete;', str(dump))
+    dump_text = replace_once(dump_text, '\tsize_t written = fwrite(data, 1, size, m_gs);',
+        '\tif (!DebugServer::GSDumpWriteAllowed(m_filename, size)) return;\n'
+        '\tsize_t written = fwrite(data, 1, size, m_gs);', str(dump))
+    breakpoint_files.update({renderer_h: renderer_h_text, renderer: renderer_text, dump: dump_text})
+
     for name in ('DebugServer.cpp', 'DebugServer.h'):
         original = repo / 'pcsx2-plugin' / name
         target = source / 'pcsx2/DebugTools' / name

@@ -43,6 +43,11 @@ namespace DebugServer
 	void OnVSync();
 	void OnInputPoll();
 	void OnVMReset();
+	// GS thread hooks, restricted to the exact dump file owned by this server.
+	void OnGSDumpOpened(const std::string& path, bool opened);
+	bool GSDumpWriteAllowed(const std::string& path, uint64_t bytes);
+	void OnGSDumpFramesComplete(const std::string& path);
+	void OnGSDumpClosed(const std::string& path, bool complete);
 	void OnEEException(uint32_t code, uint32_t pc, bool branchDelay, bool nested);
 	void OnIOPException(uint32_t code, uint32_t pc, bool branchDelay, uint32_t previousStatus);
 	void OnIOPReset();
