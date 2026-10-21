@@ -4,8 +4,8 @@ Rebuild both PCSX2 (integration script + native build) and `pcsx2-mcp-server`
 (`npm run build`). Restart the MCP client to discover these tools. The native
 EE capabilities are `ee_exception_watch`, `ee_break_provenance` and
 `ee_syscall_provenance`; this is a PCSX2
-backend, not a physical PS2
-debugger or a no-progress detector.
+backend, not a physical PS2 debugger. Configured heartbeat observation uses the
+separate [progress watch tools](progress-watches.md).
 
 IOP capture is now available through the same tools with `cpu: iop` and capability
 `iop_exception_watch`. See [IOP identity, registers and validation](iop-exceptions.md)
@@ -176,7 +176,7 @@ Local reports:
 - `release/exception-validation/trap-provenance-step/source-step-4fwrhQ/validation.json`
 - `release/exception-validation/trap-integration.json`
 
-IOP exceptions were added in 4B2 and JIT provenance in 4B3. Independent no-progress
-monitoring, comprehensive exception-code coverage, Linux host and physical PS2
+IOP exceptions were added in 4B2 and JIT provenance in 4B3. Configured EE heartbeat
+observation is available in 4C through separate tools. Comprehensive exception-code coverage, Linux host and physical PS2
 remain pending. No deliberate fault was
 injected into SMS and no playback/audio acceptance is claimed by this fixture.

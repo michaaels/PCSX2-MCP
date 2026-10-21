@@ -27,6 +27,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { address, symbolOptions, symbolsResponse, resolvedResponse, symbolBreakpointResponse, type SymbolOptions } from './symbols.js';
 import { guardedStepResponse, type StepIdentity } from './guarded-step.js';
 import { exceptionOptions, exceptionState, watchId } from './exceptions.js';
+import { progressOptions, progressState } from './progress.js';
 
 export interface DebugRegister {
   name: string;
@@ -269,6 +270,28 @@ export class DebugServerClient {
       throw new Error('Unexpected guarded inspection state');
     if (addressValue !== undefined && (!result.memory || result.memory.address !== addressValue || result.memory.length !== length ||
       (result.memory.valid && result.memory.hex?.length !== length! * 2) || (!result.memory.valid && result.memory.hex !== undefined))) throw new Error('Invalid guarded inspection memory response');
+    return result;
+  }
+
+  async startProgressWatch(id: string, expected: StepIdentity, options: z.input<typeof progressOptions>) {
+    watchId.parse(id); const o = progressOptions.parse(options);
+    const response = await this.send({ cmd: 'progress_watch_start', watch_id: id, ...o,
+      expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
+      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc });
+    if (!response.ok) throw Object.assign(new Error(response.error ?? 'Progress watch rejected'), { native_rejected: true });
+    const result = progressState.parse(response), c = result.criterion;
+    if (result.watch_id !== id || result.session !== expected.session || result.execution_epoch !== expected.execution_epoch ||
+        result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc) || result.state !== 'armed' ||
+        c.heartbeat_address !== o.heartbeat_address || Number(c.heartbeat_mask) !== o.heartbeat_mask || c.active_address !== (o.active_address ?? null) ||
+        Number(c.active_mask) !== o.active_mask || Number(c.active_value) !== o.active_value || c.sample_interval_ms !== o.sample_interval_ms ||
+        c.stall_ms !== o.stall_ms || c.max_samples !== o.max_samples) throw new Error('Unexpected progress watch identity/criterion');
+    return result;
+  }
+
+  async progressWatchStatus(id: string, cancel = false) {
+    watchId.parse(id);
+    const result = progressState.parse(await this.sessionCommand({ cmd: cancel ? 'progress_watch_cancel' : 'progress_watch_status', watch_id: id }));
+    if (result.watch_id !== id) throw new Error('Unexpected progress watch ID');
     return result;
   }
 

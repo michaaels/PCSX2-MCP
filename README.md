@@ -329,6 +329,9 @@ separate CPU/reset semantics and no attribution of IOP PCs to the EE ELF.
 BREAK/SYSCALL JIT provenance identifies call-site PC/opcode/delay slot for both
 CPUs, checks canonical RAM, and reports disagreement with raw CP0/BD without
 changing emulator exception behavior. Other exception paths may lack provenance.
+For an explicit EE heartbeat/expected-wait signal, see [progress watches](docs/progress-watches.md):
+bounded native sampling, automatic pause/capture and reconnectable evidence,
+with no claim of deadlock diagnosis from the symptom alone.
 
 <details>
 <summary>Only needed if you want to modify PCSX2 or the MCP server</summary>

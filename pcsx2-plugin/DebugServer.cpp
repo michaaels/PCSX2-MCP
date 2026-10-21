@@ -163,6 +163,28 @@ namespace DebugServer
 	static std::atomic<uint64_t> s_exceptionPending{0};
 	static std::atomic<uint64_t> s_exceptionWatchId{0};
 	static std::atomic<int64_t> s_exceptionDeadline{0};
+	struct ProgressSample
+	{
+		int64_t timestamp = 0, elapsed = 0;
+		u32 pc = 0, cycles = 0, heartbeat = 0, gate = 0;
+		bool valid = false, gateValid = false;
+		std::string phase;
+	};
+	struct ProgressWatch
+	{
+		std::string id, state, elf, report;
+		uint64_t sequence = 0, session = 0, epoch = 0, total = 0, unchangedIntervals = 0;
+		u32 crc = 0, address = 0, mask = UINT32_MAX, gateAddress = 0, gateMask = UINT32_MAX, gateValue = 1;
+		bool gated = false, screenshot = true, baseline = false;
+		int64_t start = 0, deadline = 0, interval = 100, threshold = 1000, unchanged = 0;
+		size_t limit = 64;
+		std::deque<ProgressSample> samples;
+	};
+	static ProgressWatch s_progress;
+	static uint64_t s_progressSequence = 0;
+	static std::atomic<uint64_t> s_progressWatchId{0}, s_progressQueued{0};
+	static std::atomic<int64_t> s_progressNext{0};
+	static void sampleProgress();
 	static int64_t steadyMillis()
 	{
 		return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -613,6 +635,9 @@ namespace DebugServer
 			return failure("Invalid exception watch ID");
 		if (cmd == "exception_watch_start")
 		{
+			if (s_progress.state == "armed" && steadyMillis() >= s_progress.deadline)
+			{ s_progress.state = "expired"; s_progressNext.store(0); }
+			if (s_progress.state == "armed" || s_progress.state == "capturing") return failure("A progress watch is active; finish or cancel it first");
 			const auto cpu = getStr(params, "cpu", "ee");
 			if (cpu != "ee" && cpu != "iop") return failure("cpu must be ee or iop");
 			const bool iop = cpu == "iop";
@@ -1184,10 +1209,166 @@ namespace DebugServer
 		s_exception.state = "captured";
 	}
 
+	static void progressCriterion(JsonBuilder& j)
+	{
+		j.startObject(); j.key("heartbeat_address"); j.valHex32(s_progress.address);
+		j.key("heartbeat_mask"); j.valHex32(s_progress.mask);
+		j.kv("sample_interval_ms", s_progress.interval); j.kv("stall_ms", s_progress.threshold);
+		j.kv("max_sample_gap_ms", s_progress.interval * 4); j.kv("max_samples", static_cast<int>(s_progress.limit));
+		j.key("active_address"); if (s_progress.gated) j.valHex32(s_progress.gateAddress); else j.valJson("null");
+		j.key("active_mask"); j.valHex32(s_progress.gateMask); j.key("active_value"); j.valHex32(s_progress.gateValue);
+		j.endObject();
+	}
+
+	static void captureProgress()
+	{
+		s_progress.state = "capturing"; s_progressNext.store(0);
+		VMManager::SetPaused(true);
+		const u32 pc = cpuRegs.pc, cycles = cpuRegs.cycle;
+		const auto revision = s_inspectionRevision;
+		recordEvent("progress_stall", "ee", pc, s_progress.id);
+		JsonBuilder j; j.startObject(); j.kv("watch_id", s_progress.id); j.kv("cpu", "ee");
+		j.kv("observation", "configured_heartbeat_stall"); j.kv("timestamp_ms", timestampMillis());
+		j.kv("session", s_progress.session); j.kv("execution_epoch", s_progress.epoch);
+		j.kv("elf", s_progress.elf); j.key("elf_crc"); j.valHex32(s_progress.crc);
+		j.key("criterion"); progressCriterion(j); j.kv("unchanged_ms", s_progress.unchanged);
+		j.kv("unchanged_intervals", s_progress.unchangedIntervals);
+		j.key("stop_pc"); j.valHex32(pc); j.key("stop_cycles"); j.valHex32(cycles);
+		j.kv("screenshot_requested", s_progress.screenshot); j.kv("total_samples", s_progress.total);
+		j.kv("samples_dropped", s_progress.total - s_progress.samples.size());
+		j.key("samples"); j.startArray();
+		for (const auto& sample : s_progress.samples)
+		{
+			j.startObject(); j.kv("timestamp_ms", sample.timestamp); j.kv("elapsed_ms", sample.elapsed);
+			j.key("pc"); j.valHex32(sample.pc); j.key("cycles"); j.valHex32(sample.cycles);
+			j.key("heartbeat"); if (sample.valid) j.valHex32(sample.heartbeat); else j.valJson("null");
+			j.key("active_value"); if (sample.gateValid) j.valHex32(sample.gate); else j.valJson("null");
+			j.kv("phase", sample.phase); j.endObject();
+		}
+		j.endArray(); const auto prefix = j.str();
+		const auto context = captureContext(parseJsonObject(std::string("{\"cpu\":\"ee\",\"width\":640,\"height\":480,\"skip_screenshot\":") +
+			(s_progress.screenshot ? "false}" : "true}")));
+		const bool matches = VMManager::GetState() == VMState::Paused && s_executionEpoch == s_progress.epoch &&
+			s_inspectionRevision == revision && cpuRegs.pc == pc && cpuRegs.cycle == cycles &&
+			VMManager::GetCurrentELF() == s_progress.elf && VMManager::GetCurrentCRC() == s_progress.crc;
+		j.kv("context_matches_stop", matches); j.key("memory"); j.startObject();
+		if (matches)
+		{
+			j.key("code"); exceptionMemory(j, pc >= 16 ? pc - 16 : 0, 64, false);
+			j.key("stack"); exceptionMemory(j, cpuRegs.GPR.n.sp.UL[0], 256, false);
+		}
+		j.endObject(); uint64_t after;
+		{ std::lock_guard lock(s_historyMutex); after = s_eventSequence > 32 ? s_eventSequence - 32 : 0; }
+		const auto events = readHistory(true, after, 32);
+		j.key("events"); j.valJson(events); j.key("context");
+		j.valJson(matches ? context : failure("Paused state changed during progress capture")); j.endObject();
+		s_progress.report = j.str();
+		if (s_progress.report.size() > 3 * 1024 * 1024)
+			s_progress.report = prefix + ",\"context_matches_stop\":false,\"memory\":{},\"events\":" + events +
+				",\"context\":" + failure("Progress report exceeded 3 MiB") + "}";
+		s_progress.state = "captured";
+	}
+
+	static void sampleProgress()
+	{
+		if (s_progress.state != "armed") return;
+		const auto now = steadyMillis();
+		if (now >= s_progress.deadline) { s_progress.state = "expired"; s_progressNext.store(0); return; }
+		if (!VMManager::HasValidVM() || s_progress.epoch != s_executionEpoch ||
+			s_progress.elf != VMManager::GetCurrentELF() || s_progress.crc != VMManager::GetCurrentCRC())
+		{ s_progress.state = "vm_changed"; s_progressNext.store(0); return; }
+		ProgressSample sample; sample.timestamp = timestampMillis(); sample.elapsed = now - s_progress.start;
+		sample.pc = cpuRegs.pc; sample.cycles = cpuRegs.cycle;
+		if (VMManager::GetState() != VMState::Running) sample.phase = "paused";
+		else if (s_step.active || s_operation.active) sample.phase = "execution_operation";
+		else
+		{
+			sample.heartbeat = r5900Debug.read32(s_progress.address, sample.valid) & s_progress.mask;
+			if (s_progress.gated) sample.gate = r5900Debug.read32(s_progress.gateAddress, sample.gateValid) & s_progress.gateMask;
+			if (!sample.valid || (s_progress.gated && !sample.gateValid)) sample.phase = "unreadable";
+			else if (s_progress.gated && sample.gate != s_progress.gateValue) sample.phase = "expected_wait";
+			else if (!s_progress.baseline) sample.phase = "baseline";
+			else
+			{
+				const auto& previous = s_progress.samples.back();
+				const auto gap = sample.elapsed - previous.elapsed;
+				if (gap > s_progress.interval * 4) sample.phase = "sampling_gap";
+				else if (sample.cycles == previous.cycles) sample.phase = "cycles_not_advanced";
+				else if (sample.heartbeat != previous.heartbeat) sample.phase = "progress";
+				else { sample.phase = "unchanged"; s_progress.unchanged += gap; ++s_progress.unchangedIntervals; }
+			}
+		}
+		if (sample.phase != "unchanged") { s_progress.unchanged = 0; s_progress.unchangedIntervals = 0; }
+		s_progress.baseline = sample.phase == "baseline" || sample.phase == "progress" || sample.phase == "unchanged";
+		s_progress.samples.push_back(sample); ++s_progress.total;
+		if (s_progress.samples.size() > s_progress.limit) s_progress.samples.pop_front();
+		if (sample.phase == "unreadable") { s_progress.state = "memory_unavailable"; s_progressNext.store(0); }
+		else if (s_progress.unchanged >= s_progress.threshold && s_progress.unchangedIntervals >= 3) captureProgress();
+		else s_progressNext.store(now + s_progress.interval);
+	}
+
+	static std::string progressWatch(const std::unordered_map<std::string, JsonValue>& params, const std::string& cmd)
+	{
+		const auto id = getStr(params, "watch_id");
+		if (id.size() != 32 || !std::all_of(id.begin(), id.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }))
+			return failure("Invalid progress watch ID");
+		if (cmd == "progress_watch_start")
+		{
+			if (s_progress.state == "armed" && steadyMillis() >= s_progress.deadline)
+			{ s_progress.state = "expired"; s_progressNext.store(0); }
+			if (s_exception.state == "armed" && steadyMillis() >= s_exception.deadline)
+			{ s_exception.state = "expired"; s_exceptionDeadline.store(0); }
+			if (s_progress.state == "armed" || s_progress.state == "capturing" || s_exception.state == "armed" || s_exception.state == "capturing" || s_step.active || s_operation.active)
+				return failure("A watch or execution operation is already active");
+#ifdef _WIN32
+			const uint64_t process = GetCurrentProcessId();
+#else
+			const uint64_t process = getpid();
+#endif
+			if (!CHECK_EEREC || !VMManager::HasValidVM() || VMManager::GetCurrentELF().empty()) return failure("Progress watch requires a booted EE ELF and EE recompiler");
+			if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+				getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
+				getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+				return failure("Progress watch VM/ELF identity changed");
+			const auto address = getNum(params, "heartbeat_address", -1), mask = getNum(params, "heartbeat_mask", UINT32_MAX);
+			const auto gate = getNum(params, "active_address", -1), gateMask = getNum(params, "active_mask", UINT32_MAX), gateValue = getNum(params, "active_value", 1);
+			const auto interval = getNum(params, "sample_interval_ms", 100), threshold = getNum(params, "stall_ms", 1000);
+			const auto timeout = getNum(params, "timeout_ms", 30000), limit = getNum(params, "max_samples", 64);
+			auto canonical = [](int64_t value) { return value >= 0 && value <= 0x02000000 - 4 && !(value & 3); };
+			if (!canonical(address) || (gate != -1 && !canonical(gate)) || mask < 1 || mask > UINT32_MAX ||
+				gateMask < 1 || gateMask > UINT32_MAX || gateValue < 0 || gateValue > UINT32_MAX || (gateValue & ~gateMask) ||
+				interval < 50 || interval > 1000 || threshold < interval * 3 || threshold > 60000 ||
+				timeout < 100 || timeout > 300000 || limit < 8 || limit > 64) return failure("Invalid progress criterion or bounds");
+			s_progress = {}; s_progress.id = id; s_progress.state = "armed"; s_progress.sequence = ++s_progressSequence;
+			s_progress.session = s_session.load(); s_progress.epoch = s_executionEpoch;
+			s_progress.elf = VMManager::GetCurrentELF(); s_progress.crc = VMManager::GetCurrentCRC();
+			s_progress.address = static_cast<u32>(address); s_progress.mask = static_cast<u32>(mask);
+			s_progress.gated = gate != -1; s_progress.gateAddress = static_cast<u32>(gate); s_progress.gateMask = static_cast<u32>(gateMask); s_progress.gateValue = static_cast<u32>(gateValue);
+			s_progress.interval = interval; s_progress.threshold = threshold; s_progress.limit = static_cast<size_t>(limit);
+			s_progress.start = steadyMillis(); s_progress.deadline = s_progress.start + timeout;
+			s_progress.screenshot = getBool(params, "screenshot", true);
+			s_progressWatchId.store(s_progress.sequence); s_progressNext.store(s_progress.start + interval);
+		}
+		else
+		{
+			if (s_progress.id != id) return failure("Unknown or superseded progress watch");
+			if (s_progress.state == "armed" && (cmd == "progress_watch_cancel" || steadyMillis() >= s_progress.deadline))
+			{ s_progress.state = cmd == "progress_watch_cancel" ? "cancelled" : "expired"; s_progressNext.store(0); }
+		}
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("watch_id", id); j.kv("cpu", "ee");
+		j.kv("state", s_progress.state); j.kv("active", s_progress.state == "armed" || s_progress.state == "capturing");
+		j.kv("session", s_progress.session); j.kv("execution_epoch", s_progress.epoch);
+		j.kv("elf", s_progress.elf); j.key("elf_crc"); j.valHex32(s_progress.crc);
+		j.key("criterion"); progressCriterion(j); j.kv("unchanged_ms", s_progress.unchanged); j.kv("total_samples", s_progress.total);
+		j.key("report"); j.valJson(s_progress.report.empty() ? "null" : s_progress.report); j.endObject(); return j.str();
+	}
+
 	static std::string handleCommand(const std::string& jsonLine)
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
+		if (cmd == "progress_watch_start" || cmd == "progress_watch_status" || cmd == "progress_watch_cancel") return progressWatch(params, cmd);
 		if (cmd == "exception_watch_start" || cmd == "exception_watch_status" || cmd == "exception_watch_cancel") return exceptionWatch(params, cmd);
 		if (cmd == "guarded_step") return startGuardedStep(params);
 		if (cmd == "guarded_step_status" || cmd == "guarded_step_cancel")
@@ -1202,7 +1383,11 @@ namespace DebugServer
 		if (s_step.active && cmd != "status" && cmd != "capabilities" && cmd != "read_events" && cmd != "read_logs")
 			return failure("A guarded instruction operation owns execution; poll or cancel it first");
 		if (cmd == "inspect_ee") return inspectEE(params);
-		if (cmd == "write_register" || cmd == "write_memory" || cmd == "set_pc") ++s_inspectionRevision;
+		if (cmd == "write_register" || cmd == "write_memory" || cmd == "set_pc")
+		{
+			++s_inspectionRevision;
+			if (s_progress.state == "armed") { s_progress.baseline = false; s_progress.unchanged = 0; s_progress.unchangedIntervals = 0; }
+		}
 		std::string cpuName = getStr(params, "cpu", "ee");
 		DebugInterface* cpu = getCpu(cpuName);
 		if (cpuName != "ee" && cpuName != "iop") return failure("cpu must be ee or iop");
@@ -1306,7 +1491,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2081,6 +2266,7 @@ namespace DebugServer
 		s_sourceGroups.clear();
 		s_step = {}; s_stepDeadline.store(0); ++s_executionEpoch;
 		s_exception = {}; s_exceptionDeadline.store(0); s_exceptionPending.store(0);
+		s_progress = {}; s_progressNext.store(0); s_progressQueued.store(0);
 		s_eeOrigin = {}; s_iopOrigin = {};
 		++s_session;
 		const uint64_t watchdogSession = s_session.load();
@@ -2095,6 +2281,16 @@ namespace DebugServer
 				const auto pending = s_exceptionPending.load();
 				const auto expiry = s_exceptionDeadline.load();
 				const auto watchSequence = s_exceptionWatchId.load();
+				const auto progressDue = s_progressNext.load();
+				const auto progressId = s_progressWatchId.load();
+				uint64_t idle = 0;
+				if (progressDue && now >= progressDue && s_progressQueued.compare_exchange_strong(idle, progressId))
+				{
+					Host::RunOnCPUThread([watchdogSession, progressId]() {
+						if (s_session.load() == watchdogSession && s_progress.sequence == progressId) sampleProgress();
+						uint64_t queued = progressId; s_progressQueued.compare_exchange_strong(queued, 0);
+					});
+				}
 				if (pending && pending != queuedException)
 				{
 					queuedException = pending;
@@ -2127,6 +2323,8 @@ namespace DebugServer
 
 	void Stop()
 	{
+		if (s_progress.state == "armed") s_progress.state = "vm_stopped";
+		s_progressNext.store(0);
 		if (s_exception.state == "capturing") finalizeException(s_exception.sequence);
 		if (s_exception.state == "armed") s_exception.state = "vm_stopped";
 		s_exceptionDeadline.store(0);
@@ -2159,6 +2357,7 @@ namespace DebugServer
 	void OnVMStateChanged(int state)
 	{
 		++s_inspectionRevision;
+		if (s_progress.state == "armed") { s_progress.baseline = false; s_progress.unchanged = 0; s_progress.unchangedIntervals = 0; }
 		if (!s_running.load()) return;
 		if (state == static_cast<int>(VMState::Paused) && s_operation.active)
 			finishOperation(s_videoFrame >= s_operation.target ? "completed" : "paused_early");
@@ -2200,6 +2399,8 @@ namespace DebugServer
 
 	void OnVMReset()
 	{
+		if (s_progress.state == "armed") s_progress.state = "vm_changed";
+		s_progressNext.store(0);
 		s_eeOrigin = {}; s_iopOrigin = {};
 		if (s_exception.state == "capturing") finalizeException(s_exception.sequence);
 		if (s_exception.state == "armed") s_exception.state = "vm_changed";

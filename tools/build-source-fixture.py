@@ -12,19 +12,20 @@ parser.add_argument('--dwarf-version', type=int, choices=(4, 5), default=4)
 parser.add_argument('--stepping', action='store_true', help='Build the call/loop/branch fixture')
 parser.add_argument('--variables', action='store_true', help='Build the arguments/locals/types fixture')
 parser.add_argument('--exceptions', action='store_true', help='Build the EE BREAK and delay-slot exception fixture')
+parser.add_argument('--progress', action='store_true', help='Build the explicit heartbeat and expected-wait fixture')
 parser.add_argument('--optimize', choices=('0', '2'), default='0')
 parser.add_argument('--clang', default='clang-18')
 parser.add_argument('--linker', default='ld.lld-18')
 args = parser.parse_args()
-if sum((args.stepping, args.variables, args.exceptions)) > 1:
-    parser.error('Select one fixture: --stepping, --variables or --exceptions')
+if sum((args.stepping, args.variables, args.exceptions, args.progress)) > 1:
+    parser.error('Select one fixture: --stepping, --variables, --exceptions or --progress')
 output = args.output.resolve()
 if output.exists():
     parser.error('Output directory already exists; use a new directory')
 output.mkdir(parents=True)
 source = Path(__file__).resolve().parent.parent / 'pcsx2-mcp-server/test/fixtures'
 for name in ('source-debug.c', 'source-debug.ld'):
-    fixture = 'source-exceptions.c' if args.exceptions else 'source-variables.c' if args.variables else 'source-step.c' if args.stepping else 'source-debug.c'
+    fixture = 'source-progress.c' if args.progress else 'source-exceptions.c' if args.exceptions else 'source-variables.c' if args.variables else 'source-step.c' if args.stepping else 'source-debug.c'
     shutil.copyfile(source / (fixture if name.endswith('.c') else name), output / name)
 
 

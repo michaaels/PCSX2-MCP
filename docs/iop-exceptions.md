@@ -129,4 +129,5 @@ source hashes. Reports:
 `trap-provenance-step/source-step-4fwrhQ/validation.json` under the same parent.
 No SMS runtime/decoder/Bridge changes, playback/audio or hardware acceptance.
 IOP interpreter, Linux host, full code coverage, IRX/source mapping, software
-reboot generations and independent no-progress monitoring remain pending.
+reboot generations and IOP no-progress monitoring remain pending. The separate
+[progress watch](progress-watches.md) observes an explicit EE RAM signal only.

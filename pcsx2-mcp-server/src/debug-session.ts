@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { parseScreenshot } from './screenshot.js';
 
 const cursor = z.number().int().nonnegative().safe();
-export const eventTypes = ['vm_started', 'vm_stopping', 'paused', 'resumed', 'breakpoint', 'watchpoint', 'elf_load_requested', 'automation_completed', 'automation_interrupted', 'ee_exception', 'iop_exception', 'iop_reset'] as const;
+export const eventTypes = ['vm_started', 'vm_stopping', 'paused', 'resumed', 'breakpoint', 'watchpoint', 'elf_load_requested', 'automation_completed', 'automation_interrupted', 'ee_exception', 'iop_exception', 'iop_reset', 'progress_stall'] as const;
 export type DebugEventType = typeof eventTypes[number];
 const event = z.object({
   sequence: cursor, timestamp_ms: cursor, type: z.enum(eventTypes),
