@@ -64,6 +64,7 @@ namespace DebugServer
 	void OnIOPLoadObject(uint32_t buffer, uint32_t fileInfo);
 	void OnIOPModuleRegister(uint32_t record);
 	void OnIOPModuleRelease(uint32_t record);
+	void OnIOPModuleService(uint32_t ordinal);
 	void OnSIF1Tag(uint32_t address, uint32_t words, bool interrupt);
 	void OnSIF1Write(uint32_t address, uint32_t words);
 	void OnStateLoadAttempt();

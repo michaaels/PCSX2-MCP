@@ -8,7 +8,7 @@ export const lifetimeResponse = z.object({ ok: z.literal(true), session: count, 
   iop_lifetime_epoch: count, scope: z.literal('observed_boundaries_only'), elf: z.string(), elf_crc: address,
   list_address: address, history_truncated: z.boolean(), events: z.array(z.object({ epoch: count.positive(), timestamp_ms: count,
     kind: z.enum(['server_start', 'vm_reset', 'cpu_reset', 'load_object_call', 'register_module_call', 'release_module_call',
-      'savestate_load_attempt', 'sif_reset_packet', 'loadcore_locator_changed', 'debugger_mutation']), address })).max(64),
+      'savestate_load_attempt', 'sif_reset_packet', 'loadcore_locator_changed', 'debugger_mutation', 'module_reboot_call', 'module_service_call']), address })).max(64),
 }).superRefine((s, ctx) => {
   if (!s.events.length || s.events.at(-1)!.epoch !== s.iop_lifetime_epoch ||
       s.events.some((e, i) => i > 0 && e.epoch !== s.events[i - 1].epoch + 1) ||
@@ -22,7 +22,7 @@ export async function readIopLifetime(client: DebugServerClient, signal?: AbortS
     if (result.session !== caps.session || result.execution_epoch !== caps.execution_epoch || result.elf !== caps.elf ||
         result.elf_crc !== caps.elf_crc || result.iop_lifetime_epoch < caps.iop_lifetime_epoch!) throw new Error('IOP lifetime session changed');
     return { ...result, process_id: caps.process_id, module_generation: null, interpretation:
-      'Conservative invalidation boundaries only, not per-module generations. Register/release and restore are call/attempt observations. A standard reset-shaped SIF1 packet proves transport observation, not successful handler execution. Custom/direct loaders and other reset paths remain untracked; no reusable binding is authorized.' };
+      'Conservative invalidation boundaries only; this epoch alone is not a module generation or binding. Register/release, modload and restore entries are call/attempt observations. A standard reset-shaped SIF1 packet proves transport observation, not handler completion. Explicit binding tools additionally require observed registration and fresh artifact/image checks; custom/direct paths remain partial.' };
   });
 }
 export function registerIopLifetimeTools(server: McpServer, getClient: () => DebugServerClient | null) {

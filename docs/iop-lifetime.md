@@ -3,7 +3,9 @@
 5A3a, 2026-10-22. Rebuild native PCSX2 and TypeScript, then restart MCP.
 Capability: `iop_lifetime`. This delivery adds an invalidation epoch and bounded
 history for observed loader, registry, reset and restore boundaries. It is the
-first part of 5A3; **per-module generations and reusable bindings remain pending**.
+first part of 5A3. Later [5A3b](iop-bindings.md) adds scoped observed generations,
+explicit revalidated bindings and propagation to pending IOP watches. This
+document's acceptance below records the earlier 5A3a delivery.
 
 ## Tools and guards
 
@@ -48,6 +50,7 @@ the first guarded pause; the epoch does not extend that scope.
 | `sif_reset_packet` | A supported reset-shaped packet actually transported into canonical IOP RAM through SIF1 DMA. Clears locator and pending load provenance. |
 | `savestate_load_attempt` | Entry to native `DoLoadState`, before restoring memory. Advances pause revision and clears locator/pending SIF observation even if loading fails. |
 | `debugger_mutation` | DebugServer memory/register/PC write request; conservatively invalidates even for same-byte writes or later refusal. |
+| `module_service_call` / `module_reboot_call` | Later 5A3b observes selected modload load/stop/unload and reboot entry calls; ordinals are carried in `address`. |
 
 All journal/epoch mutations occur on the CPU thread. Loadcore observers return
 to the original guest functions without replacing their behavior. Boundary
@@ -125,7 +128,7 @@ output directories. Local ignored receipts:
 - `release/lifetime-integration-20261022/integration.json`
 - `release/lifetime-acceptance-20261022.json`
 
-## Remaining work: 5A3b
+## Later delivery and remaining coverage
 
 The scope is `observed_boundaries_only`. Internal/direct loader calls bypassing
 the instrumented imports, other software reboot mechanisms, other SIF packet
@@ -134,9 +137,11 @@ observer's malformed/fragmented-input matrix has not all been exercised live.
 There is no universal performance or all-BIOS acceptance, and no new physical
 PS2 or A/V acceptance.
 
-Next define per-module generations and revalidation for reusable identity;
-handle other actual unload/reload and software reboot paths, restore semantics
-and propagation to operations that retain IOP state. Existing exception/memory
-watches still advertise their CPU-reset-only identity; their historical reports
-must not be repurposed as module bindings. F5 input replay remains blocked on
-the remaining 5A3 acceptance. See [the implementation plan](IMPLEMENTATION-PLAN.md).
+5A3b adds observed per-record sequences/namespaces, explicit artifact bindings
+that revalidate on every use, and `lifetime_changed` termination of pending IOP
+exception/memory watches at observed load/reboot/restore boundaries. The CPU
+reset counter still has its separate `cpu_reset_only` scope. Historical reports
+do not automatically become artifact bindings. Direct/custom loader paths and
+other unsupported reset mechanisms remain partial. Next: F5 controlled replay
+under the [binding contract](iop-bindings.md) and
+[implementation plan](IMPLEMENTATION-PLAN.md).

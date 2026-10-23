@@ -13,7 +13,7 @@ const counter = z.number().int().nonnegative().safe();
 export const exceptionState = z.object({ ok: z.literal(true), watch_id: watchId,
   cpu: z.enum(['ee', 'iop']).default('ee'), iop_reset_epoch: counter.optional(),
   iop_reset_scope: z.literal('cpu_reset_only').optional(),
-  state: z.enum(['armed', 'capturing', 'captured', 'expired', 'cancelled', 'vm_changed', 'vm_stopped', 'cpu_reset']), active: z.boolean(),
+  state: z.enum(['armed', 'capturing', 'captured', 'expired', 'cancelled', 'vm_changed', 'vm_stopped', 'cpu_reset', 'lifetime_changed']), active: z.boolean(),
   session: counter, execution_epoch: counter, elf: z.string(), elf_crc: address, report: z.unknown().nullable() });
 const memory = z.object({ address, length: z.number().int().min(1).max(256), valid: z.boolean(), hex: z.string().regex(/^(?:[\da-f]{2})+$/).optional(), reason: z.string().optional() });
 const instructionOrigin = z.object({ source: z.enum(['ee_recompiler_break', 'ee_recompiler_syscall', 'iop_recompiler_break', 'iop_recompiler_syscall']), pc: address, opcode: address,

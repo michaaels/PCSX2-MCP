@@ -14,6 +14,7 @@ make -f Makefile.ee NAME=reset MODE=3
 make -f Makefile.ee NAME=hardreset MODE=4
 make -f Makefile.ee NAME=watch MODE=5
 make -f Makefile.ee NAME=lifetime MODE=6
+make -f Makefile.ee NAME=service MODE=7
 ee-gcc --version > toolchain.txt
 iop-gcc --version >> toolchain.txt
 cat "$PS2SDK/ID" >> toolchain.txt

@@ -1,5 +1,11 @@
 # Sampled memory-change observers
 
+Later [5A3b](iop-bindings.md) adds lifetime guarding at IOP watch start and
+`lifetime_changed` termination of pending IOP watches at observed load, registry,
+service, reboot and restore boundaries. EE watches and completed value pairs are
+preserved by those IOP-only boundaries. Debugger-write rebasing remains as
+documented below. This does not track every custom/direct loader or external write.
+
 F4, 2026-10-22. Requires the rebuilt native DebugServer capability
 `memory_change_watch` and the matching TypeScript MCP server. Restart the MCP
 client to discover the four added tools. The original release binary lacks them.
@@ -84,10 +90,11 @@ IOP CPU reset invalidates armed IOP observers. An unknown reader result never
 becomes a fabricated zero. Waiting timeout/cancellation leaves the observer
 armed; explicit cancellation does not resume or touch breakpoints.
 
-EE ELF identity is only boot affinity for IOP. This delivery does not identify
-an IRX generation or guard unload/reload, software `SifIopReset`, or savestate
-restore. Cancel observers before those operations. Steps 5A2–5A3 must establish
-artifact/source identity and lifetime guards before reuse across such changes.
+EE ELF identity is only boot affinity for IOP. The original F4 delivery did not
+guard software reboot, module reload or restore. Later 5A3b terminates pending
+IOP watches at observed boundaries as `lifetime_changed`; it does not identify
+their raw addresses as IRX artifacts or permit reuse after those changes.
+Cancel before operations outside the documented observed-path coverage.
 
 ## Acceptance and reproduction
 

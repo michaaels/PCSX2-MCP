@@ -6,7 +6,10 @@ pause before resolving sources. This legacy inventory and frozen exception
 reports keep their original null artifact/source identities. Later
 [5A2b](iop-load-provenance.md) adds explicit supported full-file provenance;
 [5A3a](iop-lifetime.md) adds conservative boundary guards. Per-module generations
-and reusable lifetime bindings remain pending.
+remain unproven universally. Later [5A3b](iop-bindings.md) exposes nullable
+`observed_generation` and `module_id`, and permits explicit bindings only with
+fresh artifact/image revalidation under that narrower token. Preexisting or
+unobserved registrations stay null.
 
 Rebuild PCSX2 with `tools/apply-debug-server.py`, rebuild the Node server and
 restart the MCP server/client. Capability: `iop_module_snapshot`. Tool:

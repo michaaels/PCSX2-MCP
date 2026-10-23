@@ -207,11 +207,11 @@ try {
   const oldEpoch = resetWatch.iop_reset_epoch;
   await inspector.resume();
   const reset = await call('pcsx2_exception_report', { watch_id: resetWatch.watch_id, wait_ms: 5000 });
-  report.results.push(reset); assert.equal(reset.state, 'armed', JSON.stringify(reset));
+  report.results.push(reset); assert.equal(reset.state, (await inspector.getCapabilities()).features.includes('iop_module_generations') ? 'lifetime_changed' : 'armed', JSON.stringify(reset));
   assert.equal((await inspector.getCapabilities()).iop_reset_epoch, oldEpoch);
   assert.equal(reset.iop_reset_scope, 'cpu_reset_only');
   await call('pcsx2_exception_watch_cancel', { watch_id: resetWatch.watch_id }); await inspector.pause();
-  passed('software SifIopReset leaves the CPU-reset-only watch armed; observed lifetime boundaries have a separate scope');
+  passed('software SifIopReset preserves the distinct CPU-reset epoch; current builds terminate pending IOP observation at the observed lifetime boundary');
   await boot('hardreset');
   const hardWatch = await call('pcsx2_exception_watch_start', { cpu: 'iop', screenshot: false });
   await inspector.resume();

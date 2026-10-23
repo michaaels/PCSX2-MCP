@@ -283,6 +283,7 @@ export class DebugServerClient {
   async startMemoryWatch(id: string, expected: StepIdentity & { iop_reset_epoch?: number }, options: z.input<typeof memoryWatchOptions>) {
     watchId.parse(id); const o = memoryWatchOptions.parse(options);
     const response = await this.send({ cmd: 'memory_watch_start', watch_id: id, ...o,
+      expected_iop_lifetime_epoch: expected.iop_lifetime_epoch,
       expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
       expected_elf: expected.elf, expected_elf_crc: expected.elf_crc, expected_iop_reset_epoch: expected.iop_reset_epoch });
     if (!response.ok) throw Object.assign(new Error(response.error ?? 'Memory watch rejected'), { native_rejected: true });
@@ -355,6 +356,7 @@ export class DebugServerClient {
   async startExceptionWatch(id: string, expected: StepIdentity & { iop_reset_epoch?: number }, options: z.input<typeof exceptionOptions>) {
     watchId.parse(id); const parsed = exceptionOptions.parse(options);
     const response = await this.send({ cmd: 'exception_watch_start', cpu: parsed.cpu, watch_id: id,
+      expected_iop_lifetime_epoch: expected.iop_lifetime_epoch,
       exception_mask: [...new Set(parsed.exception_codes)].reduce((mask, code) => mask + 2 ** code, 0), timeout_ms: parsed.timeout_ms, screenshot: parsed.screenshot,
       expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
       expected_elf: expected.elf, expected_elf_crc: expected.elf_crc, expected_iop_reset_epoch: expected.iop_reset_epoch });
@@ -797,14 +799,18 @@ export class DebugServerClient {
     return result;
   }
 
-  async iopModuleImage(expected: StepIdentity & { iop_reset_epoch: number; revision: number }, record: string) {
+  async iopModuleImage(expected: StepIdentity & { iop_reset_epoch: number; revision: number; registration_sequence?: number; registration_namespace?: string }, record: string) {
     address.parse(record);
     const result = parseIopModuleImage(await this.sessionCommand({ cmd: 'iop_module_image', module_record: record,
       expected_iop_lifetime_epoch: expected.iop_lifetime_epoch,
+      expected_registration_sequence: expected.registration_sequence,
+      expected_registration_namespace: expected.registration_namespace,
       expected_revision: expected.revision, expected_process_id: expected.process_id, expected_session: expected.session,
       expected_execution_epoch: expected.execution_epoch, expected_iop_reset_epoch: expected.iop_reset_epoch,
       expected_elf: expected.elf, expected_elf_crc: expected.elf_crc }));
     if (result.iop_lifetime_epoch !== expected.iop_lifetime_epoch || result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.iop_reset_epoch !== expected.iop_reset_epoch ||
+        (expected.registration_sequence !== undefined && result.module.observed_generation?.sequence !== expected.registration_sequence) ||
+        (expected.registration_namespace !== undefined && result.module.observed_generation?.namespace !== expected.registration_namespace) ||
         result.revision !== expected.revision || result.image_record !== record || result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc))
       throw new Error('IOP module image identity/revision mismatch');
     return result;

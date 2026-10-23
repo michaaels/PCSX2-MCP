@@ -110,6 +110,7 @@ try {
     { address: 'invalid' }, { address: '0x00100000junk' }, { address: ee, size: 1.5 }, { address: ee, sample_interval_ms: true },
     { address: ee, mask: 1e30 }, { address: ee, pause_on_change: 'true' }]) {
     const response = await inspector.send({ cmd: 'memory_watch_start', watch_id: 'c'.repeat(32),
+      expected_iop_lifetime_epoch: caps.iop_lifetime_epoch,
       expected_process_id: caps.process_id, expected_session: caps.session, expected_execution_epoch: caps.execution_epoch,
       expected_elf: caps.elf, expected_elf_crc: caps.elf_crc, expected_iop_reset_epoch: caps.iop_reset_epoch, ...bad });
     assert.equal(response.ok, false);

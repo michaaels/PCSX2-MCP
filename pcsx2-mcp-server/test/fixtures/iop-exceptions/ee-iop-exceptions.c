@@ -28,6 +28,8 @@ int main(void) {
     static const char args[] = "watch";
 #elif FIXTURE_MODE == 6
     static const char args[] = "lifetime";
+#elif FIXTURE_MODE == 7
+    static const char args[] = "module";
 #else
     static const char args[] = "normal";
 #endif

@@ -19,7 +19,7 @@ export const memoryWatchOptions = z.object(memoryWatchFields).superRefine((o, ct
 });
 const sample = z.object({ timestamp_ms: count, elapsed_ms: count, sample_pc: address, cycles: address, raw: address, masked: address });
 export const memoryWatchState = z.object({ ok: z.literal(true), watch_id: watchId,
-  state: z.enum(['armed', 'changed', 'expired', 'cancelled', 'vm_changed', 'vm_stopped', 'cpu_reset', 'memory_unavailable']),
+  state: z.enum(['armed', 'changed', 'expired', 'cancelled', 'vm_changed', 'vm_stopped', 'cpu_reset', 'memory_unavailable', 'lifetime_changed']),
   active: z.boolean(), session: count, execution_epoch: count, iop_reset_epoch: count,
   elf: z.string(), elf_crc: address, cpu: z.enum(['ee', 'iop']), address,
   size: memoryWatchFields.size, mask: address, sample_interval_ms: memoryWatchFields.sample_interval_ms,

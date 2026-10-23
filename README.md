@@ -202,6 +202,9 @@ sampling, identity guards and validation. Requires the updated native build.
 | `pcsx2_get_modules` | List loaded IOP modules |
 | `pcsx2_iop_modules` | Bounded paused runtime inventory and address-to-range association |
 | `pcsx2_iop_lifetime` | Conservative lifetime epoch and last 64 observed loader/reset/restore boundaries |
+| `pcsx2_iop_binding_create` | Retain a proven IRX candidate with its observed registration and bounded TTL |
+| `pcsx2_iop_binding_source` | Freshly revalidate a retained candidate and resolve sources at a later pause |
+| `pcsx2_iop_binding_list` / `pcsx2_iop_binding_drop` | Inspect retained history or remove one owned ID |
 | `pcsx2_iop_verify_irx` | Match a selected IRX's relocated immutable image at a guarded pause |
 | `pcsx2_iop_source` | Resolve runtime IOP addresses through a freshly verified IRX candidate |
 | `pcsx2_iop_load_watch_start` | Observe a selected HostFs IRX file and its loadcore buffer/registration calls |
@@ -219,7 +222,9 @@ initializers, at the first guarded pause after loading. Full module lifetime
 guards remain pending. [Lifetime boundaries](docs/iop-lifetime.md) now guard
 module/image/load requests and distinguish transported software-reset requests
 from CPU resets; per-module generations remain pending. Rebuild both components
-for the new capabilities.
+for the new capabilities. [Explicit IOP bindings](docs/iop-bindings.md) now allow
+fresh source verification between pauses under observed-registration guards;
+custom/direct loader tracking remains partial.
 
 ### Screenshots
 | Tool | Description |

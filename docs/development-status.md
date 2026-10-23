@@ -1,6 +1,6 @@
 # MCP development progress
 
-Updated: 2026-10-22. This records the debugging extensions after the original main
+Updated: 2026-10-23. This records the debugging extensions after the original main
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
 
@@ -27,6 +27,16 @@ behavior, native integration and tests can be reviewed together.
 
 ## Operational improvements
 
+5A3b (2026-10-23) adds scoped observed-registration generations and four explicit
+IOP binding tools. A binding starts from verified full-file provenance, then
+freshly revalidates artifact, runtime code and native namespace/sequence on every
+later source query. Modload load/stop/unload/reboot entry observations extend
+invalidation; pending IOP exception/memory watches end as `lifetime_changed`.
+Windows/TypeScript builds, 152 Node tests, 12 new live checks and 55 regressions
+passed; integration agrees across 21 native files. [Contract](iop-bindings.md).
+This completes the documented observed-path 5A3 delivery; custom/direct paths
+and universal module generations are not claimed. **F5 controlled replay is next**.
+
 5A3a (2026-10-22) adds `iop_lifetime_epoch`, native request guards and
 `pcsx2_iop_lifetime` with a 64-entry boundary journal. Actual module registry
 calls, transported standard SIF reset packets, restore attempts, locator changes
@@ -34,7 +44,8 @@ and DebugServer writes invalidate conservatively. Software request observation
 does not claim reset completion; CPU-reset identity stays separate. Windows and
 TypeScript builds, 142 Node tests, 11 new live checks and 44 regressions passed;
 native integration agrees across 21 files. [Contract](iop-lifetime.md).
-Per-module generations/reusable bindings remain **5A3b**, the next delivery.
+The later 5A3b delivery above adds scoped explicit bindings; universal lifetime
+coverage remains partial.
 
 5A2b (2026-10-22) adds explicit HostFs load watches and full-file receipts,
 matching actual descriptor bytes to loadcore input and registration calls.
@@ -45,7 +56,7 @@ checked. Windows/TypeScript builds, 136 Node tests, 11 new live checks and 33
 IRX/IOP/memory regressions passed; integration agrees across 20 native files.
 [Contract and limits](iop-load-provenance.md). Other devices/dialects and reusable
 module lifetime/generation tracking remain pending; 5A3a above adds conservative
-observed-boundary guards and **5A3b is next**.
+observed-boundary guards; 5A3b above adds revalidated bindings for that scope.
 
 5A2a (2026-10-22) adds guarded IRX immutable-image association and IOP source
 lookup. It hashes the selected local artifact, reconstructs supported relocations
@@ -89,12 +100,11 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay remains
 dependent on reset/save-state identity and module lifetime handling.
 
-1. **Define per-module generations/revalidation (5A3b).** Extend actual
-   unload/reload, software reboot and restore coverage and propagate identity
-   to operations that retain IOP state before reusing load bindings. 5A3a's
-   observed-boundary epoch and 5A2b's first-pause scope are not module
-   generations. Existing CPU-reset-only watch contracts stay explicit.
-   Additional loader devices/dialects require their own demonstrated evidence.
+1. **Implement controlled input recording/replay (F5).** Preserve ownership,
+   input exclusion and exact EOF stop; apply reset/restore identity changes and
+   the documented binding/watch invalidations. Fresh binding validation is
+   mandatory after a pause; no implicit expansion to custom/direct loader paths.
+   Additional loader/reset/BIOS coverage remains separately pending.
 2. **Correlate project diagnostics.** Relate EE/IOP events and emulator/build
    identity to application/network logs, preserving cross-process clock uncertainty.
 3. **Add measured PS2 diagnostics.** Expose verified SIF/RPC, DMA and A/V state

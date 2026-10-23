@@ -13,6 +13,11 @@ Observed release calls and standard SIF reset packets invalidate pending/current
 provenance; restore attempts clear the old module locator. These additions do
 not extend the first-pause scope or supply reusable module generations.
 
+Later [5A3b](iop-bindings.md) uses a verified first-pause receipt to create an
+explicit bounded artifact binding. That separate binding can revalidate at a
+later pause using an observed native generation; this original receipt itself
+keeps its first-pause restriction and is never silently revived.
+
 ## Workflow
 
 1. Stop before the program opens the IRX. Set ordinary breakpoints before and
@@ -100,8 +105,8 @@ normal library registration is allowed before that pause. Invalidated history
 still reports its SHA but cannot authorize source association.
 
 These are conservative pause guards, **not module generations or full lifetime
-tracking**. Software `SifIopReset`, unload/reload and custom/direct loader paths
-need 5A3 before any reusable binding. Unobserved external RAM writes, custom
+tracking**. Later 5A3a/5A3b add observed software-reset, loader/registry and
+restore invalidations plus separate revalidated bindings. Unobserved external RAM writes, custom
 loaders bypassing these imports, other I/O devices, disc/network loaders and
 buffer-only loads are outside this provenance contract. This does not prove
 the semantics of imported target functions. `module_generation` stays null.
@@ -173,5 +178,5 @@ Repeated/conflicting descriptor reads, truncated reads and unsupported FileInfo
 branches are implemented defensively; their complete matrix has not been
 exercised live. Node tests cover malformed/corrupt receipts and candidate/guard
 changes. Acceptance does not cover every BIOS, other host OSes, general
-performance, A/V playback or physical PS2 debugging. Next: **5A3 lifetime guards**;
-F5 input replay remains dependent on that work.
+performance, A/V playback or physical PS2 debugging. Later 5A3a/5A3b deliver their
+documented observed-path guards; F5 controlled replay is the next plan step.

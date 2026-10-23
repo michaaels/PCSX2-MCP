@@ -22,6 +22,10 @@ DECLARE_IMPORT(16, fixture_register_module)
 DECLARE_IMPORT(17, fixture_release_module)
 DECLARE_IMPORT(24, fixture_find_module)
 loadcore_IMPORTS_end
+extern int fixture_load_module_buffer(void *buffer);
+DECLARE_IMPORT_TABLE(modload, 1, 1)
+DECLARE_IMPORT(10, fixture_load_module_buffer)
+END_IMPORT_TABLE
 
 extern struct irx_export_table _exp_mcptest;
 int fixture_exported(void) { return 0x1234; }
@@ -31,6 +35,7 @@ static int fixture_mode;
 volatile unsigned fixture_iop_counter;
 int _start(int argc, char **argv);
 volatile int fixture_lifetime_result;
+static unsigned invalid_module[16];
 static void lifetime_probe(void) {
     ModuleInfo_t *own = fixture_find_module((void *)&_start);
     if (!own) { fixture_lifetime_result = -1; return; }
@@ -44,6 +49,11 @@ static void lifetime_probe(void) {
 static void worker(void *arg) {
     (void)arg;
     DelayThread(2000000);
+    if (fixture_mode == 5) {
+        fixture_lifetime_result = fixture_load_module_buffer(invalid_module);
+        __asm__ volatile (".globl fixture_service_done\nfixture_service_done: nop");
+        SleepThread(); return;
+    }
     if (fixture_mode == 4) { lifetime_probe(); SleepThread(); return; }
     if (fixture_mode == 3) {
         for (;;) {
@@ -79,6 +89,7 @@ int _start(int argc, char **argv) {
     if (argc > 1 && argv[1][0] == 's') fixture_mode = 2;
     if (argc > 1 && argv[1][0] == 'w') fixture_mode = 3;
     if (argc > 1 && argv[1][0] == 'l') fixture_mode = 4;
+    if (argc > 1 && argv[1][0] == 'm') fixture_mode = 5;
     thread.attr = TH_C;
     thread.option = 0;
     thread.thread = worker;

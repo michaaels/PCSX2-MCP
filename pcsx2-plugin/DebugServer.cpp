@@ -234,6 +234,16 @@ namespace DebugServer
 	static uint64_t s_iopLifetimeEpoch = 0;
 	static std::deque<LifetimeEvent> s_lifetime;
 	static bool s_lifetimeTruncated = false;
+	struct Registration
+	{
+		uint64_t sequence = 0, epoch = 0;
+		std::array<u32, 6> metadata{};
+		u32 moduleId = 0, nameAddress = 0, version = 0;
+		bool sealed = false;
+	};
+	static std::unordered_map<u32, Registration> s_registrations;
+	static uint64_t s_registrationSequence = 0;
+	static std::string s_registrationNamespace;
 	struct SIFResetPacket { u32 address = 0, next = 0, remaining = 0, copied = 0; std::array<u32, 26> words{}; };
 	static SIFResetPacket s_sifReset;
 	static bool loadActive() { return s_load.state == "armed" || s_load.state == "file_reading" || s_load.state == "file_complete" || s_load.state == "buffer_observed"; }
@@ -260,8 +270,17 @@ namespace DebugServer
 			std::chrono::system_clock::now().time_since_epoch()).count();
 	}
 
+	static void invalidateChanges(const char* reason, bool iopOnly);
 	static void lifetimeBoundary(const char* kind, u32 address = 0)
 	{
+		const std::string_view boundary(kind);
+		if (boundary != "debugger_mutation" && boundary != "cpu_reset" && boundary != "vm_reset" && boundary != "server_start")
+		{
+			invalidateChanges("lifetime_changed", true);
+			if (s_exception.iop && s_exception.state == "armed") { s_exception.state = "lifetime_changed"; s_exceptionDeadline.store(0); }
+		}
+		if (std::string_view(kind) == "register_module_call" || std::string_view(kind) == "release_module_call") s_registrations.erase(address);
+		else s_registrations.clear(); // Unknown load, reboot, restore or mutation revokes all retained identities.
 		++s_iopLifetimeEpoch;
 		s_lifetime.push_back({s_iopLifetimeEpoch, timestampMillis(), kind, address});
 		if (s_lifetime.size() > 64) { s_lifetime.pop_front(); s_lifetimeTruncated = true; }
@@ -1022,6 +1041,7 @@ namespace DebugServer
 				return failure("Exception watch VM/ELF identity changed");
 			if (iop && getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch))
 				return failure("IOP reset epoch changed before arming");
+			if (iop && getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch)) return failure("IOP lifetime changed before arming");
 			const auto mask = getNum(params, "exception_mask", 0), timeout = getNum(params, "timeout_ms", 30000);
 			if (mask < 1 || mask > UINT32_MAX || timeout < 100 || timeout > 300000) return failure("Invalid exception mask or timeout (100-300000 ms)");
 			s_exception = {}; s_exception.id = id; s_exception.sequence = ++s_exceptionSequence;
@@ -1497,9 +1517,9 @@ namespace DebugServer
 
 	// Read the layout used by upstream BiosDebugData::getIOPModules, with bounded
 	// valid reads and no live symbol database or guessed fixed BIOS list address.
-	static std::string iopModuleSnapshot(u32 imageRecord = 0)
+	static std::string iopModuleSnapshot(u32 imageRecord = 0, uint64_t expectedRegistration = 0)
 	{
-		struct Module { u32 record, next, nameAddress, version, entry, gp, text, textSize, dataSize, bssSize; std::string name; };
+		struct Module { u32 record, next, nameAddress, version, entry, gp, text, textSize, dataSize, bssSize, moduleId; std::string name; uint64_t generation = 0, registrationEpoch = 0; };
 		std::vector<Module> modules;
 		std::string reason;
 		const u32 root = s_iopModuleRoot;
@@ -1520,11 +1540,20 @@ namespace DebugServer
 				{ reason = "module_list_cycle"; break; }
 				Module m{}; m.record = current;
 				if (current > 0x00200000u - 40 || !word(current, m.next) || !word(current + 4, m.nameAddress) ||
-					!word(current + 8, m.version) || !word(current + 0x10, m.entry) || !word(current + 0x14, m.gp) ||
+					!word(current + 8, m.version) || !word(current + 12, m.moduleId) || !word(current + 0x10, m.entry) || !word(current + 0x14, m.gp) ||
 					!word(current + 0x18, m.text) || !word(current + 0x1c, m.textSize) ||
 					!word(current + 0x20, m.dataSize) || !word(current + 0x24, m.bssSize))
 				{ reason = "module_record_unreadable_or_excluded"; break; }
 				m.version &= 0xffff;
+				m.moduleId &= 0xffff;
+				if (auto it = s_registrations.find(current); it != s_registrations.end())
+				{
+					auto& observed = it->second;
+					const std::array<u32, 6> metadata{m.entry, m.gp, m.text, m.textSize, m.dataSize, m.bssSize};
+					if (observed.metadata != metadata || observed.nameAddress != m.nameAddress || observed.version != m.version ||
+						(observed.sealed && observed.moduleId != m.moduleId)) s_registrations.erase(it);
+					else { observed.sealed = true; observed.moduleId = m.moduleId; m.generation = observed.sequence; m.registrationEpoch = observed.epoch; }
+				}
 				if (m.nameAddress)
 				{
 					bool terminated = false;
@@ -1547,12 +1576,19 @@ namespace DebugServer
 				modules.push_back(std::move(m)); current = modules.back().next;
 			}
 		}
+		if (!reason.empty()) s_registrations.clear();
+		else for (auto it = s_registrations.begin(); it != s_registrations.end(); )
+		{
+			if (std::none_of(modules.begin(), modules.end(), [&](const auto& m) { return m.record == it->first; })) it = s_registrations.erase(it);
+			else ++it;
+		}
 		const Module* imageModule = nullptr;
 		if (imageRecord)
 		{
 			if (!reason.empty()) return failure("IOP module image requires a complete observed table");
 			for (const auto& m : modules) if (m.record == imageRecord) imageModule = &m;
 			if (!imageModule) return failure("IOP module record is no longer observed");
+			if (expectedRegistration && imageModule->generation != expectedRegistration) return failure("IOP observed registration generation changed or unavailable");
 			const uint64_t size = static_cast<uint64_t>(imageModule->textSize) + imageModule->dataSize;
 			if (!size || size > 256 * 1024 || (imageModule->text & 3) ||
 				static_cast<uint64_t>(imageModule->text) + size + imageModule->bssSize > 0x00200000)
@@ -1575,6 +1611,9 @@ namespace DebugServer
 			j.startObject(); j.key("record_address"); j.valHex32(m.record); j.key("next_address"); j.valHex32(m.next);
 			j.key("name_address"); j.valHex32(m.nameAddress); j.key("name"); if (m.nameAddress) j.valStr(m.name); else j.valJson("null");
 			j.kv("version", m.version); j.key("entry"); j.valHex32(m.entry); j.key("gp"); j.valHex32(m.gp);
+			j.kv("module_id", m.moduleId); j.key("observed_generation");
+			if (m.generation) { j.startObject(); j.kv("scope", "observed_loadcore_registration"); j.kv("namespace", s_registrationNamespace); j.kv("sequence", m.generation); j.kv("registration_epoch", m.registrationEpoch); j.kv("module_id", m.moduleId); j.endObject(); }
+			else j.valJson("null");
 			j.key("text_address"); j.valHex32(m.text); j.kv("text_size", m.textSize); j.kv("data_size", m.dataSize); j.kv("bss_size", m.bssSize);
 			j.endObject();
 		}
@@ -1609,7 +1648,10 @@ namespace DebugServer
 		if (record <= 0 || record > 0x00200000 - 40 || (record & 3) ||
 			getNum(params, "expected_revision", -1) != static_cast<int64_t>(s_inspectionRevision))
 			return failure("IOP module image pause revision or record changed");
-		return iopModuleSnapshot(static_cast<u32>(record));
+		const auto generation = getNum(params, "expected_registration_sequence", 0);
+		if (generation < 0) return failure("Invalid observed registration generation");
+		if (generation && getStr(params, "expected_registration_namespace") != s_registrationNamespace) return failure("IOP observed registration generation namespace changed");
+		return iopModuleSnapshot(static_cast<u32>(record), static_cast<uint64_t>(generation));
 	}
 
 	static void finalizeException(uint64_t sequence)
@@ -2006,7 +2048,7 @@ namespace DebugServer
 		auto found = std::find_if(s_changes.begin(), s_changes.end(), [&](const auto& w) { return w.id == id; });
 		if (cmd == "memory_watch_start")
 		{
-			for (const char* key : {"address", "size", "mask", "sample_interval_ms", "timeout_ms", "expected_process_id", "expected_session", "expected_execution_epoch", "expected_elf_crc", "expected_iop_reset_epoch"})
+			for (const char* key : {"address", "size", "mask", "sample_interval_ms", "timeout_ms", "expected_process_id", "expected_session", "expected_execution_epoch", "expected_elf_crc", "expected_iop_reset_epoch", "expected_iop_lifetime_epoch"})
 			{
 				const auto field = params.find(key);
 				if (field == params.end()) continue;
@@ -2040,6 +2082,7 @@ namespace DebugServer
 				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) || getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
 				getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC() || (iop && getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch)))
 				return failure("Memory watch VM/ELF identity changed");
+			if (iop && getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch)) return failure("IOP lifetime changed before arming");
 			const auto address = getNum(params, "address", -1), size = getNum(params, "size", 4);
 			if (size != 1 && size != 2 && size != 4) return failure("Memory watch size must be 1, 2 or 4");
 			const auto maximum = size == 4 ? int64_t{UINT32_MAX} : (int64_t{1} << (size * 8)) - 1;
@@ -2203,7 +2246,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -3032,6 +3075,8 @@ namespace DebugServer
 		s_iopModuleRoot = 0;
 		s_eeOrigin = {}; s_iopOrigin = {};
 		++s_session;
+		s_registrationNamespace = std::to_string(timestampMillis()) + ":" + std::to_string(s_session.load()) + ":" +
+			std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
 		const uint64_t watchdogSession = s_session.load();
 		std::thread([watchdogSession]() {
 			uint64_t queuedOperation = 0, queuedException = 0, queuedExpiry = 0, queuedDump = 0, queuedMedia = 0, queuedLoad = 0;
@@ -3385,6 +3430,16 @@ namespace DebugServer
 	void OnIOPModuleRegister(uint32_t record)
 	{
 		lifetimeBoundary("register_module_call", record);
+		Registration observed; observed.sequence = ++s_registrationSequence; observed.epoch = s_iopLifetimeEpoch;
+		bool readable = record && !(record & 3) && record <= 0x00200000 - 40;
+		if (readable) { bool valid = false; observed.nameAddress = r3000Debug.read32(record + 4, valid); readable = valid; }
+		if (readable) { bool valid = false; observed.version = r3000Debug.read32(record + 8, valid) & 0xffff; readable = valid; }
+		for (u32 i = 0; readable && i < observed.metadata.size(); ++i) { bool valid = false; observed.metadata[i] = r3000Debug.read32(record + 16 + i * 4, valid); readable = valid; }
+		if (readable)
+		{
+			if (s_registrations.size() >= 256) s_registrations.clear();
+			s_registrations[record] = observed;
+		}
 		if (!checkLoadContext() || s_load.state != "buffer_observed" || record != s_load.info[3] - 48) return;
 		const std::array<u32, 6> expected{s_load.info[1] + s_load.info[3], s_load.info[2] + s_load.info[3], s_load.info[3], s_load.info[4], s_load.info[5], s_load.info[6]};
 		for (u32 i = 0; i < expected.size(); ++i) { bool valid = false; const u32 value = r3000Debug.read32(record + 16 + i * 4, valid); if (!valid || value != expected[i]) { invalidateLoad("registration_metadata_mismatch"); return; } }
@@ -3396,6 +3451,12 @@ namespace DebugServer
 	void OnIOPModuleRelease(uint32_t record)
 	{
 		invalidateLoad("module_release_call"); lifetimeBoundary("release_module_call", record);
+	}
+
+	void OnIOPModuleService(uint32_t ordinal)
+	{
+		if (ordinal == 4) { invalidateLoad("software_reset_requested"); s_iopModuleRoot = 0; s_sifReset = {}; }
+		lifetimeBoundary(ordinal == 4 ? "module_reboot_call" : "module_service_call", ordinal);
 	}
 
 	void OnStateLoadAttempt()

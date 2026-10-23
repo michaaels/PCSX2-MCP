@@ -1,5 +1,11 @@
 # IOP exception watches
 
+With later [5A3b](iop-bindings.md), starts also guard the current lifetime epoch.
+Observed IOP load/registry/service/reboot/restore boundaries terminate an armed
+IOP watch as `lifetime_changed`, preserving frozen reports. The CPU reset counter
+still declares `cpu_reset_only`; this separate guard does not claim detection of
+every custom reboot path. The acceptance below records the earlier delivery.
+
 Rebuild PCSX2 with `tools/apply-debug-server.py` and the native build, rebuild the
 Node server (`npm run build`), then restart the MCP client. The capability is
 `iop_exception_watch`, with `iop_trap_provenance` for JIT BREAK/SYSCALL origin.
@@ -36,9 +42,10 @@ IOP watch as `cpu_reset`. VM reset remains `vm_changed`; captured reports retain
 their original identity and survive resets until another watch or VM shutdown.
 `iop_reset_scope: cpu_reset_only` is explicit in capabilities, watch state and
 report. It excludes guest software reboot (`SifIopReset`), module unload/reload,
-and save-state restore. A watch is a CPU observation filter, not a module lifetime
-guard, and can remain armed through software reboot. Module generations and
-software-reboot correlation remain pending.
+and save-state restore. The original watch could remain armed through software
+reboot. Current 5A3b builds additionally guard lifetime at arming and terminate
+pending IOP watches at observed boundaries as `lifetime_changed`. This does not
+turn the CPU filter or its historical reports into artifact bindings.
 
 The hook at the end of native `psxException` freezes:
 
@@ -130,6 +137,8 @@ source hashes. Reports:
 `trap-provenance-ee/exception-z2UVWo/validation.json`, and
 `trap-provenance-step/source-step-4fwrhQ/validation.json` under the same parent.
 No SMS runtime/decoder/Bridge changes, playback/audio or hardware acceptance.
-IOP interpreter, Linux host, full code coverage, IRX/source mapping, software
-reboot generations, IRX artifact/source binding and IOP no-progress monitoring remain pending. The separate
+IOP interpreter, Linux host, full code coverage, universal software reboot
+generations and IOP no-progress monitoring remain pending. Later
+[IRX tools](irx-source-association.md) and [explicit bindings](iop-bindings.md)
+add their separately validated source/artifact scope. The separate
 [progress watch](progress-watches.md) observes an explicit EE RAM signal only.

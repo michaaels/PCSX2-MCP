@@ -163,6 +163,16 @@ def main() -> None:
     vm_text = replace_once(vm_text, 'bool VMManager::DoLoadState(const char* filename, Error* error)\n{',
         'bool VMManager::DoLoadState(const char* filename, Error* error)\n{\n\tDebugServer::OnStateLoadAttempt();', str(vm))
     breakpoint_files[iop_bios] = bios_text
+    # Public modload entry observations also catch loaders whose internal
+    # loadcore calls do not pass through import stubs. Never replace guest calls.
+    service_helpers = ''.join(f'\t\tint ObserveModload{n}_HLE() {{ DebugServer::OnIOPModuleService({n}); return 0; }}\n'
+                              for n in (4, 5, 6, 7, 9, 10, 11, 19, 20, 21, 26, 27))
+    bios_text = replace_once(bios_text, '\t\tint ObserveLoadObject_HLE()',
+        service_helpers + '\t\tint ObserveLoadObject_HLE()', str(iop_bios))
+    service_cases = ''.join(f'\t\t\tEXPORT_H({n:3}, ObserveModload{n})\n' for n in (4, 5, 6, 7, 9, 10, 11, 19, 20, 21, 26, 27))
+    service_exports = '\t\tif (libname == "modload") { using namespace loadcore; switch (index) {\n' + service_cases + '\t\t} }\n'
+    bios_text = replace_once(bios_text, '\t\tMODULE(sysmem)\n', service_exports + '\t\tMODULE(sysmem)\n', str(iop_bios))
+    breakpoint_files[iop_bios] = bios_text
     sif1 = source / 'pcsx2/Sif1.cpp'
     sif1_text = replace_once(sif1.read_text(encoding='utf-8'), '#include "IopHw.h"',
         '#include "IopHw.h"\n#include "DebugTools/DebugServer.h"', str(sif1))

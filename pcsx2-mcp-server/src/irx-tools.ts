@@ -9,7 +9,8 @@ import { decodeLoadReceipt, checkLoadAssociation } from './iop-load.js';
 
 export const irxFields = { irx: z.string().min(1), module_record: address,
   expected_sha256: z.string().regex(/^[\da-fA-F]{64}$/).optional(), load_watch_id: watchId.optional() };
-export const irxOptions = z.object({ ...irxFields, addresses: z.array(address).min(1).max(64).optional() });
+export const irxOptions = z.object({ ...irxFields, addresses: z.array(address).min(1).max(64).optional(),
+  expected_registration_sequence: z.number().int().positive().safe().optional(), expected_registration_namespace: z.string().min(1).max(128).optional() });
 export async function inspectRuntimeIrx(client: DebugServerClient, input: z.input<typeof irxOptions>,
   sources = false, signal?: AbortSignal, resolver = new SourceResolver()) {
   const options = irxOptions.parse(input);
@@ -18,14 +19,20 @@ export async function inspectRuntimeIrx(client: DebugServerClient, input: z.inpu
     if (!caps.features.includes('iop_module_image') || caps.process_id === undefined || caps.execution_epoch === undefined || caps.iop_reset_epoch === undefined)
       throw new Error('Rebuild PCSX2: iop_module_image and VM/IOP identities required');
     if (options.load_watch_id && !caps.features.includes('iop_load_provenance')) throw new Error('Rebuild PCSX2: iop_load_provenance required');
+    if (options.expected_registration_sequence && !caps.features.includes('iop_module_generations')) throw new Error('Rebuild PCSX2: iop_module_generations required');
     const identity = { ...caps, process_id: caps.process_id, execution_epoch: caps.execution_epoch, iop_reset_epoch: caps.iop_reset_epoch };
     const table = await client.iopModuleSnapshot(identity);
     const observed = table.modules.find(m => m.record_address === options.module_record);
     if (table.status !== 'observed' || !observed) throw new Error('Module record not observed; choose from pcsx2_iop_modules');
+    if (options.expected_registration_sequence !== undefined && observed.observed_generation?.sequence !== options.expected_registration_sequence)
+      throw new Error('IOP observed registration generation changed or unavailable');
+    if (options.expected_registration_namespace !== undefined && observed.observed_generation?.namespace !== options.expected_registration_namespace)
+      throw new Error('IOP observed registration generation namespace changed');
     const irx = await inspectIrx(options.irx);
     if (options.expected_sha256 && options.expected_sha256.toLowerCase() !== irx.sha256) throw new Error('IRX SHA256 does not match expected_sha256');
     signal?.throwIfAborted();
-    const expected = { ...identity, revision: table.revision };
+    const expected = { ...identity, revision: table.revision, registration_sequence: options.expected_registration_sequence,
+      registration_namespace: options.expected_registration_namespace ?? observed.observed_generation?.namespace };
     const before = await client.iopModuleImage(expected, options.module_record);
     const sameTable = (s: typeof before) => s.root_discovery_sequence === table.root_discovery_sequence && s.list_address === table.list_address &&
       JSON.stringify(s.module) === JSON.stringify(observed);
@@ -52,7 +59,7 @@ export async function inspectRuntimeIrx(client: DebugServerClient, input: z.inpu
     signal?.throwIfAborted();
     const { eligible: predicate, ...evidence } = verified;
     return { ok: true, cpu: 'iop', scope: 'paused_revalidated_code_association',
-      artifact: { irx: irx.irx, sha256: irx.sha256, has_debug_lines: irx.has_debug_lines, debug_line_status: irx.debug_line_status },
+      artifact: { irx: irx.irx, sha256: irx.sha256, file_version: irx.file_version, has_debug_lines: irx.has_debug_lines, debug_line_status: irx.debug_line_status },
       evidence: { ...evidence, original_loaded_file_sha256: load?.summary.file_sha256 ?? null },
       ...(load ? { load_provenance: load.summary, candidate_relationship: 'identical_complete_load_image_and_relocation_plan' } : {}),
       runtime: { process_id: caps.process_id, session: caps.session, execution_epoch: caps.execution_epoch,

@@ -1,6 +1,6 @@
 # Plan de implementación y publicación
 
-Actualizado: 2026-10-22. Autorizado por el usuario: implementar las mejoras del
+Actualizado: 2026-10-23. Autorizado por el usuario: implementar las mejoras del
 estudio de forks y después continuar el plan original de depuración PS2.
 
 ## Regla de entrega
@@ -22,7 +22,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | F4 | Observadores de cambios de memoria EE/IOP en el hilo CPU | Implementado y probado; incluido en main con esta entrega |
 | 5A2a | Asociar candidato IRX/fuentes por imagen relocada inmutable en pausa | Implementado y probado en 0xff80; no prueba archivo original completo ni generación |
 | 5A2b | Procedencia del archivo realmente cargado y cobertura adicional IRX/imports/exports | Implementado y probado para HostFs/0xff80 y exports acotados; otros dispositivos/dialectos pendientes |
-| 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | Parcial: 5A3a probado para límites observados; sigue 5A3b, generaciones y revalidación; requisito para F5 |
+| 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | 5A3a/5A3b implementados y probados en caminos observados; generaciones acotadas, revalidación y corte de watches IOP; cobertura directa/custom pendiente |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Pendiente; después de 5A2–5A3 |
 | 5B–8 | Correlación del proyecto, diagnósticos medidos, regresión, DAP y validación física | Continuar el roadmap original |
 
@@ -73,8 +73,15 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   SIF de reset, restore y mutaciones no se convierten en generaciones de módulo.
   Windows/TypeScript compilados, 142 pruebas Node, 11 checks nuevos y 44 de
   regresión; integración consistente en 21 archivos. [Contrato](iop-lifetime.md).
-- Siguiente entrega: **5A3b**, generaciones por módulo y revalidación antes de
-  reutilizar identidades; ampliar caminos reales de unload/reload, reboot y
-  propagación a operaciones que retienen estado IOP. Ni la época conservadora
-  ni la primera pausa de 5A2b completan esa aceptación. F5 exige cerrar 5A3.
-  Cada paso sigue requiriendo publicación validada en main.
+- 5A3b (2026-10-23): generaciones de registro observado con namespace nativo,
+  secuencia, ID y metadatos sellados; vínculos explícitos con procedencia inicial
+  y revalidación completa de archivo/código/fuentes en cada uso. Modload y otras
+  fronteras revocan tracking; watches IOP pendientes terminan como
+  `lifetime_changed`. Windows/TypeScript compilados, 152 pruebas Node, 12 checks
+  nuevos y 55 de regresión; integración consistente en 21 archivos.
+  [Contrato y límites](iop-bindings.md). No se anuncia tracking universal.
+- Siguiente entrega: **F5**, grabación/replay `.p2m2` controlado, aplicando
+  identidad e invalidaciones de reset/restore a sus operaciones. Solo podrá
+  reutilizar vínculos mediante revalidación explícita; no ampliar implícitamente
+  el alcance de los caminos observados. Otros loaders/reboots/BIOS mantienen
+  aceptación pendiente. Cada paso requiere publicación validada en main.

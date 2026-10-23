@@ -84,6 +84,18 @@ are in [exceptions](exceptions.md), [progress watches](progress-watches.md),
 
 ## Evidence and publication scope
 
+5A3b (2026-10-23): Windows native/TypeScript builds, **152 Node tests**, **12 new
+binding/generation live checks** and **55 regressions** passed: 67 live checks.
+Source lookup revalidated after resume/reconnect; actual release/re-registration
+at the same address/code, failed modload buffer load, same-byte write, changed
+artifact, native restore and software reboot revoked old identity. Native
+namespace/sequence and stale IOP-watch guards refused; pending IOP observations
+terminated while an independent EE watch remained armed. Pristine/upgrade from
+`3e5369a`/reapply/build agree across **21 native files**.
+[Contract and reproduction](iop-bindings.md). Scope is observed registration
+imports plus repeated artifact/image proof, not universal generation tracking.
+No new hardware, host OS, A/V or general performance acceptance.
+
 5A3a (2026-10-22): Windows native/TypeScript builds, **142 Node tests**, **11
 lifetime-boundary live checks** and **44 regressions** (11 load, 10 IRX, 13 IOP,
 10 memory) passed. A genuine release removed the fixture from the module list;

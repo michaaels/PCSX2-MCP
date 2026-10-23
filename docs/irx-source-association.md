@@ -10,7 +10,11 @@ at its first guarded pause. Neither mode establishes a reusable module generatio
 With [5A3a](iop-lifetime.md), snapshot/image requests additionally guard
 `iop_lifetime_epoch`. Observed loader/registry/reset/restore boundaries invalidate
 old request identities even if code, address and name remain the same. The
-epoch covers observed boundaries only; full per-module generations remain 5A3b.
+epoch covers observed boundaries only. The later
+[5A3b binding tools](iop-bindings.md) retain an explicit artifact and observed
+registration after first-pause full-file verification. Every later source query
+repeats artifact/image checks with that native token. These unbound tools keep
+their original behavior; universal module generation claims remain unproven.
 
 ## Workflow
 
@@ -85,9 +89,9 @@ code but different writable initializers or debug metadata can both match this
 scope. A caller-supplied expected SHA selects a specific local candidate; it does
 not prove that exact file was originally loaded. **5A2b** adds observed full-file
 HostFs provenance, full original load-image comparison and bounded export tables;
-other devices and module formats remain pending. Module unload/reload,
-software `SifIopReset` and savestate lifetime guards remain **5A3**. These tools
-do not authorize reuse of an old record or binding across those operations.
+other devices and module formats remain pending. Later **5A3a/5A3b** add
+observed-boundary invalidation and separately revalidated bindings. These
+unbound tools do not authorize reuse of an old record after lifetime changes.
 
 ## Supported dialect and bounds
 

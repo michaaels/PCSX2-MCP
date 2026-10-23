@@ -3,7 +3,11 @@ import { address } from './symbols.js';
 
 const counter = z.number().int().nonnegative().safe();
 const word = z.number().int().min(0).max(0xffffffff);
+export const observedGeneration = z.object({ scope: z.literal('observed_loadcore_registration'), sequence: counter.positive(),
+  namespace: z.string().min(1).max(128).regex(/^\d+:\d+:\d+$/),
+  registration_epoch: counter.positive(), module_id: z.number().int().min(0).max(65535) });
 const runtimeModule = z.object({ record_address: address, next_address: address, name_address: address,
+  module_id: z.number().int().min(0).max(65535).optional(), observed_generation: observedGeneration.nullable().optional(),
   name: z.string().regex(/^[\x20-\x7e]{0,127}$/).nullable(), version: z.number().int().min(0).max(65535),
   entry: address, gp: address, text_address: address, text_size: word, data_size: word, bss_size: word });
 const snapshot = z.object({ ok: z.literal(true), cpu: z.literal('iop'), snapshot_id: counter, timestamp_ms: counter,
@@ -34,6 +38,8 @@ export function parseIopModuleSnapshot(value: unknown) {
         (m.name === null) !== (Number(m.name_address) === 0) || !nameAddressAllowed(Number(m.name_address)))
       throw new Error('Invalid IOP module record chain/name');
     seen.add(m.record_address);
+    if (m.observed_generation && (m.module_id !== m.observed_generation.module_id || s.iop_lifetime_epoch === undefined ||
+        m.observed_generation.registration_epoch > s.iop_lifetime_epoch)) throw new Error('Invalid observed IOP registration identity');
   }
   return s;
 }
