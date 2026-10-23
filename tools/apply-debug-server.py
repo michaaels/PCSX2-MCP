@@ -145,16 +145,34 @@ def main() -> None:
         '\t\t\tconst int result = translate_error(static_cast<int>(::read(fd, buf, count)));\n'
         '\t\t\tif (observed_offset >= 0 && result > 0) DebugServer::OnIOPHostFileRead(fd, observed_offset, buf, static_cast<u32>(result));\n'
         '\t\t\treturn result;', str(iop_bios))
+    old_observers = ('\t\tint ObserveLoadObject_HLE() { DebugServer::OnIOPLoadObject(a0, a1); return 0; }\n'
+        '\t\tint ObserveModuleRegister_HLE() { DebugServer::OnIOPModuleRegister(a0); return 0; }\n\n')
+    observers = ('\t\tint ObserveLoadObject_HLE() { DebugServer::OnIOPLoadObject(a0, a1); return 0; }\n'
+        '\t\tint ObserveModuleRelease_HLE() { DebugServer::OnIOPModuleRelease(a0); return 0; }\n'
+        '\t\tint ObserveModuleRegister_HLE() { DebugServer::OnIOPModuleRegister(a0); return 0; }\n\n')
+    if old_observers in bios_text:
+        bios_text = replace_once(bios_text, old_observers, observers, str(iop_bios))
     bios_text = replace_once(bios_text, '\t\tint RegisterLibraryEntries_HLE()\n',
-        '\t\tint ObserveLoadObject_HLE() { DebugServer::OnIOPLoadObject(a0, a1); return 0; }\n'
-        '\t\tint ObserveModuleRegister_HLE() { DebugServer::OnIOPModuleRegister(a0); return 0; }\n\n'
-        '\t\tint RegisterLibraryEntries_HLE()\n', str(iop_bios))
+        observers + '\t\tint RegisterLibraryEntries_HLE()\n', str(iop_bios))
+    old_exports = '\t\tMODULE(loadcore)\n\t\t\tEXPORT_H( 16, ObserveModuleRegister)\n\t\t\tEXPORT_H( 23, ObserveLoadObject)\n'
+    exports = '\t\tMODULE(loadcore)\n\t\t\tEXPORT_H( 17, ObserveModuleRelease)\n\t\t\tEXPORT_H( 16, ObserveModuleRegister)\n\t\t\tEXPORT_H( 23, ObserveLoadObject)\n'
+    if old_exports in bios_text:
+        bios_text = replace_once(bios_text, old_exports, exports, str(iop_bios))
     bios_text = replace_once(bios_text, '\t\tMODULE(loadcore)\n\t\t\tEXPORT_H(  6, RegisterLibraryEntries)',
-        '\t\tMODULE(loadcore)\n\t\t\tEXPORT_H( 16, ObserveModuleRegister)\n\t\t\tEXPORT_H( 23, ObserveLoadObject)\n'
-        '\t\t\tEXPORT_H(  6, RegisterLibraryEntries)', str(iop_bios))
+        exports + '\t\t\tEXPORT_H(  6, RegisterLibraryEntries)', str(iop_bios))
     vm_text = replace_once(vm_text, 'bool VMManager::DoLoadState(const char* filename, Error* error)\n{',
         'bool VMManager::DoLoadState(const char* filename, Error* error)\n{\n\tDebugServer::OnStateLoadAttempt();', str(vm))
     breakpoint_files[iop_bios] = bios_text
+    sif1 = source / 'pcsx2/Sif1.cpp'
+    sif1_text = replace_once(sif1.read_text(encoding='utf-8'), '#include "IopHw.h"',
+        '#include "IopHw.h"\n#include "DebugTools/DebugServer.h"', str(sif1))
+    sif1_text = replace_once(sif1_text, '\tsif1.fifo.read((u32*)iopPhysMem(hw_dma10.madr), readSize);',
+        '\tsif1.fifo.read((u32*)iopPhysMem(hw_dma10.madr), readSize);\n'
+        '\tDebugServer::OnSIF1Write(hw_dma10.madr, static_cast<u32>(readSize));', str(sif1))
+    sif1_text = replace_once(sif1_text, '\tif (sif1tag.IRQ  || (sif1tag.ID & 4)) sif1.iop.end = true;',
+        '\tDebugServer::OnSIF1Tag(hw_dma10.madr, static_cast<u32>(sif1.iop.counter), sif1tag.IRQ || (sif1tag.ID & 4));\n'
+        '\tif (sif1tag.IRQ  || (sif1tag.ID & 4)) sif1.iop.end = true;', str(sif1))
+    breakpoint_files[sif1] = sif1_text
     for filename, functions in {
         'pcsx2/Interpreter.cpp': [('void intBreakpoint(bool memcheck)', False, 'memcheck')],
         'pcsx2/R3000AInterpreter.cpp': [('void psxBreakpoint(bool memcheck)', True, 'memcheck')],

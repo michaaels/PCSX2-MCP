@@ -34,6 +34,7 @@ import { defaultPorts, tcpPort } from './ports.js';
 import { dumpOptions, parseDump, type DumpOptions } from './gs-dump.js';
 import { mediaOptions, parseMedia, type MediaOptions } from './media.js';
 import { loadState } from './iop-load.js';
+import { lifetimeResponse } from './iop-lifetime.js';
 
 export interface DebugRegister {
   name: string;
@@ -309,11 +310,13 @@ export class DebugServerClient {
   async startIopLoadWatch(id: string, expected: StepIdentity & { iop_reset_epoch: number }, input: { path: string; sha256: string; size: number; prefix: string; timeout_ms: number }) {
     watchId.parse(id);
     const response = await this.send({ cmd: 'iop_load_start', watch_id: id, ...input,
+      expected_iop_lifetime_epoch: expected.iop_lifetime_epoch,
       expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
       expected_iop_reset_epoch: expected.iop_reset_epoch, expected_elf: expected.elf, expected_elf_crc: expected.elf_crc });
     if (!response.ok) throw Object.assign(new Error(response.error ?? 'IOP load watch rejected'), { native_rejected: true });
     const result = loadState.parse(response);
     if (result.watch_id !== id || result.state !== 'armed' || result.session !== expected.session || result.execution_epoch !== expected.execution_epoch ||
+        result.iop_lifetime_epoch !== expected.iop_lifetime_epoch ||
         result.iop_reset_epoch !== expected.iop_reset_epoch || result.elf !== expected.elf || result.elf_crc !== expected.elf_crc ||
         result.expected_sha256 !== input.sha256 || result.size !== input.size || result.path.replaceAll('\\', '/') !== input.path.replaceAll('\\', '/'))
       throw new Error('Unexpected IOP load watch identity/artifact');
@@ -468,7 +471,9 @@ export class DebugServerClient {
   }
 
   async getCapabilities() {
-    return capabilitiesResponse.parse(await this.sessionCommand({ cmd: 'capabilities' }));
+    const result = capabilitiesResponse.parse(await this.sessionCommand({ cmd: 'capabilities' }));
+    if (result.features.includes('iop_lifetime') && result.iop_lifetime_epoch === undefined) throw new Error('IOP lifetime capability missing epoch');
+    return result;
   }
 
   async getController(controller = 0) {
@@ -784,9 +789,10 @@ export class DebugServerClient {
 
   async iopModuleSnapshot(expected: StepIdentity & { iop_reset_epoch: number }) {
     const result = parseIopModuleSnapshot(await this.sessionCommand({ cmd: 'iop_module_snapshot',
+      expected_iop_lifetime_epoch: expected.iop_lifetime_epoch,
       expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
       expected_iop_reset_epoch: expected.iop_reset_epoch, expected_elf: expected.elf, expected_elf_crc: expected.elf_crc }));
-    if (result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.iop_reset_epoch !== expected.iop_reset_epoch ||
+    if (result.iop_lifetime_epoch !== expected.iop_lifetime_epoch || result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.iop_reset_epoch !== expected.iop_reset_epoch ||
         result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc)) throw new Error('IOP module snapshot identity mismatch');
     return result;
   }
@@ -794,14 +800,17 @@ export class DebugServerClient {
   async iopModuleImage(expected: StepIdentity & { iop_reset_epoch: number; revision: number }, record: string) {
     address.parse(record);
     const result = parseIopModuleImage(await this.sessionCommand({ cmd: 'iop_module_image', module_record: record,
+      expected_iop_lifetime_epoch: expected.iop_lifetime_epoch,
       expected_revision: expected.revision, expected_process_id: expected.process_id, expected_session: expected.session,
       expected_execution_epoch: expected.execution_epoch, expected_iop_reset_epoch: expected.iop_reset_epoch,
       expected_elf: expected.elf, expected_elf_crc: expected.elf_crc }));
-    if (result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.iop_reset_epoch !== expected.iop_reset_epoch ||
+    if (result.iop_lifetime_epoch !== expected.iop_lifetime_epoch || result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.iop_reset_epoch !== expected.iop_reset_epoch ||
         result.revision !== expected.revision || result.image_record !== record || result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc))
       throw new Error('IOP module image identity/revision mismatch');
     return result;
   }
+
+  async iopLifetime() { return lifetimeResponse.parse(await this.sessionCommand({ cmd: 'iop_lifetime' })); }
 
   async getModules(cpu: CpuTarget = 'iop'): Promise<Array<{ name: string; version: number }>> {
     const resp = await this.send({ cmd: 'get_modules', cpu });

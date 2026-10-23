@@ -7,4 +7,4 @@ export const guardedStepResponse = z.object({
   cleanup_complete: z.boolean(), reason: z.string(), old_pc: address, pc: address, target: address, opcode: address,
   instruction_units: z.number().int().min(1).max(2), is_call: z.boolean(), is_return: z.boolean(), cause: address, epc: address,
 });
-export type StepIdentity = { process_id: number; session: number; elf: string; elf_crc: string; execution_epoch: number };
+export type StepIdentity = { process_id: number; session: number; elf: string; elf_crc: string; execution_epoch: number; iop_lifetime_epoch?: number };

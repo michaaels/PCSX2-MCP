@@ -7,6 +7,11 @@ Without a load receipt it does not establish the full original load-file
 identity. Optional `load_watch_id` adds [observed load provenance](iop-load-provenance.md)
 at its first guarded pause. Neither mode establishes a reusable module generation.
 
+With [5A3a](iop-lifetime.md), snapshot/image requests additionally guard
+`iop_lifetime_epoch`. Observed loader/registry/reset/restore boundaries invalidate
+old request identities even if code, address and name remain the same. The
+epoch covers observed boundaries only; full per-module generations remain 5A3b.
+
 ## Workflow
 
 1. Pause the VM through the normal debugger controls.

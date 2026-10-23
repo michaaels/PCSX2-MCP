@@ -13,8 +13,9 @@ export const loadState = z.object({ ok: z.literal(true), watch_id: watchId,
   state: z.enum(['armed', 'file_reading', 'file_complete', 'buffer_observed', 'registered', 'expired', 'cancelled',
     'vm_changed', 'cpu_reset', 'vm_stopped', 'debugger_mutation', 'savestate_load_attempt', 'ambiguous_file_open',
     'file_mode_or_size_mismatch', 'file_extent_changed', 'inconsistent_file_reads', 'incomplete_file_reads',
-    'source_header_changed', 'unsupported_file_info_layout', 'registration_metadata_mismatch']),
+    'source_header_changed', 'unsupported_file_info_layout', 'registration_metadata_mismatch', 'module_release_call', 'software_reset_requested']),
   active: z.boolean(), session: count, execution_epoch: count, iop_reset_epoch: count, elf: z.string(), elf_crc: address,
+  iop_lifetime_epoch: count.optional(),
   path: z.string().min(1).max(4096), expected_sha256: z.string().regex(/^[\da-f]{64}$/), size: count.min(64).max(1024 * 1024),
   covered_bytes: count, read_count: count, file_closed: z.boolean(), binding_available: z.boolean(), binding_reason: z.string(), binding_revision: count,
   buffer_address: address, file_info_address: address, module_record: address, loader_sample_pc: address,
@@ -45,11 +46,12 @@ export function decodeLoadReceipt(input: unknown) {
     file_size: bytes.length, file_bytes_verified: true, filesystem_reads_verified: true, loader_buffer_verified: true } };
 }
 export function checkLoadAssociation(receipt: ReturnType<typeof decodeLoadReceipt>, candidate: ReturnType<typeof parseIrx>, current: {
-  session: number; execution_epoch: number; iop_reset_epoch: number; revision: number; elf: string; elf_crc: string;
+  session: number; execution_epoch: number; iop_reset_epoch: number; revision: number; elf: string; elf_crc: string; iop_lifetime_epoch?: number;
 }, record: string) {
   const s = receipt.state;
   if (!s.binding_available || s.binding_revision !== current.revision || s.session !== current.session || s.execution_epoch !== current.execution_epoch ||
-      s.iop_reset_epoch !== current.iop_reset_epoch || s.elf !== current.elf || s.elf_crc !== current.elf_crc || s.module_record !== record)
+      s.iop_reset_epoch !== current.iop_reset_epoch || s.iop_lifetime_epoch !== current.iop_lifetime_epoch ||
+      s.elf !== current.elf || s.elf_crc !== current.elf_crc || s.module_record !== record)
     throw new Error('IOP load receipt does not belong to this module/current guarded pause');
   const plan = (x: ReturnType<typeof parseIrx>) => x.relocationGroups.map(g => g.map(r => [r.offset, r.type]));
   if (!candidate.image.equals(receipt.irx.image) || !candidate.moduleInfo.equals(receipt.irx.moduleInfo) ||

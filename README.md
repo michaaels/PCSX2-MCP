@@ -201,6 +201,7 @@ sampling, identity guards and validation. Requires the updated native build.
 | `pcsx2_get_threads` | List EE/IOP BIOS threads |
 | `pcsx2_get_modules` | List loaded IOP modules |
 | `pcsx2_iop_modules` | Bounded paused runtime inventory and address-to-range association |
+| `pcsx2_iop_lifetime` | Conservative lifetime epoch and last 64 observed loader/reset/restore boundaries |
 | `pcsx2_iop_verify_irx` | Match a selected IRX's relocated immutable image at a guarded pause |
 | `pcsx2_iop_source` | Resolve runtime IOP addresses through a freshly verified IRX candidate |
 | `pcsx2_iop_load_watch_start` | Observe a selected HostFs IRX file and its loadcore buffer/registration calls |
@@ -215,7 +216,10 @@ See [IRX code/source association](docs/irx-source-association.md) for the suppor
 dialect, evidence and ignored mutable regions. Optional `load_watch_id` adds
 [observed full-file provenance](docs/iop-load-provenance.md), including writable
 initializers, at the first guarded pause after loading. Full module lifetime
-guards remain pending. Rebuild both components for the new capabilities.
+guards remain pending. [Lifetime boundaries](docs/iop-lifetime.md) now guard
+module/image/load requests and distinguish transported software-reset requests
+from CPU resets; per-module generations remain pending. Rebuild both components
+for the new capabilities.
 
 ### Screenshots
 | Tool | Description |

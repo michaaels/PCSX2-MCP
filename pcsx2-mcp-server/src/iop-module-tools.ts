@@ -19,7 +19,7 @@ export async function readIopModules(client: DebugServerClient, input?: string, 
   });
 }
 export function registerIopModuleTools(server: McpServer, getClient: () => DebugServerClient | null) {
-  server.tool('pcsx2_iop_modules', 'Read a bounded native IOP loadcore module snapshot while VM is already paused; never pauses/resumes or writes. Includes name/version, entry/GP, text/data/BSS sizes and runtime record addresses. Optional address resolves canonical IOP RAM against observed ranges, with ambiguous/unmapped/unavailable states. Name/version and range membership do not prove a local IRX artifact, module load generation, source mapping or fault cause. EE ELF remains boot affinity only. Reset invalidates the native locator until loadcore is observed again; software reboot and savestate are not lifetime guards.',
+  server.tool('pcsx2_iop_modules', 'Read a bounded native IOP loadcore module snapshot at an already paused VM without writes or execution changes. Optional address resolves canonical IOP RAM against ranges, preserving ambiguity/unavailable states. Names and ranges do not prove artifact identity, source binding, per-module generation or fault cause. With iop_lifetime, requests guard a conservative observed-boundary epoch; standard SIF reset packets and native restore attempts clear the locator until rediscovered. Custom/direct loader/reset paths remain partial.',
     { address: address.optional() }, async ({ address: target }, extra) => {
       try {
         const client = getClient(); if (!client?.isConnected()) throw new Error('Connect to DebugServer first');

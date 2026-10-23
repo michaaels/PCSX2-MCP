@@ -56,6 +56,7 @@ export async function inspectRuntimeIrx(client: DebugServerClient, input: z.inpu
       evidence: { ...evidence, original_loaded_file_sha256: load?.summary.file_sha256 ?? null },
       ...(load ? { load_provenance: load.summary, candidate_relationship: 'identical_complete_load_image_and_relocation_plan' } : {}),
       runtime: { process_id: caps.process_id, session: caps.session, execution_epoch: caps.execution_epoch,
+        iop_lifetime_epoch: table.iop_lifetime_epoch,
         iop_reset_epoch: caps.iop_reset_epoch, revision: table.revision, elf: caps.elf, elf_crc: caps.elf_crc,
         elf_role: 'ee_boot_affinity_only', before_snapshot: before.snapshot_id, after_snapshot: after.snapshot_id, module: before.module },
       ...(sources ? { source_tool: located?.tool ?? null, locations: addresses.map(a => {

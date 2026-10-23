@@ -84,6 +84,18 @@ are in [exceptions](exceptions.md), [progress watches](progress-watches.md),
 
 ## Evidence and publication scope
 
+5A3a (2026-10-22): Windows native/TypeScript builds, **142 Node tests**, **11
+lifetime-boundary live checks** and **44 regressions** (11 load, 10 IRX, 13 IOP,
+10 memory) passed. A genuine release removed the fixture from the module list;
+registering the same record/code advanced the epoch again and the old receipt
+refused association. Actual SifIopReset/SifIopSync produced a transported reset
+packet without advancing the CPU-reset epoch. Native restore cleared the old
+locator and advanced the host-owned lifetime epoch. A 70-write probe confirmed
+64-entry eviction. Pristine/upgrade from `0a186f4`/reapply/build agree across
+**21 native files**, now including `Sif1.cpp`. [Contract and reproduction](iop-lifetime.md).
+This is partial 5A3: observed-boundary guards, not reusable per-module generations
+or complete loader/reboot coverage. No new physical PS2 or A/V acceptance.
+
 5A2b (2026-10-22): Windows native/TypeScript builds, **136 Node tests**,
 **11 load-provenance live checks**, **10 IRX**, **13 IOP exception/module** and
 **10 memory-observer** regressions passed. Native integration agrees across

@@ -16,6 +16,9 @@ __attribute__((noinline)) void fixture_ready(int result) {
     fixture_result = result;
     __asm__ volatile ("nop"); /* READY: loaded IRX, genuine EE source breakpoint. */
 }
+__attribute__((noinline)) void fixture_after_reset(void) {
+    __asm__ volatile ("nop"); /* AFTER_SOFTWARE_RESET: SifIopSync returned. */
+}
 int main(void) {
 #if FIXTURE_MODE == 1
     static const char args[] = "delay";
@@ -23,6 +26,8 @@ int main(void) {
     static const char args[] = "syscall";
 #elif FIXTURE_MODE == 5
     static const char args[] = "watch";
+#elif FIXTURE_MODE == 6
+    static const char args[] = "lifetime";
 #else
     static const char args[] = "normal";
 #endif
@@ -34,6 +39,7 @@ int main(void) {
     if (id >= 0 && FIXTURE_MODE == 3) {
         while (!SifIopReset("rom0:UDNL rom0:EELOADCNF", 0)) {}
         while (!SifIopSync()) {}
+        fixture_after_reset();
     }
     if (id >= 0 && FIXTURE_MODE == 4) {
         /* Pinned PCSX2 HwWrite.cpp SBUS_F240 bit 19 invokes psxReset.

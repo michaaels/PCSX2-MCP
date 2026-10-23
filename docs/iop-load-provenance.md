@@ -6,6 +6,13 @@ restart. Capability: `iop_load_provenance`. This extends
 actual HostFs descriptor and loader calls, and supports bounded export tables.
 The accepted dialect remains ELF32 little-endian MIPS `0xff80`.
 
+Later [5A3a lifetime boundaries](iop-lifetime.md) add `iop_lifetime_epoch` to
+capabilities, receipts and native module/image/start guards. A new registration
+stores its observed epoch; association also requires the current epoch to match.
+Observed release calls and standard SIF reset packets invalidate pending/current
+provenance; restore attempts clear the old module locator. These additions do
+not extend the first-pause scope or supply reusable module generations.
+
 ## Workflow
 
 1. Stop before the program opens the IRX. Set ordinary breakpoints before and

@@ -22,7 +22,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | F4 | Observadores de cambios de memoria EE/IOP en el hilo CPU | Implementado y probado; incluido en main con esta entrega |
 | 5A2a | Asociar candidato IRX/fuentes por imagen relocada inmutable en pausa | Implementado y probado en 0xff80; no prueba archivo original completo ni generación |
 | 5A2b | Procedencia del archivo realmente cargado y cobertura adicional IRX/imports/exports | Implementado y probado para HostFs/0xff80 y exports acotados; otros dispositivos/dialectos pendientes |
-| 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | Pendiente; requisito para F5 |
+| 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | Parcial: 5A3a probado para límites observados; sigue 5A3b, generaciones y revalidación; requisito para F5 |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Pendiente; después de 5A2–5A3 |
 | 5B–8 | Correlación del proyecto, diagnósticos medidos, regresión, DAP y validación física | Continuar el roadmap original |
 
@@ -67,7 +67,14 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   `load_watch_id` permite comprobar imagen inicial completa y SHA del archivo
   observado; solo sirve en la primera pausa posterior, sin generación reutilizable.
   Otros dispositivos/dialectos permanecen pendientes. [Contrato](iop-load-provenance.md).
-- Siguiente entrega: **5A3**, vida de módulos ante unload/reload, SifIopReset y
-  savestates; definir generaciones y revalidación antes de reutilizar identidades.
-  El corte conservador de primera pausa de 5A2b no resuelve esa etapa. F5 exige
-  5A3. Cada paso sigue requiriendo publicación validada en main.
+- 5A3a: época conservadora `iop_lifetime_epoch` e historial de 64 límites
+  observados en hilo CPU, herramienta `pcsx2_iop_lifetime` y guardas para
+  módulos/imágenes/inicio de procedencia. Registro/retiro, paquetes estándar
+  SIF de reset, restore y mutaciones no se convierten en generaciones de módulo.
+  Windows/TypeScript compilados, 142 pruebas Node, 11 checks nuevos y 44 de
+  regresión; integración consistente en 21 archivos. [Contrato](iop-lifetime.md).
+- Siguiente entrega: **5A3b**, generaciones por módulo y revalidación antes de
+  reutilizar identidades; ampliar caminos reales de unload/reload, reboot y
+  propagación a operaciones que retienen estado IOP. Ni la época conservadora
+  ni la primera pausa de 5A2b completan esa aceptación. F5 exige cerrar 5A3.
+  Cada paso sigue requiriendo publicación validada en main.

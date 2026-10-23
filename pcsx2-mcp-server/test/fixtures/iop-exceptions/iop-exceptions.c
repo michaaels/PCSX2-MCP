@@ -11,8 +11,16 @@ I_DelayThread
 I_SleepThread
 thbase_IMPORTS_end
 
+/* The pinned legacy SDK omits these public ordinal declarations.
+   ABI reference: PS2SDK 89b9d8c loadcore.h, ordinals 16/17/24. */
+extern void fixture_register_module(ModuleInfo_t *module);
+extern void fixture_release_module(ModuleInfo_t *module);
+extern ModuleInfo_t *fixture_find_module(void *address);
 loadcore_IMPORTS_start
 I_RegisterLibraryEntries
+DECLARE_IMPORT(16, fixture_register_module)
+DECLARE_IMPORT(17, fixture_release_module)
+DECLARE_IMPORT(24, fixture_find_module)
 loadcore_IMPORTS_end
 
 extern struct irx_export_table _exp_mcptest;
@@ -21,10 +29,22 @@ int fixture_exported(void) { return 0x1234; }
 IRX_ID("mcp_exception_fixture", 1, 1);
 static int fixture_mode;
 volatile unsigned fixture_iop_counter;
+int _start(int argc, char **argv);
+volatile int fixture_lifetime_result;
+static void lifetime_probe(void) {
+    ModuleInfo_t *own = fixture_find_module((void *)&_start);
+    if (!own) { fixture_lifetime_result = -1; return; }
+    fixture_release_module(own);
+    __asm__ volatile (".globl fixture_released\nfixture_released: nop");
+    fixture_register_module(own);
+    __asm__ volatile (".globl fixture_reregistered\nfixture_reregistered: nop");
+    fixture_lifetime_result = 1;
+}
 
 static void worker(void *arg) {
     (void)arg;
     DelayThread(2000000);
+    if (fixture_mode == 4) { lifetime_probe(); SleepThread(); return; }
     if (fixture_mode == 3) {
         for (;;) {
             fixture_iop_counter += 0x100;
@@ -58,6 +78,7 @@ int _start(int argc, char **argv) {
     if (argc > 1 && argv[1][0] == 'd') fixture_mode = 1;
     if (argc > 1 && argv[1][0] == 's') fixture_mode = 2;
     if (argc > 1 && argv[1][0] == 'w') fixture_mode = 3;
+    if (argc > 1 && argv[1][0] == 'l') fixture_mode = 4;
     thread.attr = TH_C;
     thread.option = 0;
     thread.thread = worker;

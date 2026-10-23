@@ -27,6 +27,15 @@ behavior, native integration and tests can be reviewed together.
 
 ## Operational improvements
 
+5A3a (2026-10-22) adds `iop_lifetime_epoch`, native request guards and
+`pcsx2_iop_lifetime` with a 64-entry boundary journal. Actual module registry
+calls, transported standard SIF reset packets, restore attempts, locator changes
+and DebugServer writes invalidate conservatively. Software request observation
+does not claim reset completion; CPU-reset identity stays separate. Windows and
+TypeScript builds, 142 Node tests, 11 new live checks and 44 regressions passed;
+native integration agrees across 21 files. [Contract](iop-lifetime.md).
+Per-module generations/reusable bindings remain **5A3b**, the next delivery.
+
 5A2b (2026-10-22) adds explicit HostFs load watches and full-file receipts,
 matching actual descriptor bytes to loadcore input and registration calls.
 Optional `load_watch_id` checks the complete candidate load image, including
@@ -35,7 +44,8 @@ guarded pause. Registered export tables are bounded and function pointers stay
 checked. Windows/TypeScript builds, 136 Node tests, 11 new live checks and 33
 IRX/IOP/memory regressions passed; integration agrees across 20 native files.
 [Contract and limits](iop-load-provenance.md). Other devices/dialects and reusable
-module lifetime/generation tracking remain pending; **5A3 is next**.
+module lifetime/generation tracking remain pending; 5A3a above adds conservative
+observed-boundary guards and **5A3b is next**.
 
 5A2a (2026-10-22) adds guarded IRX immutable-image association and IOP source
 lookup. It hashes the selected local artifact, reconstructs supported relocations
@@ -79,11 +89,12 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay remains
 dependent on reset/save-state identity and module lifetime handling.
 
-1. **Define IOP module lifetime/revalidation (5A3).** Handle unload/reload, software
-   `SifIopReset` and save-state restore before reusing old load identities.
-   Current IOP reset epochs cover native CPU resets only. The 5A2b receipt's
-   conservative first-pause scope is not a module generation. Additional loader
-   devices/dialects require their own demonstrated evidence.
+1. **Define per-module generations/revalidation (5A3b).** Extend actual
+   unload/reload, software reboot and restore coverage and propagate identity
+   to operations that retain IOP state before reusing load bindings. 5A3a's
+   observed-boundary epoch and 5A2b's first-pause scope are not module
+   generations. Existing CPU-reset-only watch contracts stay explicit.
+   Additional loader devices/dialects require their own demonstrated evidence.
 2. **Correlate project diagnostics.** Relate EE/IOP events and emulator/build
    identity to application/network logs, preserving cross-process clock uncertainty.
 3. **Add measured PS2 diagnostics.** Expose verified SIF/RPC, DMA and A/V state

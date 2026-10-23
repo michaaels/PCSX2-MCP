@@ -8,6 +8,7 @@ const runtimeModule = z.object({ record_address: address, next_address: address,
   entry: address, gp: address, text_address: address, text_size: word, data_size: word, bss_size: word });
 const snapshot = z.object({ ok: z.literal(true), cpu: z.literal('iop'), snapshot_id: counter, timestamp_ms: counter,
   session: counter, execution_epoch: counter, iop_reset_epoch: counter, iop_reset_scope: z.literal('cpu_reset_only'), revision: counter,
+  iop_lifetime_epoch: counter.optional(),
   elf: z.string(), elf_crc: address, elf_role: z.literal('ee_boot_affinity_only'), scope: z.literal('paused_runtime_observation_only'),
   source: z.literal('pcsx2_detected_loadcore_list'), root_discovery_sequence: counter, list_address: address, head_address: address,
   status: z.enum(['observed', 'unavailable']), reason: z.string().min(1).max(128).nullable(), modules: z.array(runtimeModule).max(256) });

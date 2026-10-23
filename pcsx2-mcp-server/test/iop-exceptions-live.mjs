@@ -211,7 +211,7 @@ try {
   assert.equal((await inspector.getCapabilities()).iop_reset_epoch, oldEpoch);
   assert.equal(reset.iop_reset_scope, 'cpu_reset_only');
   await call('pcsx2_exception_watch_cancel', { watch_id: resetWatch.watch_id }); await inspector.pause();
-  passed('software SifIopReset is explicitly outside the CPU reset epoch; no false module identity or reset detection is claimed');
+  passed('software SifIopReset leaves the CPU-reset-only watch armed; observed lifetime boundaries have a separate scope');
   await boot('hardreset');
   const hardWatch = await call('pcsx2_exception_watch_start', { cpu: 'iop', screenshot: false });
   await inspector.resume();

@@ -25,6 +25,7 @@ export const capabilitiesResponse = z.object({
   data_directory: z.string().optional(),
   execution_epoch: cursor.optional(),
   iop_reset_epoch: cursor.optional(),
+  iop_lifetime_epoch: cursor.optional(),
   iop_reset_scope: z.literal('cpu_reset_only').optional(),
   elf: z.string(), elf_crc: z.string(), features: z.array(z.string()),
 });

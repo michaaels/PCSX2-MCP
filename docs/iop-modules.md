@@ -3,8 +3,10 @@
 Later 5A2a adds separate [`pcsx2_iop_verify_irx` and `pcsx2_iop_source`](irx-source-association.md)
 tools. They revalidate a selected candidate's relocated immutable image at one
 pause before resolving sources. This legacy inventory and frozen exception
-reports keep their original null artifact/source identities. Full load-file
-provenance and module lifetime are still pending; see the separate contract.
+reports keep their original null artifact/source identities. Later
+[5A2b](iop-load-provenance.md) adds explicit supported full-file provenance;
+[5A3a](iop-lifetime.md) adds conservative boundary guards. Per-module generations
+and reusable lifetime bindings remain pending.
 
 Rebuild PCSX2 with `tools/apply-debug-server.py`, rebuild the Node server and
 restart the MCP server/client. Capability: `iop_module_snapshot`. Tool:
@@ -12,6 +14,7 @@ restart the MCP server/client. Capability: `iop_module_snapshot`. Tool:
 paused, with no active source/frame operation. Inspection never pauses, resumes,
 installs breakpoints or writes guest memory. Process/session, EE boot ELF/CRC,
 execution epoch and IOP CPU-reset epoch are guarded on the native CPU thread.
+With `iop_lifetime`, requests also require the current `iop_lifetime_epoch`.
 
 ```json
 {"address":"0x000450a4"}
@@ -34,8 +37,11 @@ The MCP owns its locator and clears it on VM start/reset and `psxReset`.
 Before another observed publication, snapshots return unavailable with
 `loadcore_list_not_located_since_reset`. The discovery sequence counts locator
 publications, **not module loads or generations**. Guest software reboot
-(`SifIopReset`), unload/reload and save-state restores are not lifetime guards.
-A valid-looking table read after those operations is still an observation only.
+(`SifIopReset`), unload/reload and save-state restores are not per-module
+generations. With 5A3a, supported transported SIF reset packets and entering
+native restore also clear the locator; observed registry/loader calls and other
+documented boundaries advance a conservative invalidation epoch. A valid-looking
+table remains a runtime observation, with custom/direct paths still partial.
 
 All traversal and metadata reads occur on the CPU thread while paused:
 

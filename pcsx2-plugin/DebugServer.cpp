@@ -216,7 +216,7 @@ namespace DebugServer
 	{
 		std::string id, state, path, sha, elf, bindingReason;
 		uint64_t session = 0, epoch = 0, iopEpoch = 0, sequence = 0, coverage = 0, reads = 0;
-		uint64_t registrationRevision = 0;
+		uint64_t registrationRevision = 0, lifetimeEpoch = 0;
 		u32 crc = 0, size = 0, buffer = 0, fileInfo = 0, record = 0, loaderPC = 0;
 		int fd = -1;
 		int64_t deadline = 0, bufferTimestamp = 0, registrationTimestamp = 0;
@@ -229,6 +229,13 @@ namespace DebugServer
 	static uint64_t s_loadSequence = 0;
 	static std::atomic<int64_t> s_loadDeadline{0};
 	static std::atomic<uint64_t> s_loadId{0};
+	// A conservative invalidation epoch, not a per-module load generation.
+	struct LifetimeEvent { uint64_t epoch; int64_t timestamp; std::string kind; u32 address; };
+	static uint64_t s_iopLifetimeEpoch = 0;
+	static std::deque<LifetimeEvent> s_lifetime;
+	static bool s_lifetimeTruncated = false;
+	struct SIFResetPacket { u32 address = 0, next = 0, remaining = 0, copied = 0; std::array<u32, 26> words{}; };
+	static SIFResetPacket s_sifReset;
 	static bool loadActive() { return s_load.state == "armed" || s_load.state == "file_reading" || s_load.state == "file_complete" || s_load.state == "buffer_observed"; }
 	static void invalidateLoad(const char* reason)
 	{
@@ -251,6 +258,14 @@ namespace DebugServer
 	{
 		return std::chrono::duration_cast<std::chrono::milliseconds>(
 			std::chrono::system_clock::now().time_since_epoch()).count();
+	}
+
+	static void lifetimeBoundary(const char* kind, u32 address = 0)
+	{
+		++s_iopLifetimeEpoch;
+		s_lifetime.push_back({s_iopLifetimeEpoch, timestampMillis(), kind, address});
+		if (s_lifetime.size() > 64) { s_lifetime.pop_front(); s_lifetimeTruncated = true; }
+		if (s_load.state == "registered") invalidateLoad("lifetime_boundary");
 	}
 
 	static void recordEvent(const char* kind, const char* cpu = "", u32 pc = 0, std::string detail = {})
@@ -1546,6 +1561,7 @@ namespace DebugServer
 		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("cpu", "iop");
 		j.kv("snapshot_id", ++s_iopModuleSnapshot); j.kv("timestamp_ms", timestampMillis());
 		j.kv("session", s_session.load()); j.kv("execution_epoch", s_executionEpoch); j.kv("iop_reset_epoch", s_iopResetEpoch);
+		j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch);
 		j.kv("iop_reset_scope", "cpu_reset_only"); j.kv("revision", s_inspectionRevision);
 		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 		j.kv("elf_role", "ee_boot_affinity_only"); j.kv("scope", "paused_runtime_observation_only");
@@ -1586,6 +1602,8 @@ namespace DebugServer
 			getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
 			getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 			return failure("IOP module snapshot VM/ELF/reset identity changed");
+		if (getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch))
+			return failure("IOP module lifetime epoch changed");
 		if (!image) return iopModuleSnapshot();
 		const auto record = getNum(params, "module_record", -1);
 		if (record <= 0 || record > 0x00200000 - 40 || (record & 3) ||
@@ -1829,6 +1847,19 @@ namespace DebugServer
 		j.key("report"); j.valJson(s_progress.report.empty() ? "null" : s_progress.report); j.endObject(); return j.str();
 	}
 
+	static std::string lifetimeReport()
+	{
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("session", s_session.load());
+		j.kv("execution_epoch", s_executionEpoch); j.kv("iop_reset_epoch", s_iopResetEpoch);
+		j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch); j.kv("scope", "observed_boundaries_only");
+		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.key("list_address"); j.valHex32(s_iopModuleRoot);
+		j.kv("history_truncated", s_lifetimeTruncated);
+		j.key("events"); j.startArray();
+		for (const auto& e : s_lifetime) { j.startObject(); j.kv("epoch", e.epoch); j.kv("timestamp_ms", e.timestamp); j.kv("kind", e.kind); j.key("address"); j.valHex32(e.address); j.endObject(); }
+		j.endArray(); j.endObject(); return j.str();
+	}
+
 	static std::string loadWatchCommand(const std::unordered_map<std::string, JsonValue>& params, const std::string& cmd)
 	{
 		if (loadActive() && steadyMillis() >= s_load.deadline) invalidateLoad("expired");
@@ -1848,12 +1879,13 @@ namespace DebugServer
 			if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) || getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
 				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) || getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
 				getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC()) return failure("IOP load watch identity changed");
+			if (getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch)) return failure("IOP load watch lifetime epoch changed");
 			const auto path = getStr(params, "path"), sha = getStr(params, "sha256"), prefix = getStr(params, "prefix");
 			const auto size = getNum(params, "size", -1), timeout = getNum(params, "timeout_ms", 30000);
 			if (!Path::IsAbsolute(path) || path.size() > 4096 || std::any_of(path.begin(), path.end(), [](unsigned char c) { return c < 32; }) || !hexString(sha, 64) || !hexString(prefix, 128) ||
 				size < 64 || size > 1024 * 1024 || timeout < 100 || timeout > 300000) return failure("Invalid IOP load artifact/bounds");
 			s_load = {}; s_load.id = id; s_load.state = "armed"; s_load.path = Path::Canonicalize(path); s_load.sha = sha; s_load.size = static_cast<u32>(size);
-			s_load.session = s_session.load(); s_load.epoch = s_executionEpoch; s_load.iopEpoch = s_iopResetEpoch;
+			s_load.session = s_session.load(); s_load.epoch = s_executionEpoch; s_load.iopEpoch = s_iopResetEpoch; s_load.lifetimeEpoch = s_iopLifetimeEpoch;
 			s_load.elf = VMManager::GetCurrentELF(); s_load.crc = VMManager::GetCurrentCRC(); s_load.sequence = ++s_loadSequence;
 			for (size_t i = 0; i < 64; ++i) s_load.prefix[i] = static_cast<u8>(std::stoul(prefix.substr(i * 2, 2), nullptr, 16));
 			s_load.deadline = steadyMillis() + timeout; s_loadId.store(s_load.sequence); s_loadDeadline.store(s_load.deadline);
@@ -1867,6 +1899,7 @@ namespace DebugServer
 		j.kv("session", s_load.session); j.kv("execution_epoch", s_load.epoch); j.kv("iop_reset_epoch", s_load.iopEpoch); j.kv("elf", s_load.elf); j.key("elf_crc"); j.valHex32(s_load.crc);
 		j.kv("path", s_load.path); j.kv("expected_sha256", s_load.sha); j.kv("size", s_load.size); j.kv("covered_bytes", s_load.coverage); j.kv("read_count", s_load.reads);
 		j.kv("file_closed", s_load.fileClosed);
+		j.kv("iop_lifetime_epoch", s_load.lifetimeEpoch);
 		j.kv("binding_available", s_load.binding && s_load.registrationRevision != 0 && s_load.registrationRevision == s_inspectionRevision && VMManager::GetState() == VMState::Paused);
 		j.kv("binding_reason", s_load.bindingReason); j.kv("binding_revision", s_load.registrationRevision);
 		j.key("buffer_address"); j.valHex32(s_load.buffer); j.key("file_info_address"); j.valHex32(s_load.fileInfo); j.key("module_record"); j.valHex32(s_load.record);
@@ -2036,6 +2069,7 @@ namespace DebugServer
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
+		if (cmd == "iop_lifetime") return lifetimeReport();
 		if (cmd == "iop_load_start" || cmd == "iop_load_status" || cmd == "iop_load_cancel") return loadWatchCommand(params, cmd);
 		if (cmd == "memory_watch_start" || cmd == "memory_watch_status" || cmd == "memory_watch_cancel" || cmd == "memory_watch_list") return changeCommand(params, cmd);
 		if (cmd == "media_start" || cmd == "media_status" || cmd == "media_stop") return mediaCommand(params, cmd);
@@ -2060,6 +2094,7 @@ namespace DebugServer
 		if (cmd == "write_register" || cmd == "write_memory" || cmd == "set_pc")
 		{
 			invalidateLoad("debugger_mutation");
+			lifetimeBoundary("debugger_mutation");
 			++s_inspectionRevision;
 			if (s_progress.state == "armed") { s_progress.baseline = false; s_progress.unchanged = 0; s_progress.unchangedIntervals = 0; }
 		}
@@ -2164,10 +2199,11 @@ namespace DebugServer
 				j.kv("debug_port", s_debugPort); j.kv("data_directory", EmuFolders::DataRoot);
 				j.kv("execution_epoch", s_executionEpoch);
 				j.kv("iop_reset_epoch", s_iopResetEpoch);
+				j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch);
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2992,6 +3028,7 @@ namespace DebugServer
 		s_progress = {}; s_progressNext.store(0); s_progressQueued.store(0);
 		s_changes.clear(); s_changeNext.store(0); s_changeQueued.store(0);
 		s_load = {}; s_loadDeadline.store(0);
+		s_sifReset = {}; s_lifetime.clear(); s_lifetimeTruncated = false; lifetimeBoundary("server_start");
 		s_iopModuleRoot = 0;
 		s_eeOrigin = {}; s_iopOrigin = {};
 		++s_session;
@@ -3175,6 +3212,7 @@ namespace DebugServer
 	void OnVMReset()
 	{
 		invalidateLoad("vm_changed");
+		s_sifReset = {}; lifetimeBoundary("vm_reset");
 		invalidateChanges("vm_changed");
 		stopMedia("vm_reset");
 		cancelDump("vm_reset");
@@ -3326,6 +3364,7 @@ namespace DebugServer
 
 	void OnIOPLoadObject(uint32_t buffer, uint32_t fileInfo)
 	{
+		lifetimeBoundary("load_object_call", buffer);
 		if (s_load.state == "registered") { invalidateLoad("later_load_attempt"); return; }
 		if (!checkLoadContext() || s_load.state != "file_complete" || !s_load.fileClosed) return;
 		if ((buffer & 3) || (fileInfo & 3) || static_cast<uint64_t>(buffer) + s_load.size > 0x00200000 || fileInfo > 0x00200000 - 36) return;
@@ -3345,26 +3384,65 @@ namespace DebugServer
 
 	void OnIOPModuleRegister(uint32_t record)
 	{
+		lifetimeBoundary("register_module_call", record);
 		if (!checkLoadContext() || s_load.state != "buffer_observed" || record != s_load.info[3] - 48) return;
 		const std::array<u32, 6> expected{s_load.info[1] + s_load.info[3], s_load.info[2] + s_load.info[3], s_load.info[3], s_load.info[4], s_load.info[5], s_load.info[6]};
 		for (u32 i = 0; i < expected.size(); ++i) { bool valid = false; const u32 value = r3000Debug.read32(record + 16 + i * 4, valid); if (!valid || value != expected[i]) { invalidateLoad("registration_metadata_mismatch"); return; } }
 		s_load.record = record; s_load.state = "registered"; s_load.binding = true; s_load.registrationTimestamp = timestampMillis();
+		s_load.lifetimeEpoch = s_iopLifetimeEpoch;
 		s_loadDeadline.store(0); s_load.covered.clear(); s_load.fd = -1;
 	}
 
-	void OnStateLoadAttempt() { ++s_inspectionRevision; invalidateLoad("savestate_load_attempt"); }
+	void OnIOPModuleRelease(uint32_t record)
+	{
+		invalidateLoad("module_release_call"); lifetimeBoundary("release_module_call", record);
+	}
+
+	void OnStateLoadAttempt()
+	{
+		++s_inspectionRevision; invalidateLoad("savestate_load_attempt");
+		s_sifReset = {}; s_iopModuleRoot = 0; lifetimeBoundary("savestate_load_attempt");
+	}
+
+	void OnSIF1Tag(uint32_t address, uint32_t words, bool interrupt)
+	{
+		s_sifReset = {};
+		// Standard SifIopReset packet: 104 bytes, DMA rounded to 112, IRQ tag.
+		// This is request evidence only; no claim that the IOP handler ran.
+		if (s_running.load() && interrupt && words == 28 && !(address & 3) && address <= 0x00200000 - 112)
+		{ s_sifReset.address = address; s_sifReset.next = address; s_sifReset.remaining = words; }
+	}
+
+	void OnSIF1Write(uint32_t address, uint32_t words)
+	{
+		if (!s_sifReset.remaining) return;
+		if (address != s_sifReset.next || !words || words > s_sifReset.remaining) { s_sifReset = {}; return; }
+		for (u32 i = 0; i < words && s_sifReset.copied < 26; ++i)
+		{
+			bool valid = false; const u32 value = r3000Debug.read32(address + i * 4, valid);
+			if (!valid) { s_sifReset = {}; return; }
+			s_sifReset.words[s_sifReset.copied++] = value;
+		}
+		s_sifReset.next += words * 4; s_sifReset.remaining -= words;
+		if (s_sifReset.remaining) return;
+		const auto packet = s_sifReset; s_sifReset = {};
+		if (packet.copied != 26 || (packet.words[0] & 255) != 104 || packet.words[2] != 0x80000003 || packet.words[4] > 79) return;
+		invalidateLoad("software_reset_requested"); s_iopModuleRoot = 0;
+		lifetimeBoundary("sif_reset_packet", packet.address);
+	}
 
 	void OnIOPModuleListLocated(uint32_t address)
 	{
 		// RegisterLibraryEntries republishes the same locator for each library,
 		// including the observed IRX's own exports before its first pause.
-		if (s_load.state == "registered" && s_iopModuleRoot != address) invalidateLoad("loadcore_relocated");
+		if (s_iopModuleRoot != address) lifetimeBoundary("loadcore_locator_changed", address);
 		s_iopModuleRoot = address; ++s_iopModuleDiscovery;
 	}
 
 	void OnIOPReset()
 	{
 		invalidateLoad("cpu_reset");
+		s_sifReset = {}; lifetimeBoundary("cpu_reset");
 		invalidateChanges("cpu_reset", true);
 		s_iopModuleRoot = 0;
 		s_iopOrigin = {};

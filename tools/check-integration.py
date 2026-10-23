@@ -28,7 +28,7 @@ def main():
              'pcsx2/Interpreter.cpp', 'pcsx2/R3000AInterpreter.cpp',
              'pcsx2/x86/iR3000A.cpp', 'pcsx2/x86/ix86-32/iR5900.cpp',
              'pcsx2/GS/Renderers/Common/GSRenderer.cpp', 'pcsx2/GS/Renderers/Common/GSRenderer.h',
-             'pcsx2/GS/GSDump.cpp', 'pcsx2/GS/GSCapture.h', 'pcsx2/GS/GSCapture.cpp']
+             'pcsx2/GS/GSDump.cpp', 'pcsx2/GS/GSCapture.h', 'pcsx2/GS/GSCapture.cpp', 'pcsx2/Sif1.cpp']
     generated = ['pcsx2/DebugTools/DebugServer.cpp', 'pcsx2/DebugTools/DebugServer.h']
 
     def git(root, revision, filename):
