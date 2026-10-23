@@ -84,6 +84,19 @@ are in [exceptions](exceptions.md), [progress watches](progress-watches.md),
 
 ## Evidence and publication scope
 
+5A2b (2026-10-22): Windows native/TypeScript builds, **136 Node tests**,
+**11 load-provenance live checks**, **10 IRX**, **13 IOP exception/module** and
+**10 memory-observer** regressions passed. Native integration agrees across
+20 files for pristine/upgrade from `f40efe4`/reapply/build. A real HostFs read
+covered all 3828 bytes, matched loadcore input and observed registration; the
+debug companion resolved actual IOP source with the original loaded-file SHA.
+Exports were registered by the real guest; corrupted function pointers refused
+verification. Resume, writes and an actual native savestate load invalidated
+association while retaining historical evidence. [Contract, receipts and
+reproduction](iop-load-provenance.md). Scope is HostFs/0xff80 and the first
+guarded pause; other formats/devices, reusable module generations and software
+reset lifetime guards remain pending for 5A3. No new hardware/A/V acceptance.
+
 5A2a (2026-10-22): Windows native/TypeScript builds, 127 Node tests, 10 new
 [IRX association/source checks](irx-source-association.md), 13 IOP exception/module
 and 10 memory-observer regressions passed. A genuine IOP instruction breakpoint
@@ -124,7 +137,7 @@ fixture sources and documented results. BIOS files, user game content and local
 runtime outputs are not part of these source changes. Preserve matching
 source/integration and upstream licensing when distributing a new native binary.
 
-Limits remain explicit: no general exception/deadlock classifier, full IOP
-artifact/source binding, module lifetime guards for software reboot/savestates,
+Limits remain explicit: no general exception/deadlock classifier, reusable IOP
+artifact/source binding across module lifetime changes or software reboot/savestates,
 comprehensive BIOS coverage, performance acceptance, long-run playback/audio
 or physical PS2 debugging. Individual contracts document additional limitations.

@@ -135,6 +135,25 @@ def main() -> None:
         '\t\t\tCurrentBiosInformation.iopModListAddr = GetModList(a0);',
         '\t\t\tCurrentBiosInformation.iopModListAddr = GetModList(a0);\n'
         '\t\t\tDebugServer::OnIOPModuleListLocated(CurrentBiosInformation.iopModListAddr);', str(iop_bios))
+    bios_text = replace_once(bios_text, '\t\t\t*file = new HostFile(hostfd);',
+        '\t\t\t*file = new HostFile(hostfd);\n'
+        '\t\t\tDebugServer::OnIOPHostFileOpened(hostfd, file_path, (flags & IOP_O_RDWR) == IOP_O_RDONLY);', str(iop_bios))
+    bios_text = replace_once(bios_text, '\t\t\t::close(fd);\n\t\t\tdelete this;',
+        '\t\t\tDebugServer::OnIOPHostFileClosed(fd);\n\t\t\t::close(fd);\n\t\t\tdelete this;', str(iop_bios))
+    bios_text = replace_once(bios_text, '\t\t\treturn translate_error(static_cast<int>(::read(fd, buf, count)));',
+        '\t\t\tconst s64 observed_offset = DebugServer::IsObservedIOPFile(fd) ? static_cast<s64>(::lseek(fd, 0, SEEK_CUR)) : -1;\n'
+        '\t\t\tconst int result = translate_error(static_cast<int>(::read(fd, buf, count)));\n'
+        '\t\t\tif (observed_offset >= 0 && result > 0) DebugServer::OnIOPHostFileRead(fd, observed_offset, buf, static_cast<u32>(result));\n'
+        '\t\t\treturn result;', str(iop_bios))
+    bios_text = replace_once(bios_text, '\t\tint RegisterLibraryEntries_HLE()\n',
+        '\t\tint ObserveLoadObject_HLE() { DebugServer::OnIOPLoadObject(a0, a1); return 0; }\n'
+        '\t\tint ObserveModuleRegister_HLE() { DebugServer::OnIOPModuleRegister(a0); return 0; }\n\n'
+        '\t\tint RegisterLibraryEntries_HLE()\n', str(iop_bios))
+    bios_text = replace_once(bios_text, '\t\tMODULE(loadcore)\n\t\t\tEXPORT_H(  6, RegisterLibraryEntries)',
+        '\t\tMODULE(loadcore)\n\t\t\tEXPORT_H( 16, ObserveModuleRegister)\n\t\t\tEXPORT_H( 23, ObserveLoadObject)\n'
+        '\t\t\tEXPORT_H(  6, RegisterLibraryEntries)', str(iop_bios))
+    vm_text = replace_once(vm_text, 'bool VMManager::DoLoadState(const char* filename, Error* error)\n{',
+        'bool VMManager::DoLoadState(const char* filename, Error* error)\n{\n\tDebugServer::OnStateLoadAttempt();', str(vm))
     breakpoint_files[iop_bios] = bios_text
     for filename, functions in {
         'pcsx2/Interpreter.cpp': [('void intBreakpoint(bool memcheck)', False, 'memcheck')],

@@ -11,6 +11,13 @@ I_DelayThread
 I_SleepThread
 thbase_IMPORTS_end
 
+loadcore_IMPORTS_start
+I_RegisterLibraryEntries
+loadcore_IMPORTS_end
+
+extern struct irx_export_table _exp_mcptest;
+int fixture_exported(void) { return 0x1234; }
+
 IRX_ID("mcp_exception_fixture", 1, 1);
 static int fixture_mode;
 volatile unsigned fixture_iop_counter;
@@ -47,6 +54,7 @@ static void worker(void *arg) {
 int _start(int argc, char **argv) {
     iop_thread_t thread;
     int id;
+    if (RegisterLibraryEntries(&_exp_mcptest) != 0) return MODULE_NO_RESIDENT_END;
     if (argc > 1 && argv[1][0] == 'd') fixture_mode = 1;
     if (argc > 1 && argv[1][0] == 's') fixture_mode = 2;
     if (argc > 1 && argv[1][0] == 'w') fixture_mode = 3;
@@ -59,3 +67,10 @@ int _start(int argc, char **argv) {
     if (id < 0 || StartThread(id, 0) < 0) return MODULE_NO_RESIDENT_END;
     return MODULE_RESIDENT_END;
 }
+
+DECLARE_EXPORT_TABLE(mcptest, 1, 0)
+DECLARE_EXPORT(_start)
+DECLARE_EXPORT(fixture_exported)
+DECLARE_EXPORT(fixture_exported)
+DECLARE_EXPORT(fixture_exported)
+END_EXPORT_TABLE

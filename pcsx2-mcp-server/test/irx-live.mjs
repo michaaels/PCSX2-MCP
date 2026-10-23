@@ -73,13 +73,13 @@ try {
   const args = { irx, module_record: loaded.module.record_address, expected_sha256: debug.sha256 };
   const before = await inspector.getStatus();
   const verified = await call('pcsx2_iop_verify_irx', args); result.evidence.push(verified);
-  assert.equal(verified.evidence.status, 'matched_relocated_readonly_image'); assert.equal(verified.evidence.relocation_count, 27);
+  assert.equal(verified.evidence.status, 'matched_relocated_readonly_image'); assert.equal(verified.evidence.relocation_count, debug.relocationCount);
   assert.ok(verified.evidence.compared_bytes >= 400); assert.equal(verified.evidence.import_targets_verified, false);
   assert.equal(verified.evidence.module_generation, null); assert.equal(verified.evidence.original_loaded_file_sha256, null);
   const loadProof = await call('pcsx2_iop_verify_irx', { ...args, irx: load, expected_sha256: stripped.sha256 });
   assert.equal(loadProof.evidence.normalized_readonly_sha256, verified.evidence.normalized_readonly_sha256);
   assert.deepEqual(await inspector.getStatus(), before);
-  passed('loadable and DWARF IRX companions match the real relocated immutable image, with 27 relocations and explicit unverified data/import targets');
+  passed('loadable and DWARF IRX companions match the real relocated immutable image and relocation count, with explicit unverified data/import targets');
   const breakAddress = hex(Number(loaded.module.text_address) + symbol(debug.bytes, 'fixture_iop_break'));
   const source = await call('pcsx2_iop_source', { ...args, addresses: [breakAddress, loaded.module.entry] }); result.evidence.push(source);
   const rows = (await fs.readFile(path.join(fixture, 'iop-exceptions.c'), 'utf8')).split(/\r?\n/);

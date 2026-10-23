@@ -56,6 +56,14 @@ namespace DebugServer
 	void OnIOPException(uint32_t code, uint32_t pc, bool branchDelay, uint32_t previousStatus);
 	void OnIOPReset();
 	void OnIOPModuleListLocated(uint32_t address);
+	// CPU-thread observers only; never handle/replace the original guest calls.
+	void OnIOPHostFileOpened(int fd, const std::string& path, bool readonly);
+	bool IsObservedIOPFile(int fd);
+	void OnIOPHostFileRead(int fd, int64_t offset, const void* data, uint32_t length);
+	void OnIOPHostFileClosed(int fd);
+	void OnIOPLoadObject(uint32_t buffer, uint32_t fileInfo);
+	void OnIOPModuleRegister(uint32_t record);
+	void OnStateLoadAttempt();
 	bool IOPExceptionCaptured();
 	// JIT trap call sites: preserve provenance without changing guest PC/CP0/BD.
 	// taggedInstructionPC: aligned PC with bit 0 carrying the delay-slot flag.

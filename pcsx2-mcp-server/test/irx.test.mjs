@@ -127,3 +127,22 @@ test('same-byte file replacement/timestamp changes during worker cannot pass sol
   } });
   await assert.rejects(resolver.resolveIrx(f.irx, identity.sha256, ['0x00000040']), /changed/);
 });
+
+test('export verification bounds loader links but compares every relocated function pointer and excludes tables from source', () => {
+  const f = irxFixture(), at = 36;
+  f.bytes.writeUInt32LE(0x41c00000, f.load + at); f.bytes.writeUInt16LE(0x100, f.load + at + 8);
+  f.bytes.write('exported', f.load + at + 12); f.bytes.writeUInt32LE(64, f.load + at + 20);
+  f.bytes.writeUInt32LE(at + 20, f.load + 160); f.bytes.writeUInt32LE(0x102, f.load + 164);
+  const r = runtime(f.bytes); r.actual.writeUInt32LE(0x3000, at); r.actual.writeUInt32LE(0x4000, at + 4); r.actual.writeUInt16LE(1, at + 10);
+  const proof = verifyIrxImage(r.irx, r.module, r.actual);
+  assert.equal(proof.exports[0].functions, 1); assert.equal(proof.exports[0].library, 'exported');
+  assert.equal(proof.eligible(at + 20), false); assert.equal(proof.eligible(64), true);
+  assert.equal(proof.compared_executable_bytes_excluding_imports, 64);
+  for (const mutate of [b => b.writeUInt32LE(0x41c00000, at + 4), b => b.writeUInt16LE(2, at + 10),
+    b => b.writeUInt32LE(0x00200000, at), b => b.writeUInt32LE(0, at + 20), b => b[at + 12] ^= 1]) {
+    const value = Buffer.from(r.actual); mutate(value); assert.throws(() => verifyIrxImage(r.irx, r.module, value));
+  }
+  const unsupported = Buffer.from(f.bytes); unsupported.writeUInt32LE(at, f.load + 160); unsupported.writeUInt32LE(0x100, f.load + 164);
+  unsupported.writeUInt32LE(0x2040, f.load + at + 20);
+  const changed = runtime(unsupported); assert.throws(() => verifyIrxImage(changed.irx, changed.module, changed.actual), /export relocations/);
+});

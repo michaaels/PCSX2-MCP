@@ -9,6 +9,9 @@
 #endif
 volatile int fixture_result = -999;
 volatile unsigned fixture_ee_counter;
+__attribute__((noinline)) void fixture_before_load(void) {
+    __asm__ volatile ("nop"); /* BEFORE_LOAD: arm provenance before SifLoadModule. */
+}
 __attribute__((noinline)) void fixture_ready(int result) {
     fixture_result = result;
     __asm__ volatile ("nop"); /* READY: loaded IRX, genuine EE source breakpoint. */
@@ -25,6 +28,7 @@ int main(void) {
 #endif
     int id;
     SifInitRpc(0);
+    fixture_before_load();
     id = SifLoadModule("host:iop-exceptions.irx", sizeof(args), args);
     fixture_ready(id);
     if (id >= 0 && FIXTURE_MODE == 3) {

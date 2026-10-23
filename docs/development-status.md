@@ -27,13 +27,24 @@ behavior, native integration and tests can be reviewed together.
 
 ## Operational improvements
 
+5A2b (2026-10-22) adds explicit HostFs load watches and full-file receipts,
+matching actual descriptor bytes to loadcore input and registration calls.
+Optional `load_watch_id` checks the complete candidate load image, including
+initial writable bytes, and reports the observed original file SHA at the first
+guarded pause. Registered export tables are bounded and function pointers stay
+checked. Windows/TypeScript builds, 136 Node tests, 11 new live checks and 33
+IRX/IOP/memory regressions passed; integration agrees across 20 native files.
+[Contract and limits](iop-load-provenance.md). Other devices/dialects and reusable
+module lifetime/generation tracking remain pending; **5A3 is next**.
+
 5A2a (2026-10-22) adds guarded IRX immutable-image association and IOP source
 lookup. It hashes the selected local artifact, reconstructs supported relocations
 and revalidates native bytes/metadata/pause and file state after lookup. Actual
 IOP breakpoint addresses resolve through IRX DWARF2. [Contract](irx-source-association.md).
 Windows/TypeScript builds, 127 Node tests, 10 new live checks and 23 IOP/memory
-regressions passed; native integration still agrees across 20 files. Full original
-load-file provenance, additional layouts and module generations remain pending.
+regressions passed; native integration still agrees across 20 files. The later
+5A2b delivery above adds supported load-file provenance; additional layouts and
+module generations remain pending.
 
 F4 (2026-10-22) adds up to 16 bounded one-shot EE/IOP memory-change observers
 sampled on the CPU thread, masks for 1/2/4-byte values, wall TTL, owned
@@ -68,20 +79,17 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay remains
 dependent on reset/save-state identity and module lifetime handling.
 
-1. **Finish 5A2b load-file provenance and additional IRX coverage.** 5A2a validates
-   a selected candidate's relocated immutable image and resolves sources at the
-   same guarded pause. It cannot reconstruct overwritten initial data or prove
-   the original loaded file SHA. Add capture-at-load evidence and broader formats
-   without treating a matching name/version or bias as proof.
-2. **Define IOP module lifetime/revalidation.** Handle unload/reload, software
+1. **Define IOP module lifetime/revalidation (5A3).** Handle unload/reload, software
    `SifIopReset` and save-state restore before reusing old load identities.
-   Current IOP reset epochs cover native CPU resets only.
-3. **Correlate project diagnostics.** Relate EE/IOP events and emulator/build
+   Current IOP reset epochs cover native CPU resets only. The 5A2b receipt's
+   conservative first-pause scope is not a module generation. Additional loader
+   devices/dialects require their own demonstrated evidence.
+2. **Correlate project diagnostics.** Relate EE/IOP events and emulator/build
    identity to application/network logs, preserving cross-process clock uncertainty.
-4. **Add measured PS2 diagnostics.** Expose verified SIF/RPC, DMA and A/V state
+3. **Add measured PS2 diagnostics.** Expose verified SIF/RPC, DMA and A/V state
    where available, and measure instrumentation overhead. Missing metrics are
    unavailable rather than zero.
-5. **Extend regression and editor workflows.** Tolerant visual comparison,
+4. **Extend regression and editor workflows.** Tolerant visual comparison,
    defined audio criteria, long-run/recovery tests, CI separation and a DAP
    adapter over capabilities the backend actually supports.
 

@@ -33,6 +33,7 @@ import { parseIopModuleSnapshot, parseIopModuleImage } from './iop-modules.js';
 import { defaultPorts, tcpPort } from './ports.js';
 import { dumpOptions, parseDump, type DumpOptions } from './gs-dump.js';
 import { mediaOptions, parseMedia, type MediaOptions } from './media.js';
+import { loadState } from './iop-load.js';
 
 export interface DebugRegister {
   name: string;
@@ -303,6 +304,27 @@ export class DebugServerClient {
 
   async listMemoryWatches() {
     return memoryWatchList.parse(await this.sessionCommand({ cmd: 'memory_watch_list' }));
+  }
+
+  async startIopLoadWatch(id: string, expected: StepIdentity & { iop_reset_epoch: number }, input: { path: string; sha256: string; size: number; prefix: string; timeout_ms: number }) {
+    watchId.parse(id);
+    const response = await this.send({ cmd: 'iop_load_start', watch_id: id, ...input,
+      expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
+      expected_iop_reset_epoch: expected.iop_reset_epoch, expected_elf: expected.elf, expected_elf_crc: expected.elf_crc });
+    if (!response.ok) throw Object.assign(new Error(response.error ?? 'IOP load watch rejected'), { native_rejected: true });
+    const result = loadState.parse(response);
+    if (result.watch_id !== id || result.state !== 'armed' || result.session !== expected.session || result.execution_epoch !== expected.execution_epoch ||
+        result.iop_reset_epoch !== expected.iop_reset_epoch || result.elf !== expected.elf || result.elf_crc !== expected.elf_crc ||
+        result.expected_sha256 !== input.sha256 || result.size !== input.size || result.path.replaceAll('\\', '/') !== input.path.replaceAll('\\', '/'))
+      throw new Error('Unexpected IOP load watch identity/artifact');
+    return result;
+  }
+
+  async iopLoadWatchStatus(id: string, cancel = false) {
+    watchId.parse(id);
+    const result = loadState.parse(await this.sessionCommand({ cmd: cancel ? 'iop_load_cancel' : 'iop_load_status', watch_id: id }));
+    if (result.watch_id !== id) throw new Error('Unexpected IOP load watch ID');
+    return result;
   }
 
   async startProgressWatch(id: string, expected: StepIdentity, options: z.input<typeof progressOptions>) {

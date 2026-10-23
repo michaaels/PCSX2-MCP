@@ -21,7 +21,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | F3 | Captura vídeo/audio con propiedad, límites y finalización comprobada | Implementado y probado; incluido en main con esta entrega |
 | F4 | Observadores de cambios de memoria EE/IOP en el hilo CPU | Implementado y probado; incluido en main con esta entrega |
 | 5A2a | Asociar candidato IRX/fuentes por imagen relocada inmutable en pausa | Implementado y probado en 0xff80; no prueba archivo original completo ni generación |
-| 5A2b | Procedencia del archivo realmente cargado y cobertura adicional IRX/imports/exports | Pendiente; siguiente entrega antes de 5A3 |
+| 5A2b | Procedencia del archivo realmente cargado y cobertura adicional IRX/imports/exports | Implementado y probado para HostFs/0xff80 y exports acotados; otros dispositivos/dialectos pendientes |
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | Pendiente; requisito para F5 |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Pendiente; después de 5A2–5A3 |
 | 5B–8 | Correlación del proyecto, diagnósticos medidos, regresión, DAP y validación física | Continuar el roadmap original |
@@ -60,7 +60,14 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   asociación por código y fuentes DWARF2 IOP, más 13 de excepciones/módulos y
   10 de observadores como regresión. Integración consistente en 20 archivos.
   No se guardan bindings reutilizables. [Contrato y límites](irx-source-association.md).
-- Siguiente entrega: 5A2b. Los bytes de código/solo lectura y el SHA del candidato
-  no demuestran los inicializadores mutables ni el archivo original de carga;
-  se necesita evidencia durante la carga y cobertura adicional. Después 5A3;
-  F5 exige 5A3. Cada paso sigue requiriendo publicación validada en main.
+- 5A2b: Windows/TypeScript compilados, 136 pruebas Node y 11 checks live de
+  procedencia HostFs, buffer completo loadcore, registro, exports, fuentes,
+  propiedad e invalidación. Pasaron 10 checks IRX, 13 de excepciones/módulos IOP
+  y 10 de observadores como regresión. Integración consistente en 20 archivos.
+  `load_watch_id` permite comprobar imagen inicial completa y SHA del archivo
+  observado; solo sirve en la primera pausa posterior, sin generación reutilizable.
+  Otros dispositivos/dialectos permanecen pendientes. [Contrato](iop-load-provenance.md).
+- Siguiente entrega: **5A3**, vida de módulos ante unload/reload, SifIopReset y
+  savestates; definir generaciones y revalidación antes de reutilizar identidades.
+  El corte conservador de primera pausa de 5A2b no resuelve esa etapa. F5 exige
+  5A3. Cada paso sigue requiriendo publicación validada en main.

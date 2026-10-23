@@ -87,7 +87,8 @@ export function parseIrx(bytes: Buffer) {
   const compressed = sections.some(s => (s.name === '.zdebug_line' || (s.name === '.debug_line' && (s.flags & 0x800))) && s.size > 0);
   const hasLines = sections.some(s => s.name === '.debug_line' && s.size > 0 && !(s.flags & 0x800));
   return { bytes, image: bytes.subarray(offset, offset + fileSize), textSize, dataSize, bssSize, memSize, entry, gp,
-    name, version: bytes.readUInt16LE(modOffset + 24), sections, executable, relocationGroups, relocationCount, debugRelocationCount,
+    name, version: bytes.readUInt16LE(modOffset + 24), modId: bytes.readUInt32LE(modOffset),
+    moduleInfo: bytes.subarray(modOffset, modOffset + modSize), sections, executable, relocationGroups, relocationCount, debugRelocationCount,
     has_debug_lines: hasLines, debug_line_status: compressed ? 'compressed_unsupported' : hasLines ? 'available' : 'absent' };
 }
 export async function inspectIrx(filename: string) {
@@ -164,9 +165,39 @@ export function verifyIrxImage(irx: ReturnType<typeof parseIrx>, module: {
       throw new Error('Relocations inside import tables unsupported');
     imports.push({ start: at, end, library, stubs }); at = end - 4;
   }
+  const exports: { start: number; end: number; library: string; functions: number }[] = [];
+  for (let at = 0; at + 4 <= irx.textSize; at += 4) {
+    if (expected.readUInt32LE(at) !== 0x41c00000 || imports.some(r => at >= r.start && at < r.end)) continue;
+    if (exports.length >= 128 || at + 24 > irx.textSize || expected.readUInt32LE(at + 4) !== 0 || expected.readUInt16LE(at + 10) !== 0)
+      throw new Error('Unsupported IRX export header');
+    const library = expected.subarray(at + 12, at + 20).toString('latin1').replace(/\0+$/, '');
+    if (!/^[\x21-\x7e]{1,8}$/.test(library)) throw new Error('Unsupported IRX export library');
+    const previous = actual.readUInt32LE(at), caller = actual.readUInt32LE(at + 4);
+    if ((previous !== 0x41c00000 && previous && (previous % 4 || previous >= 0x200000)) ||
+        (caller && (caller % 4 || caller >= 0x200000))) throw new Error('Invalid runtime export linkage');
+    if (actual.readUInt16LE(at + 10) > 1) throw new Error('Unsupported runtime export flags');
+    let end = at + 20, functions = 0;
+    for (;;) {
+      if (end + 4 > irx.textSize || functions > 4096) throw new Error('IRX export table bound exceeded');
+      const target = expected.readUInt32LE(end); end += 4;
+      if (!target) break;
+      const linked = target - base;
+      if (linked % 4 || !irx.executable.some(r => linked >= r.start && linked + 4 <= r.end)) throw new Error('Unsupported IRX export target');
+      functions++;
+    }
+    if (!functions || imports.some(r => at < r.end && end > r.start)) throw new Error('Empty/overlapping IRX export table');
+    const relocations = irx.relocationGroups.flat().filter(r => r.offset >= at && r.offset < end);
+    if (relocations.length !== functions || relocations.some(r => r.type !== 2 || r.offset < at + 20 || r.offset >= end - 4))
+      throw new Error('Unsupported IRX export relocations');
+    // Only list links/mode bits are mutable. Every relocated function pointer
+    // remains compared; the table itself is never executable source evidence.
+    mask.fill(0, at, at + 8); mask[at + 10] = 0xfe;
+    exports.push({ start: at, end, library, functions }); at = end - 4;
+  }
   const executableMask = Buffer.alloc(expected.length);
   for (const r of irx.executable) executableMask.fill(1, r.start, r.end);
   for (const r of imports) executableMask.fill(0, r.start, r.end);
+  for (const r of exports) executableMask.fill(0, r.start, r.end);
   const left = Buffer.alloc(expected.length), right = Buffer.alloc(expected.length); let compared = 0, code = 0;
   for (let i = 0; i < expected.length; i++) {
     left[i] = expected[i] & mask[i]; right[i] = actual[i] & mask[i];
@@ -182,7 +213,8 @@ export function verifyIrxImage(irx: ReturnType<typeof parseIrx>, module: {
     uncompared_bytes: expected.length - compared,
     writable_bytes_not_verified: irx.sections.filter(s => s.type === 1 && (s.flags & 3) === 3).reduce((n, s) => n + s.size, 0), bss_bytes_not_verified: irx.bssSize,
     imports: imports.map(i => ({ library: i.library, start: hex(base + i.start), end: hex(base + i.end), stubs: i.stubs })),
+    exports: exports.map(i => ({ library: i.library, start: hex(base + i.start), end: hex(base + i.end), functions: i.functions })),
     import_targets_verified: false as const, module_generation: null, original_loaded_file_sha256: null,
     eligible: (linked: number) => Number.isInteger(linked) && linked % 4 === 0 && irx.executable.some(r => linked >= r.start && linked + 4 <= r.end) &&
-      !imports.some(r => linked < r.end && linked + 4 > r.start) };
+      !imports.some(r => linked < r.end && linked + 4 > r.start) && !exports.some(r => linked < r.end && linked + 4 > r.start) };
 }

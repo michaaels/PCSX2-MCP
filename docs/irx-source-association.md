@@ -1,16 +1,18 @@
 # Guarded IRX code and source association
 
-5A2a, 2026-10-22. Rebuild both native PCSX2 and TypeScript; restart the MCP
+5A2a, extended by 5A2b on 2026-10-22. Rebuild native PCSX2 and TypeScript; restart the MCP
 client. Native capability: `iop_module_image`. This delivery associates a chosen
 local artifact with an observed immutable runtime image at one guarded pause.
-It does not establish the full original load-file identity or a module generation.
+Without a load receipt it does not establish the full original load-file
+identity. Optional `load_watch_id` adds [observed load provenance](iop-load-provenance.md)
+at its first guarded pause. Neither mode establishes a reusable module generation.
 
 ## Workflow
 
 1. Pause the VM through the normal debugger controls.
 2. Call `pcsx2_iop_modules` and select an explicit `record_address`.
 3. Call `pcsx2_iop_verify_irx` with `irx`, `module_record` and optionally
-   `expected_sha256`. The path must be absolute. A debug companion may be used
+   `expected_sha256` and `load_watch_id`. The path must be absolute. A debug companion may be used
    if its loadable image matches the loaded module.
 4. Call `pcsx2_iop_source` with the same fields and optional `addresses` (1–64
    runtime IOP addresses). Omit addresses to inspect the sampled IOP PC.
@@ -39,7 +41,7 @@ changes invalidate the result. A supported artifact with no DWARF returns
 `runtime_address` is the input address; `linked_address` and the legacy source
 row's `address` refer to the IRX's linked coordinate. Source filenames are build
 paths from DWARF, not automatically mapped to Windows files. The EE ELF is never
-used as an IOP source file. Import-table addresses, data, aliases and unaligned
+used as an IOP source file. Import/export-table addresses, data, aliases and unaligned
 addresses stay unresolved. IOP source breakpoints, stepping and variables are
 not implemented by these read-only tools. Existing exception reports and
 `pcsx2_iop_modules` keep their original null artifact/source identity fields.
@@ -51,14 +53,14 @@ RAM reconstructs relocations at the observed text base and compares supported
 immutable executable/readonly sections. It checks IOPMOD name/version, entry,
 GP and text/data/BSS extents too. Name/version or subtracting a base alone does
 not pass verification. A minimum of 64 fully compared executable bytes outside
-import tables is required.
+import/export tables is required.
 
 The evidence status is `matched_relocated_readonly_image`. Its normalized hash
 uses fixed image coordinates with unchecked bits zeroed according to the
 comparison mask. `compared_bytes` includes bytes with at least one checked bit; import-mode
 bits are partially masked. `compared_executable_bytes_excluding_imports` counts
-only fully checked executable bytes outside imports. The report exposes ignored
-writable/BSS sizes, loader-mutable byte count, import table ranges and relocation
+only fully checked executable bytes outside imports and exports. The report exposes ignored
+writable/BSS sizes, loader-mutable byte count, import/export table ranges and relocation
 counts, rather than implying a whole loaded-file hash.
 
 Known imports are recognized only through bounded original headers and stubs:
@@ -66,15 +68,19 @@ library name/version and ordinal instructions remain checked, while the next
 pointer, linker mode bits and first jump word are treated as loader mutable.
 Runtime shapes/pointers/jumps must remain in the supported subset. Exact target
 library/function semantics are **not verified**, and the entire table is excluded
-from source mapping. Other self-modifying code or export-table changes fail the
-comparison; they are not silently masked.
+from source mapping. Bounded export tables permit only known list links/mode
+changes, while all relocated function pointers remain compared; see the
+[export contract](iop-load-provenance.md#export-tables). Other self-modification
+fails comparison.
 
-`original_loaded_file_sha256` and `module_generation` remain null;
-`import_targets_verified` remains false. Two artifacts with identical immutable
+Without `load_watch_id`, `original_loaded_file_sha256` remains null.
+`module_generation` always stays null and `import_targets_verified` stays false.
+Two artifacts with identical immutable
 code but different writable initializers or debug metadata can both match this
 scope. A caller-supplied expected SHA selects a specific local candidate; it does
-not prove that exact file was originally loaded. Capture-at-load provenance and
-additional module formats are **5A2b**, still pending. Module unload/reload,
+not prove that exact file was originally loaded. **5A2b** adds observed full-file
+HostFs provenance, full original load-image comparison and bounded export tables;
+other devices and module formats remain pending. Module unload/reload,
 software `SifIopReset` and savestate lifetime guards remain **5A3**. These tools
 do not authorize reuse of an old record or binding across those operations.
 
@@ -91,7 +97,8 @@ do not authorize reuse of an old record or binding across those operations.
   an adjacent matching LO16; unsupported types/chains, duplicate or invalid
   targets fail. File-only `.debug_*` relocation tables have a separate 65536
   limit and are never applied to the runtime image.
-- At most 128 recognized import tables, each bounded to 4096 stubs. The source
+- At most 128 recognized import tables (4096 stubs each), plus 128 bounded export
+  tables (4096 functions each). The source
   worker uses the existing no-shell addr2line runner, 10-second host timeout,
   1 MiB combined output bound and bounded WSL worker. Its environment disables
   debuginfod fetching.
@@ -102,6 +109,12 @@ The verifier is an independent implementation. Native integration stays on
 PCSX2 v2.6.3 `bc8151d2a46d4aba039ea5580afbfc7bfcf6d730`.
 
 ## Fixture and acceptance
+
+The following records the original 5A2a acceptance. 5A2b expanded the fixture
+with a before-load stop and a real registered four-function export library.
+Current acceptance is **136 Node tests**, **11 provenance live checks** and
+**33 IRX/IOP/memory regressions**; updated build-specific coordinates and receipts
+are in [load provenance](iop-load-provenance.md#acceptance-and-reproduction).
 
 The pinned SDK fixture now generates `iop-exceptions.debug.irx` with DWARF2
 and a stripped `iop-exceptions.irx` for loading. Legacy linker orphan DWARF VMAs

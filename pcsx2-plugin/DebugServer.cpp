@@ -86,6 +86,7 @@ typedef int socket_t;
 #include <future>
 #include <array>
 #include <charconv>
+#include <sys/stat.h>
 
 // Forward declarations — these are PCSX2 globals
 extern R5900DebugInterface r5900Debug;
@@ -211,6 +212,29 @@ namespace DebugServer
 		ChangeSample previous, current;
 	};
 	static std::deque<ChangeWatch> s_changes;
+	struct LoadWatch
+	{
+		std::string id, state, path, sha, elf, bindingReason;
+		uint64_t session = 0, epoch = 0, iopEpoch = 0, sequence = 0, coverage = 0, reads = 0;
+		uint64_t registrationRevision = 0;
+		u32 crc = 0, size = 0, buffer = 0, fileInfo = 0, record = 0, loaderPC = 0;
+		int fd = -1;
+		int64_t deadline = 0, bufferTimestamp = 0, registrationTimestamp = 0;
+		bool binding = false, fileClosed = false;
+		std::array<u8, 64> prefix{};
+		std::array<u32, 9> info{};
+		std::vector<u8> bytes, covered;
+	};
+	static LoadWatch s_load;
+	static uint64_t s_loadSequence = 0;
+	static std::atomic<int64_t> s_loadDeadline{0};
+	static std::atomic<uint64_t> s_loadId{0};
+	static bool loadActive() { return s_load.state == "armed" || s_load.state == "file_reading" || s_load.state == "file_complete" || s_load.state == "buffer_observed"; }
+	static void invalidateLoad(const char* reason)
+	{
+		if (loadActive()) { s_load.state = reason; s_load.fd = -1; s_loadDeadline.store(0); }
+		if (s_load.binding) { s_load.binding = false; s_load.bindingReason = reason; }
+	}
 	static std::atomic<int64_t> s_changeNext{0};
 	static std::atomic<uint64_t> s_changeQueued{0};
 	static int64_t steadyMillis();
@@ -1805,6 +1829,53 @@ namespace DebugServer
 		j.key("report"); j.valJson(s_progress.report.empty() ? "null" : s_progress.report); j.endObject(); return j.str();
 	}
 
+	static std::string loadWatchCommand(const std::unordered_map<std::string, JsonValue>& params, const std::string& cmd)
+	{
+		if (loadActive() && steadyMillis() >= s_load.deadline) invalidateLoad("expired");
+		const auto id = getStr(params, "watch_id");
+		auto hexString = [](const std::string& s, size_t length) { return s.size() == length && std::all_of(s.begin(), s.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }); };
+		if (!hexString(id, 32)) return failure("Invalid IOP load watch ID");
+		if (cmd == "iop_load_start")
+		{
+			if (loadActive()) return failure("An IOP load watch is already active");
+#ifdef _WIN32
+			const uint64_t process = GetCurrentProcessId();
+#else
+			const uint64_t process = getpid();
+#endif
+			if (!VMManager::HasValidVM() || VMManager::GetCurrentELF().empty() || s_step.active || s_operation.active)
+				return failure("IOP load watch requires a booted ELF without an execution operation");
+			if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) || getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) || getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
+				getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC()) return failure("IOP load watch identity changed");
+			const auto path = getStr(params, "path"), sha = getStr(params, "sha256"), prefix = getStr(params, "prefix");
+			const auto size = getNum(params, "size", -1), timeout = getNum(params, "timeout_ms", 30000);
+			if (!Path::IsAbsolute(path) || path.size() > 4096 || std::any_of(path.begin(), path.end(), [](unsigned char c) { return c < 32; }) || !hexString(sha, 64) || !hexString(prefix, 128) ||
+				size < 64 || size > 1024 * 1024 || timeout < 100 || timeout > 300000) return failure("Invalid IOP load artifact/bounds");
+			s_load = {}; s_load.id = id; s_load.state = "armed"; s_load.path = Path::Canonicalize(path); s_load.sha = sha; s_load.size = static_cast<u32>(size);
+			s_load.session = s_session.load(); s_load.epoch = s_executionEpoch; s_load.iopEpoch = s_iopResetEpoch;
+			s_load.elf = VMManager::GetCurrentELF(); s_load.crc = VMManager::GetCurrentCRC(); s_load.sequence = ++s_loadSequence;
+			for (size_t i = 0; i < 64; ++i) s_load.prefix[i] = static_cast<u8>(std::stoul(prefix.substr(i * 2, 2), nullptr, 16));
+			s_load.deadline = steadyMillis() + timeout; s_loadId.store(s_load.sequence); s_loadDeadline.store(s_load.deadline);
+		}
+		else
+		{
+			if (id != s_load.id) return failure("Unknown or superseded IOP load watch");
+			if (cmd == "iop_load_cancel" && loadActive()) invalidateLoad("cancelled");
+		}
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("watch_id", s_load.id); j.kv("state", s_load.state); j.kv("active", loadActive());
+		j.kv("session", s_load.session); j.kv("execution_epoch", s_load.epoch); j.kv("iop_reset_epoch", s_load.iopEpoch); j.kv("elf", s_load.elf); j.key("elf_crc"); j.valHex32(s_load.crc);
+		j.kv("path", s_load.path); j.kv("expected_sha256", s_load.sha); j.kv("size", s_load.size); j.kv("covered_bytes", s_load.coverage); j.kv("read_count", s_load.reads);
+		j.kv("file_closed", s_load.fileClosed);
+		j.kv("binding_available", s_load.binding && s_load.registrationRevision != 0 && s_load.registrationRevision == s_inspectionRevision && VMManager::GetState() == VMState::Paused);
+		j.kv("binding_reason", s_load.bindingReason); j.kv("binding_revision", s_load.registrationRevision);
+		j.key("buffer_address"); j.valHex32(s_load.buffer); j.key("file_info_address"); j.valHex32(s_load.fileInfo); j.key("module_record"); j.valHex32(s_load.record);
+		j.key("loader_sample_pc"); j.valHex32(s_load.loaderPC); j.kv("buffer_timestamp_ms", s_load.bufferTimestamp); j.kv("registration_timestamp_ms", s_load.registrationTimestamp);
+		j.key("file_info"); j.startArray(); for (u32 v : s_load.info) j.valHex32(v); j.endArray();
+		j.key("source_bytes_base64"); if (s_load.state == "registered") j.valStr(encodeBase64(s_load.bytes)); else j.valJson("null");
+		j.endObject(); return j.str();
+	}
+
 	static void scheduleChanges()
 	{
 		int64_t due = 0;
@@ -1965,6 +2036,7 @@ namespace DebugServer
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
+		if (cmd == "iop_load_start" || cmd == "iop_load_status" || cmd == "iop_load_cancel") return loadWatchCommand(params, cmd);
 		if (cmd == "memory_watch_start" || cmd == "memory_watch_status" || cmd == "memory_watch_cancel" || cmd == "memory_watch_list") return changeCommand(params, cmd);
 		if (cmd == "media_start" || cmd == "media_status" || cmd == "media_stop") return mediaCommand(params, cmd);
 		if (cmd == "gs_dump_start" || cmd == "gs_dump_status" || cmd == "gs_dump_cancel") return dumpCommand(params, cmd);
@@ -1987,6 +2059,7 @@ namespace DebugServer
 		if (cmd == "inspect_ee") return inspectEE(params);
 		if (cmd == "write_register" || cmd == "write_memory" || cmd == "set_pc")
 		{
+			invalidateLoad("debugger_mutation");
 			++s_inspectionRevision;
 			if (s_progress.state == "armed") { s_progress.baseline = false; s_progress.unchanged = 0; s_progress.unchangedIntervals = 0; }
 		}
@@ -2094,7 +2167,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2918,12 +2991,13 @@ namespace DebugServer
 		s_exception = {}; s_exceptionDeadline.store(0); s_exceptionPending.store(0);
 		s_progress = {}; s_progressNext.store(0); s_progressQueued.store(0);
 		s_changes.clear(); s_changeNext.store(0); s_changeQueued.store(0);
+		s_load = {}; s_loadDeadline.store(0);
 		s_iopModuleRoot = 0;
 		s_eeOrigin = {}; s_iopOrigin = {};
 		++s_session;
 		const uint64_t watchdogSession = s_session.load();
 		std::thread([watchdogSession]() {
-			uint64_t queuedOperation = 0, queuedException = 0, queuedExpiry = 0, queuedDump = 0, queuedMedia = 0;
+			uint64_t queuedOperation = 0, queuedException = 0, queuedExpiry = 0, queuedDump = 0, queuedMedia = 0, queuedLoad = 0;
 			while (s_running.load() && s_session.load() == watchdogSession)
 			{
 				std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -2936,6 +3010,14 @@ namespace DebugServer
 				const auto progressDue = s_progressNext.load();
 				const auto progressId = s_progressWatchId.load();
 				const auto changeDue = s_changeNext.load();
+				const auto loadExpiry = s_loadDeadline.load(), loadId = static_cast<int64_t>(s_loadId.load());
+				if (loadExpiry && now >= loadExpiry && queuedLoad != static_cast<uint64_t>(loadId))
+				{
+					queuedLoad = static_cast<uint64_t>(loadId);
+					Host::RunOnCPUThread([watchdogSession, loadId]() {
+						if (s_session.load() == watchdogSession && s_load.sequence == static_cast<uint64_t>(loadId) && loadActive() && steadyMillis() >= s_load.deadline) invalidateLoad("expired");
+					});
+				}
 				const auto dumpExpiry = s_dumpDeadline.load();
 				const auto dumpSequence = s_dumpSequence.load();
 				const auto mediaExpiry = s_mediaDeadline.load();
@@ -3001,6 +3083,7 @@ namespace DebugServer
 
 	void Stop()
 	{
+		invalidateLoad("vm_stopped");
 		invalidateChanges("vm_stopped");
 		stopMedia("vm_stopped");
 		cancelDump("vm_stopped");
@@ -3044,6 +3127,11 @@ namespace DebugServer
 	void OnVMStateChanged(int state)
 	{
 		++s_inspectionRevision;
+		if (s_load.state == "registered" && s_load.binding)
+		{
+			if (!s_load.registrationRevision && state == static_cast<int>(VMState::Paused)) s_load.registrationRevision = s_inspectionRevision;
+			else if (s_load.registrationRevision) invalidateLoad("pause_scope_ended");
+		}
 		if (s_progress.state == "armed") { s_progress.baseline = false; s_progress.unchanged = 0; s_progress.unchangedIntervals = 0; }
 		if (!s_running.load()) return;
 		if (state == static_cast<int>(VMState::Paused) && s_operation.active)
@@ -3086,6 +3174,7 @@ namespace DebugServer
 
 	void OnVMReset()
 	{
+		invalidateLoad("vm_changed");
 		invalidateChanges("vm_changed");
 		stopMedia("vm_reset");
 		cancelDump("vm_reset");
@@ -3179,13 +3268,103 @@ namespace DebugServer
 		Cpu->ExitExecution();
 	}
 
+	static bool checkLoadContext()
+	{
+		if (loadActive() && steadyMillis() >= s_load.deadline) invalidateLoad("expired");
+		if (loadActive() && (s_load.epoch != s_executionEpoch || s_load.iopEpoch != s_iopResetEpoch || s_load.elf != VMManager::GetCurrentELF() || s_load.crc != VMManager::GetCurrentCRC())) invalidateLoad("vm_changed");
+		return loadActive();
+	}
+
+	void OnIOPHostFileOpened(int fd, const std::string& path, bool readonly)
+	{
+		if (!checkLoadContext()) return;
+		auto canonical = Path::Canonicalize(path), expected = s_load.path;
+#ifdef _WIN32
+		for (auto* text : {&canonical, &expected}) for (auto& c : *text) if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+#endif
+		if (canonical != expected) return;
+		if (s_load.state != "armed") { invalidateLoad("ambiguous_file_open"); return; }
+#ifdef _WIN32
+		struct _stat64 stat{}; const bool regular = _fstat64(fd, &stat) == 0 && (stat.st_mode & _S_IFMT) == _S_IFREG;
+#else
+		struct stat stat{}; const bool regular = fstat(fd, &stat) == 0 && S_ISREG(stat.st_mode);
+#endif
+		if (!readonly || !regular || stat.st_size != s_load.size) { invalidateLoad("file_mode_or_size_mismatch"); return; }
+		s_load.fd = fd; s_load.state = "file_reading"; s_load.bytes.resize(s_load.size); s_load.covered.resize(s_load.size);
+	}
+
+	bool IsObservedIOPFile(int fd) { return checkLoadContext() && fd == s_load.fd; }
+
+	void OnIOPHostFileRead(int fd, int64_t offset, const void* data, uint32_t length)
+	{
+		if (!IsObservedIOPFile(fd)) return;
+		if (offset < 0 || static_cast<uint64_t>(offset) + length > s_load.size) { invalidateLoad("file_extent_changed"); return; }
+		const auto* bytes = static_cast<const u8*>(data); ++s_load.reads;
+		for (u32 i = 0; i < length; ++i)
+		{
+			const auto at = static_cast<size_t>(offset) + i;
+			if (s_load.covered[at] && s_load.bytes[at] != bytes[i]) { invalidateLoad("inconsistent_file_reads"); return; }
+			if (!s_load.covered[at]) { s_load.covered[at] = 1; ++s_load.coverage; }
+			s_load.bytes[at] = bytes[i];
+		}
+		if (s_load.coverage == s_load.size && s_load.state != "buffer_observed") s_load.state = "file_complete";
+	}
+
+	void OnIOPHostFileClosed(int fd)
+	{
+		if (!IsObservedIOPFile(fd)) return;
+#ifdef _WIN32
+		struct _stat64 stat{}; const bool regular = _fstat64(fd, &stat) == 0 && (stat.st_mode & _S_IFMT) == _S_IFREG;
+#else
+		struct stat stat{}; const bool regular = fstat(fd, &stat) == 0 && S_ISREG(stat.st_mode);
+#endif
+		if (!regular || stat.st_size != s_load.size) { invalidateLoad("file_extent_changed"); return; }
+		s_load.fd = -1;
+		if (s_load.coverage != s_load.size) invalidateLoad("incomplete_file_reads");
+		else s_load.fileClosed = true;
+	}
+
+	void OnIOPLoadObject(uint32_t buffer, uint32_t fileInfo)
+	{
+		if (s_load.state == "registered") { invalidateLoad("later_load_attempt"); return; }
+		if (!checkLoadContext() || s_load.state != "file_complete" || !s_load.fileClosed) return;
+		if ((buffer & 3) || (fileInfo & 3) || static_cast<uint64_t>(buffer) + s_load.size > 0x00200000 || fileInfo > 0x00200000 - 36) return;
+		for (size_t i = 0; i < 64; ++i) if (s_load.bytes[i] != s_load.prefix[i]) { invalidateLoad("source_header_changed"); return; }
+		for (u32 i = 0; i < s_load.size; ++i)
+		{
+			bool valid = false; const u8 value = r3000Debug.read8(buffer + i, valid);
+			if (!valid || value != s_load.bytes[i]) return; // A different loader call is not this file's provenance.
+		}
+		std::array<u32, 9> info{};
+		for (u32 i = 0; i < 9; ++i) { bool valid = false; info[i] = r3000Debug.read32(fileInfo + i * 4, valid); if (!valid) return; }
+		if (info[0] != 4 || info[3] < 48 || (info[3] & 3) || static_cast<uint64_t>(info[3]) + info[7] > 0x00200000 ||
+			info[4] == 0 || static_cast<uint64_t>(info[4]) + info[5] + info[6] != info[7]) { invalidateLoad("unsupported_file_info_layout"); return; }
+		s_load.buffer = buffer; s_load.fileInfo = fileInfo; s_load.info = info; s_load.loaderPC = psxRegs.pc;
+		s_load.bufferTimestamp = timestampMillis(); s_load.state = "buffer_observed";
+	}
+
+	void OnIOPModuleRegister(uint32_t record)
+	{
+		if (!checkLoadContext() || s_load.state != "buffer_observed" || record != s_load.info[3] - 48) return;
+		const std::array<u32, 6> expected{s_load.info[1] + s_load.info[3], s_load.info[2] + s_load.info[3], s_load.info[3], s_load.info[4], s_load.info[5], s_load.info[6]};
+		for (u32 i = 0; i < expected.size(); ++i) { bool valid = false; const u32 value = r3000Debug.read32(record + 16 + i * 4, valid); if (!valid || value != expected[i]) { invalidateLoad("registration_metadata_mismatch"); return; } }
+		s_load.record = record; s_load.state = "registered"; s_load.binding = true; s_load.registrationTimestamp = timestampMillis();
+		s_loadDeadline.store(0); s_load.covered.clear(); s_load.fd = -1;
+	}
+
+	void OnStateLoadAttempt() { ++s_inspectionRevision; invalidateLoad("savestate_load_attempt"); }
+
 	void OnIOPModuleListLocated(uint32_t address)
 	{
+		// RegisterLibraryEntries republishes the same locator for each library,
+		// including the observed IRX's own exports before its first pause.
+		if (s_load.state == "registered" && s_iopModuleRoot != address) invalidateLoad("loadcore_relocated");
 		s_iopModuleRoot = address; ++s_iopModuleDiscovery;
 	}
 
 	void OnIOPReset()
 	{
+		invalidateLoad("cpu_reset");
 		invalidateChanges("cpu_reset", true);
 		s_iopModuleRoot = 0;
 		s_iopOrigin = {};
