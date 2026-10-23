@@ -86,7 +86,7 @@ function verify(result, code) {
 }
 try {
   await mcp.connect(new StdioClientTransport({ command: process.execPath,
-    args: [fileURLToPath(new URL('../dist/index.js', import.meta.url))], stderr: 'pipe' }));
+    args: [fileURLToPath(new URL('../dist/index.js', import.meta.url))], env: { ...process.env }, stderr: 'pipe' }));
   await call('pcsx2_launch', { executable, elf: path.join(fixtureDirectory, 'normal.elf') }); owns = true;
   await inspector.connect();
   for (let n = 0; !(await inspector.getCapabilities()).elf; n++) { assert.ok(n < 100); await delay(100); }

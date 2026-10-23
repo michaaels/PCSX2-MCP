@@ -91,6 +91,14 @@ regression checks. Its pristine/upgrade/reapply/build comparison covers 20 nativ
 files. These checks do not rerun or replace the original 50 EE/IOP/progress/source
 acceptance checks recorded above, and do not measure audibility or A/V sync.
 
+F4 on 2026-10-22 passed the Windows/TypeScript builds, 117 Node tests, 10 new
+[memory-change observer checks](memory-change-watches.md), 10 progress and 13
+IOP exception/module regression checks. All used owned emulator processes;
+private port/data roots isolated the live runs. The pinned integration remains
+consistent across 20 files, including upgrade from F3 `0086ab1`. Paired fixture
+timings and CPU read/compare counters are recorded without a general performance
+claim. This does not add physical PS2, IRX/source/lifetime or A/V acceptance.
+
 The latest local evidence is under the Git-ignored
 `release/iop-modules-validation/` directory:
 

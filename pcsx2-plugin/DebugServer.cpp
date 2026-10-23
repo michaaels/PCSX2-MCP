@@ -85,6 +85,7 @@ typedef int socket_t;
 #include <deque>
 #include <future>
 #include <array>
+#include <charconv>
 
 // Forward declarations — these are PCSX2 globals
 extern R5900DebugInterface r5900Debug;
@@ -193,6 +194,30 @@ namespace DebugServer
 	static std::atomic<uint64_t> s_progressWatchId{0}, s_progressQueued{0};
 	static std::atomic<int64_t> s_progressNext{0};
 	static void sampleProgress();
+	// Bounded CPU-thread observers. The watchdog only queues a callback; it never
+	// dereferences guest memory or pauses the VM from its worker thread.
+	struct ChangeSample
+	{
+		int64_t elapsed = 0, timestamp = 0;
+		u32 raw = 0, pc = 0, cycles = 0;
+	};
+	struct ChangeWatch
+	{
+		std::string id, state, elf;
+		uint64_t session = 0, epoch = 0, iopEpoch = 0, revision = 0, samples = 0, rebases = 0, samplingNs = 0;
+		u32 crc = 0, address = 0, size = 4, mask = UINT32_MAX;
+		bool iop = false, pause = false, baseline = false;
+		int64_t start = 0, deadline = 0, next = 0, interval = 100;
+		ChangeSample previous, current;
+	};
+	static std::deque<ChangeWatch> s_changes;
+	static std::atomic<int64_t> s_changeNext{0};
+	static std::atomic<uint64_t> s_changeQueued{0};
+	static int64_t steadyMillis();
+	static bool activeChanges()
+	{
+		return std::any_of(s_changes.begin(), s_changes.end(), [](const auto& w) { return w.state == "armed" && w.deadline > steadyMillis(); });
+	}
 	static int64_t steadyMillis()
 	{
 		return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -331,6 +356,7 @@ namespace DebugServer
 		std::string strVal;
 		int64_t numVal = 0;
 		bool boolVal = false;
+		bool integerValid = false; // Strict consumers can reject truncation/overflow.
 	};
 
 	static std::unordered_map<std::string, JsonValue> parseJsonObject(const std::string& json)
@@ -405,6 +431,10 @@ namespace DebugServer
 				val.type = JsonValue::NUMBER;
 				if (isHex) val.numVal = (int64_t)strtoull(ns.c_str(), nullptr, 16);
 				else val.numVal = strtoll(ns.c_str(), nullptr, 10);
+				int64_t exact = 0;
+				const auto parsed = std::from_chars(ns.data(), ns.data() + ns.size(), exact, isHex ? 16 : 10);
+				val.integerValid = parsed.ec == std::errc{} && parsed.ptr == ns.data() + ns.size() &&
+					i < json.size() && (json[i] == ',' || json[i] == '}' || json[i] == ' ' || json[i] == '\t' || json[i] == '\r' || json[i] == '\n');
 			}
 			else
 			{
@@ -929,6 +959,7 @@ namespace DebugServer
 			return failure("Invalid exception watch ID");
 		if (cmd == "exception_watch_start")
 		{
+			if (activeChanges()) return failure("Memory change observers are active; finish or cancel them first");
 			if (s_progress.state == "armed" && steadyMillis() >= s_progress.deadline)
 			{ s_progress.state = "expired"; s_progressNext.store(0); }
 			if (s_progress.state == "armed" || s_progress.state == "capturing") return failure("A progress watch is active; finish or cancel it first");
@@ -1701,6 +1732,7 @@ namespace DebugServer
 			return failure("Invalid progress watch ID");
 		if (cmd == "progress_watch_start")
 		{
+			if (activeChanges()) return failure("Memory change observers are active; finish or cancel them first");
 			if (s_progress.state == "armed" && steadyMillis() >= s_progress.deadline)
 			{ s_progress.state = "expired"; s_progressNext.store(0); }
 			if (s_exception.state == "armed" && steadyMillis() >= s_exception.deadline)
@@ -1751,10 +1783,167 @@ namespace DebugServer
 		j.key("report"); j.valJson(s_progress.report.empty() ? "null" : s_progress.report); j.endObject(); return j.str();
 	}
 
+	static void scheduleChanges()
+	{
+		int64_t due = 0;
+		for (const auto& w : s_changes) if (w.state == "armed")
+		{
+			const auto next = std::min(w.next, w.deadline);
+			if (!due || next < due) due = next;
+		}
+		s_changeNext.store(due);
+	}
+
+	static void invalidateChanges(const char* reason, bool iopOnly = false)
+	{
+		for (auto& w : s_changes) if (w.state == "armed" && (!iopOnly || w.iop)) w.state = reason;
+		scheduleChanges();
+	}
+
+	static void sampleChanges()
+	{
+		const auto now = steadyMillis();
+		for (auto& w : s_changes)
+		{
+			if (w.state != "armed") continue;
+			if (now >= w.deadline) { w.state = "expired"; continue; }
+			if (!VMManager::HasValidVM() || w.epoch != s_executionEpoch || w.elf != VMManager::GetCurrentELF() || w.crc != VMManager::GetCurrentCRC())
+			{ w.state = "vm_changed"; continue; }
+			if (w.iop && w.iopEpoch != s_iopResetEpoch) { w.state = "cpu_reset"; continue; }
+			if (now < w.next) continue;
+			w.next = now + w.interval;
+			if (VMManager::GetState() != VMState::Running || s_step.active || s_operation.active)
+			{ w.baseline = false; continue; }
+			const auto began = std::chrono::steady_clock::now();
+			DebugInterface* cpu = w.iop ? static_cast<DebugInterface*>(&r3000Debug) : &r5900Debug;
+			bool valid = false;
+			ChangeSample current; current.elapsed = now - w.start; current.timestamp = timestampMillis();
+			current.pc = cpu->getPC(); current.cycles = w.iop ? psxRegs.cycle : cpuRegs.cycle;
+			current.raw = w.size == 1 ? cpu->read8(w.address, valid) : w.size == 2 ? cpu->read16(w.address, valid) : cpu->read32(w.address, valid);
+			++w.samples;
+			const auto gap = current.elapsed - w.current.elapsed;
+			const bool comparable = w.baseline && w.revision == s_inspectionRevision && gap > 0 && gap <= w.interval * 4 && current.cycles != w.current.cycles;
+			const bool changed = valid && comparable && (current.raw & w.mask) != (w.current.raw & w.mask);
+			if (valid && !comparable) ++w.rebases;
+			w.previous = w.current; w.current = current; w.revision = s_inspectionRevision; w.baseline = valid;
+			w.samplingNs += std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - began).count();
+			if (!valid) w.state = "memory_unavailable";
+			else if (changed)
+			{
+				w.state = "changed"; // Freeze before pausing, which rebases other armed observers.
+				recordEvent("memory_change", w.iop ? "iop" : "ee", current.pc, w.id);
+				if (w.pause) VMManager::SetPaused(true);
+			}
+		}
+		scheduleChanges();
+	}
+
+	static void changeState(JsonBuilder& j, const ChangeWatch& w)
+	{
+		j.startObject(); j.kv("ok", true); j.kv("watch_id", w.id); j.kv("state", w.state); j.kv("active", w.state == "armed");
+		j.kv("cpu", w.iop ? "iop" : "ee"); j.kv("session", w.session); j.kv("execution_epoch", w.epoch); j.kv("iop_reset_epoch", w.iopEpoch);
+		j.kv("elf", w.elf); j.key("elf_crc"); j.valHex32(w.crc);
+		j.key("address"); j.valHex32(w.address); j.kv("size", w.size); j.key("mask"); j.valHex32(w.mask);
+		j.kv("sample_interval_ms", w.interval); j.kv("timeout_ms", w.deadline - w.start); j.kv("pause_on_change", w.pause);
+		j.kv("total_samples", w.samples); j.kv("baseline_count", w.rebases); j.kv("sampling_cpu_ns", w.samplingNs);
+		j.kv("observation", "sampled_memory_change"); j.key("writer_pc"); j.valJson("null");
+		j.key("change");
+		if (w.state != "changed") j.valJson("null");
+		else
+		{
+			j.startObject();
+			for (const auto& entry : {std::pair<const char*, const ChangeSample*>("previous", &w.previous), {"current", &w.current}})
+			{
+				const auto& sample = *entry.second;
+				j.key(entry.first); j.startObject(); j.kv("timestamp_ms", sample.timestamp); j.kv("elapsed_ms", sample.elapsed);
+				j.key("sample_pc"); j.valHex32(sample.pc); j.key("cycles"); j.valHex32(sample.cycles);
+				j.key("raw"); j.valHex32(sample.raw); j.key("masked"); j.valHex32(sample.raw & w.mask); j.endObject();
+			}
+			j.endObject();
+		}
+		j.endObject();
+	}
+
+	static std::string changeCommand(const std::unordered_map<std::string, JsonValue>& params, const std::string& cmd)
+	{
+		const auto now = steadyMillis();
+		for (auto& w : s_changes) if (w.state == "armed" && now >= w.deadline) w.state = "expired";
+		scheduleChanges();
+		if (cmd == "memory_watch_list")
+		{
+			JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("capacity", 16); j.key("watches"); j.startArray();
+			for (const auto& w : s_changes) changeState(j, w);
+			j.endArray(); j.endObject(); return j.str();
+		}
+		const auto id = getStr(params, "watch_id");
+		if (id.size() != 32 || !std::all_of(id.begin(), id.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); })) return failure("Invalid memory watch ID");
+		auto found = std::find_if(s_changes.begin(), s_changes.end(), [&](const auto& w) { return w.id == id; });
+		if (cmd == "memory_watch_start")
+		{
+			for (const char* key : {"address", "size", "mask", "sample_interval_ms", "timeout_ms", "expected_process_id", "expected_session", "expected_execution_epoch", "expected_elf_crc", "expected_iop_reset_epoch"})
+			{
+				const auto field = params.find(key);
+				if (field == params.end()) continue;
+				const auto& value = field->second;
+				bool valid = value.type == JsonValue::NUMBER && value.integerValid;
+				if (value.type == JsonValue::STRING)
+				{
+					const auto& text = value.strVal;
+					const bool hex = text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X');
+					int64_t exact = 0; const char* begin = text.data() + (hex ? 2 : 0);
+					const auto parsed = std::from_chars(begin, text.data() + text.size(), exact, hex ? 16 : 10);
+					valid = parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size();
+				}
+				if (!valid) return failure("Memory watch fields must be exact integers");
+			}
+			const auto pause = params.find("pause_on_change"), cpuField = params.find("cpu");
+			if ((pause != params.end() && pause->second.type != JsonValue::BOOL) || (cpuField != params.end() && cpuField->second.type != JsonValue::STRING))
+				return failure("Invalid memory watch field type");
+			if (found != s_changes.end()) return failure("Memory watch ID already exists");
+			if (s_step.active || s_operation.active || (s_progress.state == "armed" && now < s_progress.deadline) || s_progress.state == "capturing" ||
+				(s_exception.state == "armed" && now < s_exception.deadline) || s_exception.state == "capturing") return failure("A watch or execution operation is already active");
+#ifdef _WIN32
+			const uint64_t process = GetCurrentProcessId();
+#else
+			const uint64_t process = getpid();
+#endif
+			if (!VMManager::HasValidVM() || VMManager::GetCurrentELF().empty()) return failure("Memory watch requires a booted ELF");
+			const auto cpu = getStr(params, "cpu", "ee"); const bool iop = cpu == "iop";
+			if (cpu != "ee" && !iop) return failure("cpu must be ee or iop");
+			if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) || getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) || getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+				getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC() || (iop && getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch)))
+				return failure("Memory watch VM/ELF identity changed");
+			const auto address = getNum(params, "address", -1), size = getNum(params, "size", 4);
+			if (size != 1 && size != 2 && size != 4) return failure("Memory watch size must be 1, 2 or 4");
+			const auto maximum = size == 4 ? int64_t{UINT32_MAX} : (int64_t{1} << (size * 8)) - 1;
+			const auto mask = getNum(params, "mask", maximum), interval = getNum(params, "sample_interval_ms", 100), timeout = getNum(params, "timeout_ms", 30000);
+			if (address < 0 || address > (iop ? 0x200000 : 0x2000000) - size || address % size || mask < 1 || mask > maximum ||
+				interval < 50 || interval > 1000 || timeout < 100 || timeout > 300000) return failure("Invalid memory watch RAM range, mask or timing bounds");
+			if (s_changes.size() == 16)
+			{
+				auto terminal = std::find_if(s_changes.begin(), s_changes.end(), [](const auto& w) { return w.state != "armed"; });
+				if (terminal == s_changes.end()) return failure("Memory watch capacity reached (16 active)");
+				s_changes.erase(terminal);
+			}
+			ChangeWatch w; w.id = id; w.state = "armed"; w.iop = iop; w.session = s_session.load(); w.epoch = s_executionEpoch; w.iopEpoch = s_iopResetEpoch;
+			w.elf = VMManager::GetCurrentELF(); w.crc = VMManager::GetCurrentCRC(); w.address = static_cast<u32>(address); w.size = static_cast<u32>(size); w.mask = static_cast<u32>(mask);
+			w.interval = interval; w.start = now; w.deadline = now + timeout; w.next = now + interval; w.pause = getBool(params, "pause_on_change", false);
+			s_changes.push_back(std::move(w)); found = std::prev(s_changes.end());
+		}
+		else
+		{
+			if (found == s_changes.end()) return failure("Unknown or evicted memory watch");
+			if (cmd == "memory_watch_cancel" && found->state == "armed") found->state = "cancelled";
+		}
+		scheduleChanges(); JsonBuilder j; changeState(j, *found); return j.str();
+	}
+
 	static std::string handleCommand(const std::string& jsonLine)
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
+		if (cmd == "memory_watch_start" || cmd == "memory_watch_status" || cmd == "memory_watch_cancel" || cmd == "memory_watch_list") return changeCommand(params, cmd);
 		if (cmd == "media_start" || cmd == "media_status" || cmd == "media_stop") return mediaCommand(params, cmd);
 		if (cmd == "gs_dump_start" || cmd == "gs_dump_status" || cmd == "gs_dump_cancel") return dumpCommand(params, cmd);
 		if (cmd == "iop_module_snapshot") return guardedIopModules(params);
@@ -1882,7 +2071,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2705,6 +2894,7 @@ namespace DebugServer
 		s_step = {}; s_stepDeadline.store(0); ++s_executionEpoch;
 		s_exception = {}; s_exceptionDeadline.store(0); s_exceptionPending.store(0);
 		s_progress = {}; s_progressNext.store(0); s_progressQueued.store(0);
+		s_changes.clear(); s_changeNext.store(0); s_changeQueued.store(0);
 		s_iopModuleRoot = 0;
 		s_eeOrigin = {}; s_iopOrigin = {};
 		++s_session;
@@ -2722,6 +2912,7 @@ namespace DebugServer
 				const auto watchSequence = s_exceptionWatchId.load();
 				const auto progressDue = s_progressNext.load();
 				const auto progressId = s_progressWatchId.load();
+				const auto changeDue = s_changeNext.load();
 				const auto dumpExpiry = s_dumpDeadline.load();
 				const auto dumpSequence = s_dumpSequence.load();
 				const auto mediaExpiry = s_mediaDeadline.load();
@@ -2741,6 +2932,14 @@ namespace DebugServer
 					});
 				}
 				uint64_t idle = 0;
+				if (changeDue && now >= changeDue && s_changeQueued.compare_exchange_strong(idle, watchdogSession))
+				{
+					Host::RunOnCPUThread([watchdogSession]() {
+						if (s_session.load() == watchdogSession) sampleChanges();
+						uint64_t queued = watchdogSession; s_changeQueued.compare_exchange_strong(queued, 0);
+					});
+				}
+				idle = 0;
 				if (progressDue && now >= progressDue && s_progressQueued.compare_exchange_strong(idle, progressId))
 				{
 					Host::RunOnCPUThread([watchdogSession, progressId]() {
@@ -2779,6 +2978,7 @@ namespace DebugServer
 
 	void Stop()
 	{
+		invalidateChanges("vm_stopped");
 		stopMedia("vm_stopped");
 		cancelDump("vm_stopped");
 		if (s_progress.state == "armed") s_progress.state = "vm_stopped";
@@ -2863,6 +3063,7 @@ namespace DebugServer
 
 	void OnVMReset()
 	{
+		invalidateChanges("vm_changed");
 		stopMedia("vm_reset");
 		cancelDump("vm_reset");
 		s_iopModuleRoot = 0;
@@ -2962,6 +3163,7 @@ namespace DebugServer
 
 	void OnIOPReset()
 	{
+		invalidateChanges("cpu_reset", true);
 		s_iopModuleRoot = 0;
 		s_iopOrigin = {};
 		if (s_exception.iop && s_exception.state == "capturing") finalizeException(s_exception.sequence);

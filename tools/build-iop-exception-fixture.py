@@ -20,7 +20,7 @@ def main():
     shutil.copytree(source, output)
     subprocess.run(['docker', 'run', '--rm', '--mount', f'type=bind,source={output},target=/fixture',
                     '-w', '/fixture', IMAGE, 'sh', '/fixture/build.sh'], check=True)
-    names = ['normal.elf', 'delay.elf', 'syscall.elf', 'reset.elf', 'hardreset.elf', 'iop-exceptions.irx',
+    names = ['normal.elf', 'delay.elf', 'syscall.elf', 'reset.elf', 'hardreset.elf', 'watch.elf', 'iop-exceptions.irx',
              'iop-exceptions.c', 'ee-iop-exceptions.c', 'toolchain.txt']
     hashes = {name: hashlib.sha256((output / name).read_bytes()).hexdigest() for name in names}
     (output / 'manifest.json').write_text(json.dumps({'image': IMAGE, 'sha256': hashes}, indent=2) + '\n', encoding='utf-8')

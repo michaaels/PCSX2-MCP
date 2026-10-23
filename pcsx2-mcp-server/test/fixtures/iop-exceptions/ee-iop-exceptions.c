@@ -8,6 +8,7 @@
 #define FIXTURE_MODE 0
 #endif
 volatile int fixture_result = -999;
+volatile unsigned fixture_ee_counter;
 __attribute__((noinline)) void fixture_ready(int result) {
     fixture_result = result;
     __asm__ volatile ("nop"); /* READY: loaded IRX, genuine EE source breakpoint. */
@@ -17,6 +18,8 @@ int main(void) {
     static const char args[] = "delay";
 #elif FIXTURE_MODE == 2
     static const char args[] = "syscall";
+#elif FIXTURE_MODE == 5
+    static const char args[] = "watch";
 #else
     static const char args[] = "normal";
 #endif
@@ -33,6 +36,9 @@ int main(void) {
            Isolated emulator-only reset probe; not a physical PS2 test. */
         *(volatile unsigned *)0x1000f240 = 1u << 19;
     }
-    for (;;) { __asm__ volatile ("nop"); }
+    for (;;) {
+        if (FIXTURE_MODE == 5) fixture_ee_counter += 0x100;
+        __asm__ volatile ("nop");
+    }
     return 0;
 }

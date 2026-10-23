@@ -27,6 +27,14 @@ behavior, native integration and tests can be reviewed together.
 
 ## Operational improvements
 
+F4 (2026-10-22) adds up to 16 bounded one-shot EE/IOP memory-change observers
+sampled on the CPU thread, masks for 1/2/4-byte values, wall TTL, owned
+cancellation and optional pause. Frozen pairs preserve sample PCs/cycles and
+explicitly unknown writer PC. [Contract and acceptance](memory-change-watches.md).
+Windows build, 117 Node tests, 10 new live checks and 23 progress/IOP regressions
+passed; integration agrees across 20 native files. F1–F4 are complete in the
+documented emulator scope; the next delivery is 5A2.
+
 Both the TypeScript server and the native PCSX2 integration have changed.
 Rebuild both and restart the MCP server/client to discover the added tools and
 fields. The original release binary does not contain these extensions; source

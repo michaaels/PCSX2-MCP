@@ -156,6 +156,13 @@ Translates MCP tool calls into DebugServer TCP commands. Also supports **Pine IP
 | `pcsx2_read_string` | Read null-terminated string |
 | `pcsx2_find_pattern` | Search for hex pattern (`??` wildcards) |
 | `pcsx2_memory_diff` | Snapshot + diff memory regions |
+| `pcsx2_memory_watch_start` | Arm a bounded sampled EE/IOP RAM change observer, with optional pause |
+| `pcsx2_memory_watch_status` | Read/wait for its frozen value pair; sample PC is not writer PC |
+| `pcsx2_memory_watch_list` | List up to 16 retained observers |
+| `pcsx2_memory_watch_cancel` | Cancel only the selected observer |
+
+See [memory-change observers](docs/memory-change-watches.md) for limits, CPU-thread
+sampling, identity guards and validation. Requires the updated native build.
 
 ### Registers
 | Tool | Description |

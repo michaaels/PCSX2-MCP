@@ -19,7 +19,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | F1 | Puertos por proceso, directorios de datos independientes y aislamiento de sockets/sesiones; dos instancias Windows | Implementado y probado; incluido en main con esta entrega |
 | F2 | GS dumps acotados con identidad, estados y archivos verificables | Implementado y probado; incluido en main con esta entrega |
 | F3 | Captura vídeo/audio con propiedad, límites y finalización comprobada | Implementado y probado; incluido en main con esta entrega |
-| F4 | Observadores de cambios de memoria EE/IOP en el hilo CPU | Pendiente |
+| F4 | Observadores de cambios de memoria EE/IOP en el hilo CPU | Implementado y probado; incluido en main con esta entrega |
 | 5A2 | Vincular IRX exacto y fuentes con evidencia que contemple relocaciones | Pendiente; retomar tras F1–F4 |
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | Pendiente; requisito para F5 |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Pendiente; después de 5A2–5A3 |
@@ -49,5 +49,11 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   y audio AAC estéreo; audibilidad/sincronía no medidas. Pasaron 8 checks GS y
   11 de automatización como regresión. Integración consistente en 20 archivos;
   runtime oficial FFmpeg 8 fijado y verificado. [Contrato](media-capture.md).
-- Siguiente entrega: F4, observación de cambios EE/IOP. Retomar 5A2 tras F1–F4;
+- F4: Windows y TypeScript compilados, 117 pruebas Node, 10 comprobaciones live
+  de cambios reales EE/IOP, identidad, máscaras, propiedad, límites y reinicios.
+  Pasaron 10 checks de progreso y 13 de excepciones/módulos IOP como regresión.
+  Integración consistente en 20 archivos. Hasta 16 observadores en hilo CPU,
+  TTL, pausa opcional y pares inmutables; PC del escritor desconocido. Medición
+  acotada de coste, sin garantía general de rendimiento. [Contrato](memory-change-watches.md).
+- Siguiente entrega: 5A2, identidad IRX y fuentes verificadas, tras F1–F4;
   F5 exige 5A3. Cada paso sigue requiriendo publicación validada en main.

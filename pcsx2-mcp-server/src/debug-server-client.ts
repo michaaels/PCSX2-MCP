@@ -28,6 +28,7 @@ import { address, symbolOptions, symbolsResponse, resolvedResponse, symbolBreakp
 import { guardedStepResponse, type StepIdentity } from './guarded-step.js';
 import { exceptionOptions, exceptionState, watchId } from './exceptions.js';
 import { progressOptions, progressState } from './progress.js';
+import { memoryWatchOptions, memoryWatchState, memoryWatchList } from './memory-watch.js';
 import { parseIopModuleSnapshot } from './iop-modules.js';
 import { defaultPorts, tcpPort } from './ports.js';
 import { dumpOptions, parseDump, type DumpOptions } from './gs-dump.js';
@@ -275,6 +276,33 @@ export class DebugServerClient {
     if (addressValue !== undefined && (!result.memory || result.memory.address !== addressValue || result.memory.length !== length ||
       (result.memory.valid && result.memory.hex?.length !== length! * 2) || (!result.memory.valid && result.memory.hex !== undefined))) throw new Error('Invalid guarded inspection memory response');
     return result;
+  }
+
+  async startMemoryWatch(id: string, expected: StepIdentity & { iop_reset_epoch?: number }, options: z.input<typeof memoryWatchOptions>) {
+    watchId.parse(id); const o = memoryWatchOptions.parse(options);
+    const response = await this.send({ cmd: 'memory_watch_start', watch_id: id, ...o,
+      expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
+      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc, expected_iop_reset_epoch: expected.iop_reset_epoch });
+    if (!response.ok) throw Object.assign(new Error(response.error ?? 'Memory watch rejected'), { native_rejected: true });
+    const result = memoryWatchState.parse(response);
+    if (result.watch_id !== id || result.session !== expected.session || result.execution_epoch !== expected.execution_epoch ||
+        result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc) || result.state !== 'armed' ||
+        (o.cpu === 'iop' && result.iop_reset_epoch !== expected.iop_reset_epoch) || result.cpu !== o.cpu || result.address !== o.address ||
+        result.size !== o.size || Number(result.mask) !== (o.mask ?? 2 ** (o.size * 8) - 1) ||
+        result.sample_interval_ms !== o.sample_interval_ms || result.timeout_ms !== o.timeout_ms || result.pause_on_change !== o.pause_on_change)
+      throw new Error('Unexpected memory watch identity/criterion');
+    return result;
+  }
+
+  async memoryWatchStatus(id: string, cancel = false) {
+    watchId.parse(id);
+    const result = memoryWatchState.parse(await this.sessionCommand({ cmd: cancel ? 'memory_watch_cancel' : 'memory_watch_status', watch_id: id }));
+    if (result.watch_id !== id) throw new Error('Unexpected memory watch ID');
+    return result;
+  }
+
+  async listMemoryWatches() {
+    return memoryWatchList.parse(await this.sessionCommand({ cmd: 'memory_watch_list' }));
   }
 
   async startProgressWatch(id: string, expected: StepIdentity, options: z.input<typeof progressOptions>) {

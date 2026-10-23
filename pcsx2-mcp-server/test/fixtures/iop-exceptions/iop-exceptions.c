@@ -13,10 +13,17 @@ thbase_IMPORTS_end
 
 IRX_ID("mcp_exception_fixture", 1, 1);
 static int fixture_mode;
+volatile unsigned fixture_iop_counter;
 
 static void worker(void *arg) {
     (void)arg;
     DelayThread(2000000);
+    if (fixture_mode == 3) {
+        for (;;) {
+            fixture_iop_counter += 0x100;
+            DelayThread(80000);
+        }
+    }
     if (fixture_mode == 1) {
         __asm__ volatile (
             ".set push\n.set noreorder\nlui $8, 0x1357\nori $8, $8, 0x9bdf\n"
@@ -42,6 +49,7 @@ int _start(int argc, char **argv) {
     int id;
     if (argc > 1 && argv[1][0] == 'd') fixture_mode = 1;
     if (argc > 1 && argv[1][0] == 's') fixture_mode = 2;
+    if (argc > 1 && argv[1][0] == 'w') fixture_mode = 3;
     thread.attr = TH_C;
     thread.option = 0;
     thread.thread = worker;
