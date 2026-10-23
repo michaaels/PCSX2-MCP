@@ -1458,7 +1458,7 @@ namespace DebugServer
 
 	// Read the layout used by upstream BiosDebugData::getIOPModules, with bounded
 	// valid reads and no live symbol database or guessed fixed BIOS list address.
-	static std::string iopModuleSnapshot()
+	static std::string iopModuleSnapshot(u32 imageRecord = 0)
 	{
 		struct Module { u32 record, next, nameAddress, version, entry, gp, text, textSize, dataSize, bssSize; std::string name; };
 		std::vector<Module> modules;
@@ -1508,6 +1508,17 @@ namespace DebugServer
 				modules.push_back(std::move(m)); current = modules.back().next;
 			}
 		}
+		const Module* imageModule = nullptr;
+		if (imageRecord)
+		{
+			if (!reason.empty()) return failure("IOP module image requires a complete observed table");
+			for (const auto& m : modules) if (m.record == imageRecord) imageModule = &m;
+			if (!imageModule) return failure("IOP module record is no longer observed");
+			const uint64_t size = static_cast<uint64_t>(imageModule->textSize) + imageModule->dataSize;
+			if (!size || size > 256 * 1024 || (imageModule->text & 3) ||
+				static_cast<uint64_t>(imageModule->text) + size + imageModule->bssSize > 0x00200000)
+				return failure("IOP module image exceeds bounded canonical RAM");
+		}
 		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("cpu", "iop");
 		j.kv("snapshot_id", ++s_iopModuleSnapshot); j.kv("timestamp_ms", timestampMillis());
 		j.kv("session", s_session.load()); j.kv("execution_epoch", s_executionEpoch); j.kv("iop_reset_epoch", s_iopResetEpoch);
@@ -1527,10 +1538,16 @@ namespace DebugServer
 			j.key("text_address"); j.valHex32(m.text); j.kv("text_size", m.textSize); j.kv("data_size", m.dataSize); j.kv("bss_size", m.bssSize);
 			j.endObject();
 		}
-		j.endArray(); j.endObject(); return j.str();
+		j.endArray();
+		if (imageModule)
+		{
+			j.key("image_record"); j.valHex32(imageRecord); j.key("sample_pc"); j.valHex32(r3000Debug.getPC());
+			j.key("module_image"); exceptionMemory(j, imageModule->text, imageModule->textSize + imageModule->dataSize, true);
+		}
+		j.endObject(); return j.str();
 	}
 
-	static std::string guardedIopModules(const std::unordered_map<std::string, JsonValue>& params)
+	static std::string guardedIopModules(const std::unordered_map<std::string, JsonValue>& params, bool image = false)
 	{
 		if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused || s_step.active || s_operation.active)
 			return failure("IOP module snapshot requires a paused VM without active execution operation");
@@ -1545,7 +1562,12 @@ namespace DebugServer
 			getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
 			getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 			return failure("IOP module snapshot VM/ELF/reset identity changed");
-		return iopModuleSnapshot();
+		if (!image) return iopModuleSnapshot();
+		const auto record = getNum(params, "module_record", -1);
+		if (record <= 0 || record > 0x00200000 - 40 || (record & 3) ||
+			getNum(params, "expected_revision", -1) != static_cast<int64_t>(s_inspectionRevision))
+			return failure("IOP module image pause revision or record changed");
+		return iopModuleSnapshot(static_cast<u32>(record));
 	}
 
 	static void finalizeException(uint64_t sequence)
@@ -1947,6 +1969,7 @@ namespace DebugServer
 		if (cmd == "media_start" || cmd == "media_status" || cmd == "media_stop") return mediaCommand(params, cmd);
 		if (cmd == "gs_dump_start" || cmd == "gs_dump_status" || cmd == "gs_dump_cancel") return dumpCommand(params, cmd);
 		if (cmd == "iop_module_snapshot") return guardedIopModules(params);
+		if (cmd == "iop_module_image") return guardedIopModules(params, true);
 		if (cmd == "progress_watch_start" || cmd == "progress_watch_status" || cmd == "progress_watch_cancel") return progressWatch(params, cmd);
 		if (cmd == "exception_watch_start" || cmd == "exception_watch_status" || cmd == "exception_watch_cancel") return exceptionWatch(params, cmd);
 		if (cmd == "guarded_step") return startGuardedStep(params);
@@ -2071,7 +2094,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}

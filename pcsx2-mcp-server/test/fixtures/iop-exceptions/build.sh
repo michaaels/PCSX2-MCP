@@ -3,6 +3,10 @@ set -eu
 if ! command -v make >/dev/null 2>&1; then apk add --no-cache make; fi
 cd /fixture
 make -f Makefile.iop
+# Legacy loadcore can process every SHT_REL, including file-only DWARF ones.
+# Keep the debug companion for source lookup and load only the stripped copy.
+cp iop-exceptions.irx iop-exceptions.debug.irx
+iop-strip --strip-debug iop-exceptions.irx
 make -f Makefile.ee NAME=normal MODE=0
 make -f Makefile.ee NAME=delay MODE=1
 make -f Makefile.ee NAME=syscall MODE=2

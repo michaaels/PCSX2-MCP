@@ -36,6 +36,24 @@ export function parseIopModuleSnapshot(value: unknown) {
   }
   return s;
 }
+export function parseIopModuleImage(value: unknown) {
+  const base = parseIopModuleSnapshot(value);
+  const extra = z.object({ image_record: address, sample_pc: address, module_image: z.object({
+    address, length: z.number().int().min(1).max(256 * 1024), valid: z.boolean(),
+    hex: z.string().regex(/^(?:[\da-f]{2})+$/).max(512 * 1024).optional(), reason: z.string().optional(),
+  }) }).parse(value);
+  const module = base.modules.find(m => m.record_address === extra.image_record), image = extra.module_image;
+  if (base.status !== 'observed' || !module || !image.valid || image.hex?.length !== image.length * 2 ||
+      module.text_address !== image.address || image.length !== module.text_size + module.data_size ||
+      !canonical(Number(image.address), image.length + module.bss_size)) throw new Error('Invalid or unavailable IOP module image');
+  for (const other of base.modules) {
+    if (other === module) continue;
+    const start = Number(other.text_address), end = start + other.text_size + other.data_size + other.bss_size;
+    if (start < Number(image.address) + image.length + module.bss_size && end > Number(image.address))
+      throw new Error('IOP module image overlaps another observed module');
+  }
+  return { ...base, ...extra, module };
+}
 export function resolveIopModule(s: ReturnType<typeof parseIopModuleSnapshot>, input: string) {
   const pc = address.parse(input), value = Number(pc);
   const identity = { address: pc, snapshot_id: s.snapshot_id, artifact_identity: null, source_mapping: null };

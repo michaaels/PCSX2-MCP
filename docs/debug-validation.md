@@ -84,6 +84,16 @@ are in [exceptions](exceptions.md), [progress watches](progress-watches.md),
 
 ## Evidence and publication scope
 
+5A2a (2026-10-22): Windows native/TypeScript builds, 127 Node tests, 10 new
+[IRX association/source checks](irx-source-association.md), 13 IOP exception/module
+and 10 memory-observer regressions passed. A genuine IOP instruction breakpoint
+resolved to its exact fixture function/file/line through relocated IRX DWARF2.
+The fixture's stripped loadable copy preserves its original program/load headers;
+debug-only relocations remain in its separate companion. The integration matches
+20 native files across pristine/upgrade from `b6579ed`/reapply/build. This proves
+the documented paused immutable-image association, not full load-file provenance,
+module generations, all IRX formats or hardware acceptance.
+
 Later deliveries have separate acceptance records: [instance ports](automation.md#independent-instances),
 [GS dumps](gs-dumps.md) and [video/audio capture](media-capture.md). F3 on 2026-10-22
 passed the Windows build, 110 Node tests, 8 media live checks and 19 GS/automation

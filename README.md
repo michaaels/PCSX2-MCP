@@ -200,10 +200,17 @@ sampling, identity guards and validation. Requires the updated native build.
 |---|---|
 | `pcsx2_get_threads` | List EE/IOP BIOS threads |
 | `pcsx2_get_modules` | List loaded IOP modules |
+| `pcsx2_iop_modules` | Bounded paused runtime inventory and address-to-range association |
+| `pcsx2_iop_verify_irx` | Match a selected IRX's relocated immutable image at a guarded pause |
+| `pcsx2_iop_source` | Resolve runtime IOP addresses through a freshly verified IRX candidate |
 | `pcsx2_get_backtrace` | Call stack walk — entry points, PCs, stack pointers, frame sizes |
 | `pcsx2_game_info` | Game title/ID/version (Pine) |
 | `pcsx2_save_state` | Save state to slot 0-9 (Pine) |
 | `pcsx2_load_state` | Load state from slot (Pine) |
+
+See [IRX code/source association](docs/irx-source-association.md) for the supported
+dialect, evidence, ignored mutable regions and pending load-provenance/lifetime
+guards. Rebuild both components for the new capability.
 
 ### Screenshots
 | Tool | Description |

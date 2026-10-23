@@ -1,8 +1,11 @@
 IOP_BIN = iop-exceptions.irx
 IOP_OBJS = iop-exceptions.o
-IOP_CFLAGS = -g
+IOP_CFLAGS = -g -gdwarf-2
 all: $(IOP_BIN)
 include $(PS2SDK)/samples/Makefile.pref
 include $(PS2SDK)/samples/Makefile.iopglobal
 # Retain the fixture's symbol table for independent instruction comparison.
 IOP_LDFLAGS := $(filter-out -s,$(IOP_LDFLAGS)) -Wl,-Map,iop-exceptions.map
+# The old default linker places orphan DWARF sections at nonzero VMAs, making
+# section-relative references invalid for host debuggers. These are file-only.
+IOP_LDFLAGS += $(foreach s,info abbrev line frame pubnames aranges str,-Wl,--section-start=.debug_$(s)=0)

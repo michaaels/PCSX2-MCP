@@ -27,13 +27,21 @@ behavior, native integration and tests can be reviewed together.
 
 ## Operational improvements
 
+5A2a (2026-10-22) adds guarded IRX immutable-image association and IOP source
+lookup. It hashes the selected local artifact, reconstructs supported relocations
+and revalidates native bytes/metadata/pause and file state after lookup. Actual
+IOP breakpoint addresses resolve through IRX DWARF2. [Contract](irx-source-association.md).
+Windows/TypeScript builds, 127 Node tests, 10 new live checks and 23 IOP/memory
+regressions passed; native integration still agrees across 20 files. Full original
+load-file provenance, additional layouts and module generations remain pending.
+
 F4 (2026-10-22) adds up to 16 bounded one-shot EE/IOP memory-change observers
 sampled on the CPU thread, masks for 1/2/4-byte values, wall TTL, owned
 cancellation and optional pause. Frozen pairs preserve sample PCs/cycles and
 explicitly unknown writer PC. [Contract and acceptance](memory-change-watches.md).
 Windows build, 117 Node tests, 10 new live checks and 23 progress/IOP regressions
 passed; integration agrees across 20 native files. F1–F4 are complete in the
-documented emulator scope; the next delivery is 5A2.
+documented emulator scope; 5A2a is recorded above as the following delivery.
 
 Both the TypeScript server and the native PCSX2 integration have changed.
 Rebuild both and restart the MCP server/client to discover the added tools and
@@ -60,9 +68,11 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay remains
 dependent on reset/save-state identity and module lifetime handling.
 
-1. **Bind an exact IRX artifact to an observed IOP load.** Validate file identity
-   and loaded bytes while accounting for relocations. Name/version or an assumed
-   load bias is insufficient. Source lookup must use guarded validated bindings.
+1. **Finish 5A2b load-file provenance and additional IRX coverage.** 5A2a validates
+   a selected candidate's relocated immutable image and resolves sources at the
+   same guarded pause. It cannot reconstruct overwritten initial data or prove
+   the original loaded file SHA. Add capture-at-load evidence and broader formats
+   without treating a matching name/version or bias as proof.
 2. **Define IOP module lifetime/revalidation.** Handle unload/reload, software
    `SifIopReset` and save-state restore before reusing old load identities.
    Current IOP reset epochs cover native CPU resets only.

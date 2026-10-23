@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import { z } from 'zod';
 import { address } from './symbols.js';
 import { DebugServerClient } from './debug-server-client.js';
+import { inspectIrx } from './irx.js';
 
 const hex = (value: number) => '0x' + value.toString(16).padStart(8, '0');
 const normalize = (value: string) => hex(Number.parseInt(address.parse(value), 16));
@@ -192,6 +193,23 @@ export class SourceResolver {
       tool: tool ? { backend: tool.backend, command: tool.command, ...('distribution' in tool ? { distribution: tool.distribution } : {}) } : null,
       locations: addresses.map(value => parsed.find(item => item.address === value) ?? { address: value, resolved: false, frames: [],
         reason: !elf.has_debug_lines ? 'no_debug_line_section' : 'outside_executable_segments' }) };
+  }
+
+  async resolveIrx(filename: string, expectedSha256: string, input: string[], signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    const addresses = z.array(address).min(1).max(64).parse(input);
+    const irx = await inspectIrx(filename);
+    if (irx.sha256 !== expectedSha256) throw new Error('IRX changed before source lookup');
+    const eligible = [...new Set(addresses.filter(a => irx.has_debug_lines && irx.executable.some(r => Number(a) >= r.start && Number(a) < r.end)))];
+    const tool = eligible.length ? await this.invoke(irx.irx, eligible, signal) : null;
+    const parsed = tool ? parseSourceOutput(tool.output, eligible) : [];
+    signal?.throwIfAborted();
+    const after = await inspectIrx(irx.irx);
+    if (after.sha256 !== irx.sha256 || after.file_version !== irx.file_version) throw new Error('IRX changed during source lookup');
+    return { has_debug_lines: irx.has_debug_lines,
+      tool: tool ? { backend: tool.backend, command: tool.command } : null,
+      locations: addresses.map(a => parsed.find(p => p.address === a) ?? { address: a, resolved: false, frames: [],
+        reason: irx.has_debug_lines ? 'outside_executable_sections' : irx.debug_line_status === 'compressed_unsupported' ? 'compressed_debug_lines_unsupported' : 'no_debug_line_section' }) };
   }
 
   async currentPc(client: DebugServerClient, signal?: AbortSignal) {

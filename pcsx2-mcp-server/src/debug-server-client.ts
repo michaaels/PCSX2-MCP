@@ -29,7 +29,7 @@ import { guardedStepResponse, type StepIdentity } from './guarded-step.js';
 import { exceptionOptions, exceptionState, watchId } from './exceptions.js';
 import { progressOptions, progressState } from './progress.js';
 import { memoryWatchOptions, memoryWatchState, memoryWatchList } from './memory-watch.js';
-import { parseIopModuleSnapshot } from './iop-modules.js';
+import { parseIopModuleSnapshot, parseIopModuleImage } from './iop-modules.js';
 import { defaultPorts, tcpPort } from './ports.js';
 import { dumpOptions, parseDump, type DumpOptions } from './gs-dump.js';
 import { mediaOptions, parseMedia, type MediaOptions } from './media.js';
@@ -766,6 +766,18 @@ export class DebugServerClient {
       expected_iop_reset_epoch: expected.iop_reset_epoch, expected_elf: expected.elf, expected_elf_crc: expected.elf_crc }));
     if (result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.iop_reset_epoch !== expected.iop_reset_epoch ||
         result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc)) throw new Error('IOP module snapshot identity mismatch');
+    return result;
+  }
+
+  async iopModuleImage(expected: StepIdentity & { iop_reset_epoch: number; revision: number }, record: string) {
+    address.parse(record);
+    const result = parseIopModuleImage(await this.sessionCommand({ cmd: 'iop_module_image', module_record: record,
+      expected_revision: expected.revision, expected_process_id: expected.process_id, expected_session: expected.session,
+      expected_execution_epoch: expected.execution_epoch, expected_iop_reset_epoch: expected.iop_reset_epoch,
+      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc }));
+    if (result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.iop_reset_epoch !== expected.iop_reset_epoch ||
+        result.revision !== expected.revision || result.image_record !== record || result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc))
+      throw new Error('IOP module image identity/revision mismatch');
     return result;
   }
 

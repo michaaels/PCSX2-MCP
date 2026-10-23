@@ -1,5 +1,11 @@
 # IOP runtime module observations
 
+Later 5A2a adds separate [`pcsx2_iop_verify_irx` and `pcsx2_iop_source`](irx-source-association.md)
+tools. They revalidate a selected candidate's relocated immutable image at one
+pause before resolving sources. This legacy inventory and frozen exception
+reports keep their original null artifact/source identities. Full load-file
+provenance and module lifetime are still pending; see the separate contract.
+
 Rebuild PCSX2 with `tools/apply-debug-server.py`, rebuild the Node server and
 restart the MCP server/client. Capability: `iop_module_snapshot`. Tool:
 `pcsx2_iop_modules`, with an optional `address` string. The VM must already be

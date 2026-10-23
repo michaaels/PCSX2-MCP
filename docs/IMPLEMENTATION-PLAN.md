@@ -20,7 +20,8 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | F2 | GS dumps acotados con identidad, estados y archivos verificables | Implementado y probado; incluido en main con esta entrega |
 | F3 | Captura vídeo/audio con propiedad, límites y finalización comprobada | Implementado y probado; incluido en main con esta entrega |
 | F4 | Observadores de cambios de memoria EE/IOP en el hilo CPU | Implementado y probado; incluido en main con esta entrega |
-| 5A2 | Vincular IRX exacto y fuentes con evidencia que contemple relocaciones | Pendiente; retomar tras F1–F4 |
+| 5A2a | Asociar candidato IRX/fuentes por imagen relocada inmutable en pausa | Implementado y probado en 0xff80; no prueba archivo original completo ni generación |
+| 5A2b | Procedencia del archivo realmente cargado y cobertura adicional IRX/imports/exports | Pendiente; siguiente entrega antes de 5A3 |
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | Pendiente; requisito para F5 |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Pendiente; después de 5A2–5A3 |
 | 5B–8 | Correlación del proyecto, diagnósticos medidos, regresión, DAP y validación física | Continuar el roadmap original |
@@ -55,5 +56,11 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   Integración consistente en 20 archivos. Hasta 16 observadores en hilo CPU,
   TTL, pausa opcional y pares inmutables; PC del escritor desconocido. Medición
   acotada de coste, sin garantía general de rendimiento. [Contrato](memory-change-watches.md).
-- Siguiente entrega: 5A2, identidad IRX y fuentes verificadas, tras F1–F4;
+- 5A2a: Windows/TypeScript compilados, 127 pruebas Node, 10 checks live de
+  asociación por código y fuentes DWARF2 IOP, más 13 de excepciones/módulos y
+  10 de observadores como regresión. Integración consistente en 20 archivos.
+  No se guardan bindings reutilizables. [Contrato y límites](irx-source-association.md).
+- Siguiente entrega: 5A2b. Los bytes de código/solo lectura y el SHA del candidato
+  no demuestran los inicializadores mutables ni el archivo original de carga;
+  se necesita evidencia durante la carga y cobertura adicional. Después 5A3;
   F5 exige 5A3. Cada paso sigue requiriendo publicación validada en main.
