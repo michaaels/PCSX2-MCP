@@ -164,5 +164,6 @@ reboot mechanisms and SIF layouts are not universally excluded. Readonly code
 revalidation does not recover overwritten initial writable data. Not every
 modload ordinal/BIOS, malformed SIF case or cache-overflow branch was exercised
 live. No new host-OS, universal performance, A/V or physical PS2 acceptance is
-claimed. Next is F5 controlled input replay with these invalidations enforced;
-additional loader/reset coverage remains a separate acceptance requirement.
+claimed. [F5 input movies](input-movies.md) now enforce these invalidations for
+power-on record/replay; additional loader/reset coverage remains a separate
+acceptance requirement. Starting movies from a savestate remains pending.

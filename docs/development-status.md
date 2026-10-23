@@ -27,6 +27,14 @@ behavior, native integration and tests can be reviewed together.
 
 ## Operational improvements
 
+F5 (2026-10-23) adds five native input-movie tools: bounded power-on recording,
+read-only copied replay, EOF stop, owned status/stop and offline inspection.
+Reset/restore invalidate EE inspection and pending observers as well as IOP
+tracking. Windows/TypeScript builds, 163 Node tests, 11 new live checks and 33
+regressions passed; integration agrees across 25 native files.
+[Contract and evidence](input-movies.md). Savestate-start movies and deterministic
+network replay remain pending. The original plan resumes with 5B correlation.
+
 5A3b (2026-10-23) adds scoped observed-registration generations and four explicit
 IOP binding tools. A binding starts from verified full-file provenance, then
 freshly revalidates artifact, runtime code and native namespace/sequence on every
@@ -35,7 +43,7 @@ invalidation; pending IOP exception/memory watches end as `lifetime_changed`.
 Windows/TypeScript builds, 152 Node tests, 12 new live checks and 55 regressions
 passed; integration agrees across 21 native files. [Contract](iop-bindings.md).
 This completes the documented observed-path 5A3 delivery; custom/direct paths
-and universal module generations are not claimed. **F5 controlled replay is next**.
+and universal module generations are not claimed. F5 followed this delivery.
 
 5A3a (2026-10-22) adds `iop_lifetime_epoch`, native request guards and
 `pcsx2_iop_lifetime` with a 64-entry boundary journal. Actual module registry
@@ -97,22 +105,21 @@ The user authorized implementing the candidates from the
 [fork review dated 2026-10-21](fork-review-2026-10-21.md), then resuming the
 original sequence below. Follow [IMPLEMENTATION-PLAN](IMPLEMENTATION-PLAN.md):
 each validated delivery must be committed and published to `main` of
-`michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay remains
-dependent on reset/save-state identity and module lifetime handling.
+`michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay applies
+the documented reset/restore and observed module-lifetime invalidations.
 
-1. **Implement controlled input recording/replay (F5).** Preserve ownership,
-   input exclusion and exact EOF stop; apply reset/restore identity changes and
-   the documented binding/watch invalidations. Fresh binding validation is
-   mandatory after a pause; no implicit expansion to custom/direct loader paths.
-   Additional loader/reset/BIOS coverage remains separately pending.
-2. **Correlate project diagnostics.** Relate EE/IOP events and emulator/build
+1. **Correlate project diagnostics (5B).** Relate EE/IOP events and emulator/build
    identity to application/network logs, preserving cross-process clock uncertainty.
-3. **Add measured PS2 diagnostics.** Expose verified SIF/RPC, DMA and A/V state
+2. **Add measured PS2 diagnostics.** Expose verified SIF/RPC, DMA and A/V state
    where available, and measure instrumentation overhead. Missing metrics are
    unavailable rather than zero.
-4. **Extend regression and editor workflows.** Tolerant visual comparison,
+3. **Extend regression and editor workflows.** Tolerant visual comparison,
    defined audio criteria, long-run/recovery tests, CI separation and a DAP
    adapter over capabilities the backend actually supports.
+4. **Extend scoped coverage with separate acceptance.** Savestate-start movies
+   require a checked/copied companion and finalized asynchronous save handling.
+   Additional loader/reset/BIOS coverage and universal generations remain pending.
+   Existing IOP source bindings always require fresh revalidation.
 
 ## Scope limits
 

@@ -23,12 +23,12 @@ async function call(name, args = {}) {
 }
 function passed(name) { results.checks.push(name); console.log('PASS ' + name); }
 try {
-  await mcp.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../dist/index.js', import.meta.url))], stderr: 'pipe' }));
+  await mcp.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../dist/index.js', import.meta.url))], env: { ...process.env }, stderr: 'pipe' }));
   assert.equal((await mcp.callTool({ name: 'pcsx2_stop', arguments: {} })).isError, true);
   const failedStart = await mcp.callTool({ name: 'pcsx2_launch', arguments: { executable: process.execPath, elf } });
   assert.equal(failedStart.isError, true);
   passed('failed child startup leaves launcher ownership available for retry');
-  results.launch = await call('pcsx2_launch', { executable, elf });
+  results.launch = await call('pcsx2_launch', { executable, elf, ...(process.env.PCSX2_MCP_DATA_DIR ? { data_directory: process.env.PCSX2_MCP_DATA_DIR } : {}) });
   owns = true;
   assert.equal(results.launch.pid, results.launch.capabilities.process_id);
   assert.match(results.launch.sha256, /^[0-9a-f]{64}$/);
@@ -36,7 +36,7 @@ try {
   await inspector.connect();
   const other = new Client({ name: 'automation-other', version: '1.0' });
   try {
-    await other.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../dist/index.js', import.meta.url))], stderr: 'pipe' }));
+    await other.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../dist/index.js', import.meta.url))], env: { ...process.env }, stderr: 'pipe' }));
     const busy = await other.callTool({ name: 'pcsx2_launch', arguments: { executable, elf } });
     assert.equal(busy.isError, true);
     assert.match(busy.content[0].text, /occupied/);

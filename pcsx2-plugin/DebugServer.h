@@ -42,6 +42,10 @@ namespace DebugServer
 	void OnVMStateChanged(int state);
 	void OnVSync();
 	void OnInputPoll();
+	// CPU thread: owned input movies bypass the GUI rerecording loop.
+	bool HandleInputMoviePoll();
+	bool AllowInputRecordingStart();
+	void OnInputRecordingIOError();
 	void OnVMReset();
 	// GS thread hooks, restricted to the exact dump file owned by this server.
 	void OnGSDumpOpened(const std::string& path, bool opened);

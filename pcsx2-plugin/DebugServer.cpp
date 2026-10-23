@@ -59,6 +59,7 @@ typedef int socket_t;
 #include "Config.h"
 #include "Achievements.h"
 #include "Recording/InputRecording.h"
+#include "Recording/InputRecordingControls.h"
 #include "SIO/Pad/Pad.h"
 #include "SIO/Pad/PadDualshock2.h"
 #include "common/Image.h"
@@ -130,6 +131,18 @@ namespace DebugServer
 		std::chrono::steady_clock::time_point deadline;
 	};
 	static FrameOperation s_operation;
+	struct InputMovie
+	{
+		std::string id, mode, state, reason, path, source, elf, elfSHA, movieSHA;
+		uint64_t session = 0, epoch = 0, sequence = 0;
+		u32 crc = 0, frame = 0, limit = 0;
+		bool active = false, starting = false, ioError = false, pendingInput = false;
+		std::array<FrameOperation, 2> pads;
+	};
+	static InputMovie s_movie;
+	static std::atomic<int64_t> s_movieDeadline{0};
+	static std::atomic<uint64_t> s_movieSequence{0};
+	static void finishMovie(const char* reason);
 	// CPU-thread state; only the watchdog deadline crosses threads.
 	static uint64_t s_executionEpoch = 1, s_stepSequence = 0;
 	static uint64_t s_inspectionRevision = 1;
@@ -1151,6 +1164,7 @@ namespace DebugServer
 
 	static std::string startGuardedStep(const std::unordered_map<std::string, JsonValue>& params)
 	{
+		if (g_InputRecording.isActive()) return failure("Stop input recording/replay before stepping");
 #ifdef _WIN32
 		const uint64_t process = GetCurrentProcessId();
 #else
@@ -1442,6 +1456,131 @@ namespace DebugServer
 		OnInputPoll();
 		VMManager::FrameAdvance(static_cast<u32>(frames));
 		return operationStatus();
+	}
+
+	static bool movieOwned()
+	{
+		return g_InputRecording.isActive() && g_InputRecording.getData().getFilename() == s_movie.path;
+	}
+
+	static void finishMovie(const char* reason)
+	{
+		if (!s_movie.active) return;
+		s_movie.reason = reason; s_movie.active = false; s_movieDeadline.store(0);
+		// An unrelated GUI recording must survive even if ownership was lost.
+		if (movieOwned())
+		{
+			// A manual interruption can occur between input polls. Keep its last
+			// complete pad record in the file, but never call that completed playback.
+			if (s_movie.mode == "record" && s_movie.pendingInput && !s_movie.ioError && g_InputRecording.getControls().isRecording())
+				g_InputRecording.incFrameCounter();
+			s_movie.pendingInput = false;
+			s_movie.frame = g_InputRecording.getFrameCounter();
+			// Reset while running must retain VMState::Running so upstream defers
+			// the reset until the recompiler exits its current event handler.
+			const std::string_view boundary(reason);
+			if (boundary != "vm_reset" && boundary != "vm_stopped" && boundary != "savestate_load_attempt") VMManager::SetPaused(true);
+			s_movie.state = g_InputRecording.stopOwnedMovie(s_movie.path) ? "closed" : "failed";
+		}
+		else { s_movie.state = "failed"; s_movie.reason = "ownership_lost"; }
+		if (s_movie.mode == "replay") for (u8 i = 0; i < 2; ++i)
+		{
+			const auto& saved = s_movie.pads[i]; auto* pad = Pad::GetPad(i);
+			if (!pad || pad != saved.savedPad || pad->GetType() != Pad::ControllerType::DualShock2) continue;
+			for (u32 button = 0; button < 16; ++button)
+				pad->SetRawPressureButton(button, {!(saved.savedButtons & (1u << s_buttonBits[button])), saved.savedPressures[button]});
+			pad->SetRawAnalogs(saved.savedLeft, saved.savedRight);
+		}
+	}
+
+	static std::string movieStatus()
+	{
+		if (s_movie.active && s_movieDeadline.load() && steadyMillis() >= s_movieDeadline.load()) finishMovie("time_limit");
+		if (s_movie.active && !movieOwned()) finishMovie("ownership_lost");
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("operation_id", s_movie.id);
+		j.kv("active", s_movie.active); j.kv("state", s_movie.state); j.kv("mode", s_movie.mode); j.kv("reason", s_movie.reason);
+		j.kv("path", s_movie.path); j.kv("source", s_movie.source); j.kv("session", s_movie.session); j.kv("execution_epoch", s_movie.epoch);
+		j.kv("elf", s_movie.elf); j.key("elf_crc"); j.valHex32(s_movie.crc); j.kv("elf_sha256", s_movie.elfSHA);
+		j.kv("input_sha256", s_movie.movieSHA);
+		j.kv("frames", s_movie.frame); j.kv("max_frames", s_movie.limit); j.kv("start", "power_on");
+		j.kv("paused", VMManager::GetState() == VMState::Paused); j.endObject(); return j.str();
+	}
+
+	// v2.6.3 p2m2 v1: 561-byte strings/version, u32 frames, u32 undos,
+	// one byte savestate flag, then two 18-byte pads per frame. Read-only source.
+	static bool copyReplay(const std::string& source, const std::string& target, u32& frames)
+	{
+		const auto input = FileSystem::OpenManagedCFile(source.c_str(), "rb");
+		if (!input) return false;
+		std::vector<u8> bytes(570 + 36 * 600 + 1);
+		const auto size = std::fread(bytes.data(), 1, bytes.size(), input.get());
+		if (std::ferror(input.get()) || size < 570 || size == bytes.size() || bytes[0] != 1 || bytes[569] != 0 ||
+			!std::memchr(bytes.data() + 1, 0, 50) || !std::memchr(bytes.data() + 51, 0, 255) || !std::memchr(bytes.data() + 306, 0, 255)) return false;
+		frames = bytes[561] | (u32{bytes[562]} << 8) | (u32{bytes[563]} << 16) | (u32{bytes[564]} << 24);
+		if (!frames || frames > 600 || size != 570 + 36 * frames) return false;
+		const auto output = FileSystem::OpenManagedCFile(target.c_str(), "wbx");
+		return output && std::fwrite(bytes.data(), 1, size, output.get()) == size && std::fflush(output.get()) == 0;
+	}
+
+	static std::string movieCommand(const std::unordered_map<std::string, JsonValue>& params, const std::string& cmd)
+	{
+		const auto id = getStr(params, "operation_id");
+		if (id.size() != 32 || id.find_first_not_of("0123456789abcdef") != std::string::npos) return failure("Invalid input movie ID");
+		if (cmd != "input_movie_start")
+		{
+			if (s_movie.id != id) return failure("Unknown or superseded input movie");
+			if (cmd == "input_movie_stop") finishMovie("stopped");
+			return movieStatus();
+		}
+		if (s_movie.active || g_InputRecording.isActive()) return failure("An input recording/replay is already active");
+		if (s_step.active || s_operation.active) return failure("An execution operation is active");
+		if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused || VMManager::GetCurrentELF().empty())
+			return failure("Pause a booted ELF before starting an input movie");
+		if (Achievements::IsHardcoreModeActive() || !EmuConfig.EnableRecordingTools)
+			return failure("Enable recording tools and disable hardcore mode first");
+#ifdef _WIN32
+		const uint64_t process = GetCurrentProcessId();
+#else
+		const uint64_t process = getpid();
+#endif
+		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
+			getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			return failure("Input movie VM/ELF identity changed");
+		const auto mode = getStr(params, "mode"), elfSHA = getStr(params, "elf_sha256"), movieSHA = getStr(params, "movie_sha256");
+		const auto frames = getNum(params, "frames", 120), timeout = getNum(params, "timeout_ms", 15000);
+		if ((mode != "record" && mode != "replay") || frames < 1 || frames > 600 || timeout < 100 || timeout > 30000 ||
+			elfSHA.size() != 64 || elfSHA.find_first_not_of("0123456789abcdef") != std::string::npos)
+			return failure("Invalid movie mode/hash or bounds (1-600 frames, 100-30000 ms)");
+		if (mode == "replay" && (movieSHA.size() != 64 || movieSHA.find_first_not_of("0123456789abcdef") != std::string::npos))
+			return failure("Replay requires its original movie SHA256");
+		std::array<FrameOperation, 2> pads;
+		for (u8 i = 0; i < 2; ++i)
+		{
+			auto* pad = Pad::GetPad(i);
+			if (!pad || pad->GetType() != Pad::ControllerType::DualShock2) return failure("Both ports must be configured as DualShock2");
+			pads[i].savedPad = pad; pads[i].savedButtons = pad->GetButtons();
+			for (u32 button = 0; button < 16; ++button) pads[i].savedPressures[button] = pad->GetRawInput(button);
+			pads[i].savedLeft = pad->GetRawLeftAnalog(); pads[i].savedRight = pad->GetRawRightAnalog();
+		}
+		const auto directory = Path::Combine(EmuFolders::DataRoot, "mcp-input");
+		const auto path = Path::Combine(directory, id + ".p2m2"), source = getStr(params, "path");
+		if (!FileSystem::CreateDirectoryPath(directory.c_str(), false) || FileSystem::FileExists(path.c_str())) return failure("Movie output is unavailable or already exists");
+		u32 limit = static_cast<u32>(frames);
+		if (mode == "replay" && (!Path::IsAbsolute(source) || source.size() > 4096 || !copyReplay(source, path, limit)))
+			return failure("Expected a complete power-on p2m2 v1 with 1-600 frames; source was not opened for writing");
+		g_InputRecording.processRecordQueue(); g_InputRecording.getControls().processControlQueue();
+		s_movie = {}; s_movie.id = id; s_movie.mode = mode; s_movie.path = path; s_movie.source = mode == "replay" ? source : "";
+		s_movie.elf = VMManager::GetCurrentELF(); s_movie.crc = VMManager::GetCurrentCRC(); s_movie.elfSHA = elfSHA;
+		s_movie.movieSHA = mode == "replay" ? movieSHA : "";
+		s_movie.session = s_session.load(); s_movie.limit = limit; s_movie.pads = pads;
+		s_movie.active = s_movie.starting = true; s_movie.sequence = ++s_movieSequence;
+		const bool started = mode == "record" ? g_InputRecording.create(path, false, "PCSX2 MCP") : g_InputRecording.play(path, true);
+		s_movie.starting = false; s_movie.epoch = s_executionEpoch;
+		if (!started) { s_movie.active = false; s_movie.state = "failed"; s_movie.reason = "start_failed"; }
+		else { s_movie.state = "active"; s_movieDeadline.store(steadyMillis() + timeout); }
+		return movieStatus();
 	}
 
 	static std::string captureContext(const std::unordered_map<std::string, JsonValue>& params)
@@ -2112,6 +2251,7 @@ namespace DebugServer
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
+		if (cmd == "input_movie_start" || cmd == "input_movie_status" || cmd == "input_movie_stop") return movieCommand(params, cmd);
 		if (cmd == "iop_lifetime") return lifetimeReport();
 		if (cmd == "iop_load_start" || cmd == "iop_load_status" || cmd == "iop_load_cancel") return loadWatchCommand(params, cmd);
 		if (cmd == "memory_watch_start" || cmd == "memory_watch_status" || cmd == "memory_watch_cancel" || cmd == "memory_watch_list") return changeCommand(params, cmd);
@@ -2136,6 +2276,7 @@ namespace DebugServer
 		if (cmd == "inspect_ee") return inspectEE(params);
 		if (cmd == "write_register" || cmd == "write_memory" || cmd == "set_pc")
 		{
+			if (s_movie.active) return failure("Stop the input movie before debugger mutations");
 			invalidateLoad("debugger_mutation");
 			lifetimeBoundary("debugger_mutation");
 			++s_inspectionRevision;
@@ -2246,7 +2387,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2635,6 +2776,8 @@ namespace DebugServer
 		// ----- STEP -----
 		else if (cmd == "step")
 		{
+			const auto allowed = onCPU([]() { return g_InputRecording.isActive() ? failure("Stop input recording/replay before stepping") : std::string{}; });
+			if (!allowed.empty()) return allowed;
 			u32 pc = cpu->getPC();
 
 			// Skip current BP if we're sitting on one (matches PCSX2 GUI behavior)
@@ -2670,6 +2813,8 @@ namespace DebugServer
 		// ----- STEP OVER -----
 		else if (cmd == "step_over")
 		{
+			const auto allowed = onCPU([]() { return g_InputRecording.isActive() ? failure("Stop input recording/replay before stepping") : std::string{}; });
+			if (!allowed.empty()) return allowed;
 			u32 pc = cpu->getPC();
 
 			// Skip current BP if we're sitting on one (matches PCSX2 GUI behavior)
@@ -3067,6 +3212,7 @@ namespace DebugServer
 		s_running.store(true);
 		s_sourceGroups.clear();
 		s_step = {}; s_stepDeadline.store(0); ++s_executionEpoch;
+		s_movie = {}; s_movieDeadline.store(0);
 		s_exception = {}; s_exceptionDeadline.store(0); s_exceptionPending.store(0);
 		s_progress = {}; s_progressNext.store(0); s_progressQueued.store(0);
 		s_changes.clear(); s_changeNext.store(0); s_changeQueued.store(0);
@@ -3079,13 +3225,21 @@ namespace DebugServer
 			std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
 		const uint64_t watchdogSession = s_session.load();
 		std::thread([watchdogSession]() {
-			uint64_t queuedOperation = 0, queuedException = 0, queuedExpiry = 0, queuedDump = 0, queuedMedia = 0, queuedLoad = 0;
+			uint64_t queuedOperation = 0, queuedException = 0, queuedExpiry = 0, queuedDump = 0, queuedMedia = 0, queuedLoad = 0, queuedMovie = 0;
 			while (s_running.load() && s_session.load() == watchdogSession)
 			{
 				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 				const auto operationId = s_stepWatchId.load();
 				const auto deadline = s_stepDeadline.load();
 				const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+				const auto movieExpiry = s_movieDeadline.load(), movieSequence = static_cast<int64_t>(s_movieSequence.load());
+				if (movieExpiry && now >= movieExpiry && queuedMovie != static_cast<uint64_t>(movieSequence))
+				{
+					queuedMovie = static_cast<uint64_t>(movieSequence);
+					Host::RunOnCPUThread([watchdogSession, movieSequence]() {
+						if (s_session.load() == watchdogSession && s_movie.sequence == static_cast<uint64_t>(movieSequence) && s_movie.active && steadyMillis() >= s_movieDeadline.load()) finishMovie("time_limit");
+					});
+				}
 				const auto pending = s_exceptionPending.load();
 				const auto expiry = s_exceptionDeadline.load();
 				const auto watchSequence = s_exceptionWatchId.load();
@@ -3165,6 +3319,7 @@ namespace DebugServer
 
 	void Stop()
 	{
+		finishMovie("vm_stopped");
 		invalidateLoad("vm_stopped");
 		invalidateChanges("vm_stopped");
 		stopMedia("vm_stopped");
@@ -3254,8 +3409,47 @@ namespace DebugServer
 		pad->SetRawAnalogs({a[0], a[1]}, {a[2], a[3]});
 	}
 
+	bool AllowInputRecordingStart()
+	{
+		return !s_movie.active || s_movie.starting;
+	}
+
+	void OnInputRecordingIOError()
+	{
+		if (s_movie.active) s_movie.ioError = true;
+	}
+
+	bool HandleInputMoviePoll()
+	{
+		if (!s_movie.active) return false;
+		g_InputRecording.processRecordQueue(); g_InputRecording.getControls().processControlQueue();
+		if (!movieOwned()) { finishMovie("ownership_lost"); return true; }
+		for (u8 i = 0; i < 2; ++i)
+			if (Pad::GetPad(i) != s_movie.pads[i].savedPad || Pad::GetPad(i)->GetType() != Pad::ControllerType::DualShock2)
+			{ finishMovie("controller_changed"); return true; }
+		if (!EmuConfig.EnableRecordingTools ||
+			(s_movie.mode == "record" ? !g_InputRecording.getControls().isRecording() : !g_InputRecording.getControls().isReplaying()))
+		{ finishMovie("recording_mode_changed"); return true; }
+		if (steadyMillis() >= s_movieDeadline.load()) { finishMovie("time_limit"); return true; }
+		// Frame 0 is applied first. Only the *next* poll completes that input
+		// interval, so even a one-frame replay executes before EOF restores pads.
+		// Never enter the GUI fallback which changes replay into recording.
+		if (s_movie.pendingInput)
+		{
+			s_movie.pendingInput = false; g_InputRecording.incFrameCounter();
+			s_movie.frame = g_InputRecording.getFrameCounter();
+			if (s_movie.frame >= s_movie.limit)
+			{ finishMovie(s_movie.mode == "replay" ? "eof" : "frame_limit"); return true; }
+		}
+		g_InputRecording.handleControllerDataUpdate();
+		if (s_movie.ioError) { finishMovie("io_error"); return true; }
+		s_movie.pendingInput = true;
+		return true;
+	}
+
 	void OnVMReset()
 	{
+		if (!s_movie.starting) finishMovie("vm_reset");
 		invalidateLoad("vm_changed");
 		s_sifReset = {}; lifetimeBoundary("vm_reset");
 		invalidateChanges("vm_changed");
@@ -3461,8 +3655,16 @@ namespace DebugServer
 
 	void OnStateLoadAttempt()
 	{
+		finishMovie("savestate_load_attempt");
+		finishGuardedStep("savestate_load_attempt"); finishOperation("savestate_load_attempt"); ++s_executionEpoch;
 		++s_inspectionRevision; invalidateLoad("savestate_load_attempt");
 		s_sifReset = {}; s_iopModuleRoot = 0; lifetimeBoundary("savestate_load_attempt");
+		invalidateChanges("vm_changed");
+		if (s_progress.state == "armed") s_progress.state = "vm_changed";
+		s_progressNext.store(0);
+		if (s_exception.state == "capturing") finalizeException(s_exception.sequence);
+		if (s_exception.state == "armed") s_exception.state = "vm_changed";
+		s_exceptionDeadline.store(0);
 	}
 
 	void OnSIF1Tag(uint32_t address, uint32_t words, bool interrupt)

@@ -46,6 +46,9 @@ def main() -> None:
     vm_text = replace_once(vm_text,
         '\t\tg_InputRecording.handleControllerDataUpdate();\n\t}\n}',
         '\t\tg_InputRecording.handleControllerDataUpdate();\n\t}\n\tDebugServer::OnInputPoll();\n}', str(vm))
+    poll_start = 'void VMManager::Internal::PollInputOnCPUThread()\n{\n\tHost::PumpMessagesOnCPUThread();\n\tInputManager::PollSources();\n'
+    vm_text = replace_once(vm_text, poll_start,
+        poll_start + '\tif (DebugServer::HandleInputMoviePoll()) return;\n', str(vm))
     vm_text = replace_once(vm_text, 'void VMManager::FrameAdvance(u32 num_frames /*= 1*/)\n{',
         'void VMManager::CancelFrameAdvance()\n{\n\ts_frame_advance_count = 0;\n}\n\n'
         'void VMManager::FrameAdvance(u32 num_frames /*= 1*/)\n{', str(vm))
@@ -354,6 +357,53 @@ def main() -> None:
         'void GSCapture::EndCapture()\n{', str(capture))
     breakpoint_files.update({renderer_h: renderer_h_text, renderer: renderer_text, dump: dump_text,
                             capture_h: capture_h_text, capture: capture_text})
+
+    # F5: keep the native format and GUI behavior, but reject partial pad reads.
+    recording = source / 'pcsx2/Recording/InputRecording.cpp'
+    recording_text = replace_once(recording.read_text(encoding='utf-8'), '#include "InputRecording.h"',
+        '#include "InputRecording.h"\n#include "DebugTools/DebugServer.h"', str(recording))
+    play_signature = 'bool InputRecording::play(const std::string& filename' + (', bool readOnly)' if 'bool readOnly)' in recording_text else ')')
+    for signature in ('bool InputRecording::create(const std::string& fileName, const bool fromSaveState, const std::string& authorName)',
+                      play_signature):
+        recording_text = replace_once(recording_text, signature + '\n{',
+            signature + '\n{\n\tif (!DebugServer::AllowInputRecordingStart()) return false;', str(recording))
+    recording_text = replace_once(recording_text,
+        '\t\tInputRec::consoleLog(fmt::format("Failed to write input data at [{}:{}:{}]", m_frame_counter, port, slot));',
+        '\t\tDebugServer::OnInputRecordingIOError();\n\t\tInputRec::consoleLog(fmt::format("Failed to write input data at [{}:{}:{}]", m_frame_counter, port, slot));', str(recording))
+    recording_text = replace_once(recording_text,
+        '\t\tInputRec::consoleLog(fmt::format("Failed to read input data at [{}:{}:{}]", m_frame_counter, port, slot));',
+        '\t\tDebugServer::OnInputRecordingIOError();\n\t\tInputRec::consoleLog(fmt::format("Failed to read input data at [{}:{}:{}]", m_frame_counter, port, slot));', str(recording))
+    recording_text = replace_once(recording_text, 'bool InputRecording::play(const std::string& filename)',
+        'bool InputRecording::play(const std::string& filename, bool readOnly)', str(recording))
+    recording_text = replace_once(recording_text, 'm_file.openExisting(filename)', 'm_file.openExisting(filename, readOnly)', str(recording))
+    recording_h = source / 'pcsx2/Recording/InputRecording.h'
+    recording_h_text = replace_once(recording_h.read_text(encoding='utf-8'), 'bool play(const std::string& path);',
+        'bool play(const std::string& path);\n\tbool play(const std::string& path, bool readOnly);', str(recording_h))
+    recording_h_text = replace_once(recording_h_text, '\tvoid stop();',
+        '\tvoid stop();\n\t// CPU thread only: close this exact movie without changing VM state or queuing a stop.\n\tbool stopOwnedMovie(const std::string& path);', str(recording_h))
+    recording_text = replace_once(recording_text, 'void InputRecording::stop()\n{',
+        'bool InputRecording::stopOwnedMovie(const std::string& path)\n{\n'
+        '\tif (!m_is_active || m_file.getFilename() != path) return false;\n'
+        '\tcloseActiveFile();\n\treturn !m_is_active;\n}\n\nvoid InputRecording::stop()\n{', str(recording))
+    recording_text = replace_once(recording_text, 'bool InputRecording::play(const std::string& filename, bool readOnly)\n{',
+        'bool InputRecording::play(const std::string& filename)\n{\n\treturn play(filename, false);\n}\n\n'
+        'bool InputRecording::play(const std::string& filename, bool readOnly)\n{', str(recording))
+    movie_file = source / 'pcsx2/Recording/InputRecordingFile.cpp'
+    movie_file_text = replace_once(movie_file.read_text(encoding='utf-8'),
+        'if (fseek(m_recordingFile, seek, SEEK_SET) != 0 || fread(&data, 1, 18, m_recordingFile) != 1)',
+        'if (port < 2 && slot == 0 && fseek(m_recordingFile, seek, SEEK_SET) == 0 &&\n\t\tfread(data.data(), 1, data.size(), m_recordingFile) == data.size())', str(movie_file))
+    movie_file_text = replace_once(movie_file_text, 'bool InputRecordingFile::openExisting(const std::string& path)',
+        'bool InputRecordingFile::openExisting(const std::string& path, bool readOnly)', str(movie_file))
+    movie_file_text = replace_once(movie_file_text, 'FileSystem::OpenCFile(path.data(), "rb+")',
+        '(readOnly ? FileSystem::OpenSharedCFile(path.data(), "rb", FileSystem::FileShareMode::DenyWrite) : FileSystem::OpenCFile(path.data(), "rb+"))', str(movie_file))
+    movie_file_h = source / 'pcsx2/Recording/InputRecordingFile.h'
+    movie_file_h_text = replace_once(movie_file_h.read_text(encoding='utf-8'), 'bool openExisting(const std::string& path);',
+        'bool openExisting(const std::string& path);\n\tbool openExisting(const std::string& path, bool readOnly);', str(movie_file_h))
+    movie_file_text = replace_once(movie_file_text, 'bool InputRecordingFile::openExisting(const std::string& path, bool readOnly)\n{',
+        'bool InputRecordingFile::openExisting(const std::string& path)\n{\n\treturn openExisting(path, false);\n}\n\n'
+        'bool InputRecordingFile::openExisting(const std::string& path, bool readOnly)\n{', str(movie_file))
+    breakpoint_files.update({recording: recording_text, recording_h: recording_h_text,
+                            movie_file: movie_file_text, movie_file_h: movie_file_h_text})
 
     for name in ('DebugServer.cpp', 'DebugServer.h'):
         original = repo / 'pcsx2-plugin' / name

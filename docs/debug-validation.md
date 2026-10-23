@@ -7,6 +7,13 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+The latest delivery is F5 (2026-10-23): Windows/TypeScript compiled, 163 Node
+tests, 11 input-movie live checks and 33 regressions passed. Pristine/upgrade/
+reapply/build integration agrees across 25 native files.
+[Input movies](input-movies.md) records reproduction, receipts and limits.
+The tables below retain the earlier acceptance rather than claiming that all
+historical suites were rerun for this delivery.
+
 | Layer | Result | What it establishes |
 |---|---|---|
 | Native Windows build | Passed | The integrated DebugServer compiled and linked into PCSX2 v2.6.3. |

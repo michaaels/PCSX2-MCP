@@ -21,6 +21,7 @@ import * as net from 'node:net';
 import { parseScreenshot, type Screenshot } from './screenshot.js';
 import { capabilitiesResponse, eventsResponse, logsResponse, parseContext, type DebugEventType } from './debug-session.js';
 import { z } from 'zod';
+import { parseMovie, movieOptions, type MovieOptions, type ReplayOptions } from './input-movie.js';
 import { automationResponse, controllerResponse, inputOptions, buttons, type InputOptions } from './automation.js';
 import { setTimeout as delay } from 'node:timers/promises';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -470,6 +471,27 @@ export class DebugServerClient {
   async mediaStatus(id: string, stop = false) {
     watchId.parse(id);
     return parseMedia(await this.sessionCommand({ cmd: stop ? 'media_stop' : 'media_status', operation_id: id }), id);
+  }
+
+  async startInputMovie(id: string, expected: { process_id: number; session: number; execution_epoch: number; elf: string; elf_crc: string },
+    input: (MovieOptions | ReplayOptions) & { mode: 'record' | 'replay'; elf_sha256: string }) {
+    watchId.parse(id);
+    const response = await this.send({ cmd: 'input_movie_start', operation_id: id, ...input,
+      expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
+      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc });
+    if (!response.ok) throw Object.assign(new Error(response.error ?? 'Input movie rejected'), { native_rejected: true });
+    const result = parseMovie(response, id);
+    if (!result.active || !result.paused || result.frames !== 0 || result.mode !== input.mode || result.session !== expected.session ||
+        result.execution_epoch !== expected.execution_epoch + 1 || result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc) ||
+        result.elf_sha256 !== input.elf_sha256 || (input.mode === 'record' && result.max_frames !== movieOptions.parse(input).frames) ||
+        result.source !== ('path' in input ? input.path : '') || result.input_sha256 !== ('movie_sha256' in input ? input.movie_sha256 : ''))
+      throw new Error('Input movie startup identity/state/bounds mismatch');
+    return result;
+  }
+
+  async inputMovieStatus(id: string, stop = false) {
+    watchId.parse(id);
+    return parseMovie(await this.sessionCommand({ cmd: stop ? 'input_movie_stop' : 'input_movie_status', operation_id: id }), id);
   }
 
   async getCapabilities() {

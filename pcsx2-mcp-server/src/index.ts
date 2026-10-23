@@ -33,6 +33,7 @@ import { registerIopModuleTools } from './iop-module-tools.js';
 import { defaultPorts, tcpPort } from './ports.js';
 import { registerGsDumpTools } from './gs-dump-tools.js';
 import { registerMediaTools } from './media-tools.js';
+import { registerInputMovieTools } from './input-movie-tools.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -93,6 +94,7 @@ registerIopBindingTools(server, () => debugServer);
 registerIopModuleTools(server, () => debugServer);
 registerGsDumpTools(server, () => debugServer);
 registerMediaTools(server, () => debugServer);
+registerInputMovieTools(server, () => debugServer);
 registerAutomationTools(server, () => debugServer, client => { debugServer?.disconnect(); debugServer = client; });
 process.stdin.once('end', () => { debugServer?.disconnect(); pine?.disconnect(); });
 

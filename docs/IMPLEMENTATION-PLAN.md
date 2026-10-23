@@ -23,7 +23,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | 5A2a | Asociar candidato IRX/fuentes por imagen relocada inmutable en pausa | Implementado y probado en 0xff80; no prueba archivo original completo ni generación |
 | 5A2b | Procedencia del archivo realmente cargado y cobertura adicional IRX/imports/exports | Implementado y probado para HostFs/0xff80 y exports acotados; otros dispositivos/dialectos pendientes |
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | 5A3a/5A3b implementados y probados en caminos observados; generaciones acotadas, revalidación y corte de watches IOP; cobertura directa/custom pendiente |
-| F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Pendiente; después de 5A2–5A3 |
+| F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Implementado y probado desde power-on; inicio desde savestate pendiente |
 | 5B–8 | Correlación del proyecto, diagnósticos medidos, regresión, DAP y validación física | Continuar el roadmap original |
 
 La dependencia de F5 evita invalidar silenciosamente la depuración existente al
@@ -80,8 +80,14 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   `lifetime_changed`. Windows/TypeScript compilados, 152 pruebas Node, 12 checks
   nuevos y 55 de regresión; integración consistente en 21 archivos.
   [Contrato y límites](iop-bindings.md). No se anuncia tracking universal.
-- Siguiente entrega: **F5**, grabación/replay `.p2m2` controlado, aplicando
-  identidad e invalidaciones de reset/restore a sus operaciones. Solo podrá
-  reutilizar vínculos mediante revalidación explícita; no ampliar implícitamente
-  el alcance de los caminos observados. Otros loaders/reboots/BIOS mantienen
-  aceptación pendiente. Cada paso requiere publicación validada en main.
+- F5 (2026-10-23): grabación/replay `.p2m2` power-on con ID, límites, copia
+  privada de solo lectura, parada en EOF y exclusión de entradas/stepping y
+  mutaciones. Reset/restore invalidan película, inspección EE y observadores;
+  guardas IOP mantienen el alcance observado. Windows/TypeScript compilados,
+  163 pruebas Node, 11 checks nuevos y 33 de regresión; integración consistente
+  en 25 archivos. [Contrato](input-movies.md). Inicio desde savestate, otros
+  formatos y determinismo de red permanecen pendientes.
+- Siguiente entrega del plan original: **5B**, correlación entre sesión/build,
+  EE/IOP y logs Bridge/UDPFS con incertidumbre temporal explícita. Mantener las
+  limitaciones del replay y de loaders/reboots/BIOS observados. Cada paso
+  requiere publicación validada en main.
