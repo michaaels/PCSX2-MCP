@@ -254,7 +254,59 @@ def main() -> None:
     dump_text = replace_once(dump_text, '\tsize_t written = fwrite(data, 1, size, m_gs);',
         '\tif (!DebugServer::GSDumpWriteAllowed(m_filename, size)) return;\n'
         '\tsize_t written = fwrite(data, 1, size, m_gs);', str(dump))
-    breakpoint_files.update({renderer_h: renderer_h_text, renderer: renderer_text, dump: dump_text})
+    # Per-request capture mode/resolution without mutating persistent GS settings.
+    capture_h = source / 'pcsx2/GS/GSCapture.h'
+    capture = source / 'pcsx2/GS/GSCapture.cpp'
+    capture_h_text = replace_once(capture_h.read_text(encoding='utf-8'), '\tvoid EndCapture();',
+        '\tvoid EndCapture();\n\tbool BeginMCPCapture(float fps, GSVector2i resolution, float aspect, std::string filename, bool audio);\n'
+        '\tbool EndMCPCapture(const std::string& filename);', str(capture_h))
+    renderer_h_text = replace_once(renderer_h_text, '\tvoid EndCapture();',
+        '\tvoid EndCapture();\n\tbool BeginMCPCapture(std::string filename, const GSVector2i& size, bool audio);', str(renderer_h))
+    renderer_text = replace_once(renderer_text, 'bool GSRenderer::BeginCapture(std::string filename, const GSVector2i& size)\n{',
+        'bool GSRenderer::BeginMCPCapture(std::string filename, const GSVector2i& size, bool audio)\n{\n'
+        '\treturn GSCapture::BeginMCPCapture(GetTvRefreshRate(), size,\n'
+        '\t\tGetCurrentAspectRatioFloat(GetVideoMode() == GSVideoMode::SDTV_480P), std::move(filename), audio);\n}\n\n'
+        'bool GSRenderer::BeginCapture(std::string filename, const GSVector2i& size)\n{', str(renderer))
+    capture_text = replace_once(capture.read_text(encoding='utf-8'), '#include "GS/GSCapture.h"',
+        '#include "GS/GSCapture.h"\n#include "DebugTools/DebugServer.h"', str(capture))
+    capture_text = replace_once(capture_text, '\tstatic void InternalEndCapture(std::unique_lock<std::mutex>& lock);',
+        '\tstatic void InternalEndCapture(std::unique_lock<std::mutex>& lock);\n'
+        '\tstatic bool BeginCaptureWithMode(float fps, GSVector2i resolution, float aspect, std::string filename, bool capture_video, bool capture_audio);', str(capture))
+    capture_text = replace_once(capture_text,
+        'bool GSCapture::BeginCapture(float fps, GSVector2i recommendedResolution, float aspect, std::string filename)\n{\n'
+        '\tconst bool capture_video = GSConfig.EnableVideoCapture;\n\tconst bool capture_audio = GSConfig.EnableAudioCapture;',
+        'bool GSCapture::BeginCapture(float fps, GSVector2i recommendedResolution, float aspect, std::string filename)\n{\n'
+        '\treturn BeginCaptureWithMode(fps, recommendedResolution, aspect, std::move(filename), GSConfig.EnableVideoCapture, GSConfig.EnableAudioCapture);\n}\n\n'
+        'bool GSCapture::BeginMCPCapture(float fps, GSVector2i resolution, float aspect, std::string filename, bool audio)\n{\n'
+        '\treturn BeginCaptureWithMode(fps, resolution, aspect, std::move(filename), true, audio);\n}\n\n'
+        'bool GSCapture::BeginCaptureWithMode(float fps, GSVector2i recommendedResolution, float aspect, std::string filename, bool capture_video, bool capture_audio)\n{', str(capture))
+    capture_text = replace_once(capture_text, '\tpf.pts = s_next_video_pts++;',
+        '\tif (!DebugServer::CaptureVideoFrameAllowed(s_filename)) return false;\n\tpf.pts = s_next_video_pts++;', str(capture))
+    capture_text = replace_once(capture_text, '\t\tres = wrap_av_interleaved_write_frame(s_format_context, packet);',
+        '\t\tif (!DebugServer::CapturePacketAllowed(s_filename, static_cast<uint64_t>(packet->size)))\n'
+        '\t\t{ wrap_av_packet_unref(packet); return false; }\n'
+        '\t\tres = wrap_av_interleaved_write_frame(s_format_context, packet);', str(capture))
+    capture_text = replace_once(capture_text, 'void GSCapture::LogAVError(int errnum, const char* format, ...)\n{',
+        'void GSCapture::LogAVError(int errnum, const char* format, ...)\n{\n\tDebugServer::OnCaptureError(s_filename);', str(capture))
+    capture_text = replace_once(capture_text, 'void GSCapture::InternalEndCapture(std::unique_lock<std::mutex>& lock)\n{\n\tint res;',
+        'void GSCapture::InternalEndCapture(std::unique_lock<std::mutex>& lock)\n{\n'
+        '\tconst std::string mcp_path = s_filename;\n\tbool mcp_complete = !s_encoding_error.load();\n\tint res;', str(capture))
+    # Keep the filename until EOF packets have passed the ownership/payload gate.
+    capture_text = replace_once(capture_text, '\t\ts_filename = {};\n\t\ts_encoding_error = false;',
+        '\t\t// Filename retained until the muxer closes, including EOF packets.\n\t\ts_encoding_error = false;', str(capture))
+    capture_text = replace_once(capture_text, '\t\tres = wrap_avio_closep(&s_format_context->pb);',
+        '\t\tres = wrap_avio_closep(&s_format_context->pb);\n\t\tif (res < 0) mcp_complete = false;', str(capture))
+    capture_text = replace_once(capture_text, '\tif (was_capturing)\n\t\tUnloadFFmpeg();\n}',
+        '\ts_filename = {};\n\tif (was_capturing)\n\t{\n\t\tUnloadFFmpeg();\n'
+        '\t\tDebugServer::OnCaptureClosed(mcp_path, mcp_complete);\n\t}\n}', str(capture))
+    capture_text = replace_once(capture_text, 'void GSCapture::EndCapture()\n{',
+        'bool GSCapture::EndMCPCapture(const std::string& filename)\n{\n'
+        '\t{\n\t\tstd::unique_lock<std::mutex> lock(s_lock);\n'
+        '\t\tif (!s_capturing.load(std::memory_order_acquire) || s_filename != filename) return false;\n'
+        '\t\tInternalEndCapture(lock);\n\t}\n\tHost::OnCaptureStopped();\n\treturn true;\n}\n\n'
+        'void GSCapture::EndCapture()\n{', str(capture))
+    breakpoint_files.update({renderer_h: renderer_h_text, renderer: renderer_text, dump: dump_text,
+                            capture_h: capture_h_text, capture: capture_text})
 
     for name in ('DebugServer.cpp', 'DebugServer.h'):
         original = repo / 'pcsx2-plugin' / name

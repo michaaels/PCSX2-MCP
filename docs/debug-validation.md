@@ -84,6 +84,13 @@ are in [exceptions](exceptions.md), [progress watches](progress-watches.md),
 
 ## Evidence and publication scope
 
+Later deliveries have separate acceptance records: [instance ports](automation.md#independent-instances),
+[GS dumps](gs-dumps.md) and [video/audio capture](media-capture.md). F3 on 2026-10-22
+passed the Windows build, 110 Node tests, 8 media live checks and 19 GS/automation
+regression checks. Its pristine/upgrade/reapply/build comparison covers 20 native
+files. These checks do not rerun or replace the original 50 EE/IOP/progress/source
+acceptance checks recorded above, and do not measure audibility or A/V sync.
+
 The latest local evidence is under the Git-ignored
 `release/iop-modules-validation/` directory:
 

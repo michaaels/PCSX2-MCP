@@ -66,6 +66,7 @@ typedef int socket_t;
 #include "common/FileSystem.h"
 #include "common/Path.h"
 #include "GS/Renderers/Common/GSRenderer.h"
+#include "GS/GSCapture.h"
 
 #include <cstring>
 #include <cstdlib>
@@ -737,6 +738,151 @@ namespace DebugServer
 			{ s_dump.state = "failed"; s_dump.reason = "renderer_busy_or_unavailable"; s_dump.active = false; s_dumpActive.store(false); s_dumpDeadline.store(0); }
 		});
 		return dumpStatus();
+	}
+
+	struct MediaOperation
+	{
+		std::string id, path, elf, state, reason;
+		uint64_t session = 0, epoch = 0, frames = 0, maxFrames = 0, payload = 0, maxPayload = 0;
+		u32 crc = 0, width = 0, height = 0;
+		bool active = false, audio = true, error = false;
+	};
+	static MediaOperation s_media;
+	static std::mutex s_mediaMutex;
+	static std::atomic<bool> s_mediaActive{false};
+	static std::atomic<int64_t> s_mediaDeadline{0};
+	static std::atomic<uint64_t> s_mediaSequence{0};
+
+	bool CaptureVideoFrameAllowed(const std::string& path)
+	{
+		if (!s_mediaActive.load()) return true;
+		std::lock_guard lock(s_mediaMutex);
+		if (s_media.path != path) return true;
+		if (s_media.state != "recording" || s_media.frames >= s_media.maxFrames) return false;
+		if (++s_media.frames == s_media.maxFrames)
+		{ s_media.reason = "frame_limit"; s_media.state = "stopping"; s_mediaDeadline.store(steadyMillis()); }
+		return true;
+	}
+
+	bool CapturePacketAllowed(const std::string& path, uint64_t bytes)
+	{
+		if (!s_mediaActive.load()) return true;
+		std::lock_guard lock(s_mediaMutex);
+		if (s_media.path != path) return true;
+		if (s_media.error) return false;
+		if (bytes > s_media.maxPayload - s_media.payload)
+		{
+			s_media.error = true; s_media.reason = "payload_limit"; s_media.state = "stopping";
+			s_mediaDeadline.store(steadyMillis()); return false;
+		}
+		s_media.payload += bytes; return true;
+	}
+
+	void OnCaptureError(const std::string& path)
+	{
+		if (!s_mediaActive.load()) return;
+		std::lock_guard lock(s_mediaMutex);
+		if (!s_media.active || s_media.path != path) return;
+		s_media.error = true;
+		if (s_media.reason.empty()) s_media.reason = "encoder_error";
+		s_mediaDeadline.store(steadyMillis());
+	}
+
+	void OnCaptureClosed(const std::string& path, bool complete)
+	{
+		if (!s_mediaActive.load()) return;
+		std::lock_guard lock(s_mediaMutex);
+		if (!s_media.active || s_media.path != path) return;
+		if (s_media.reason == "vm_reset" || s_media.reason == "vm_stopped") s_media.state = "invalidated";
+		else s_media.state = complete && !s_media.error && s_media.frames ? "closed" : "failed";
+		if (s_media.reason.empty()) s_media.reason = complete ? "native_stopped" : "encoder_error";
+		if (!s_media.frames && s_media.reason != "vm_reset" && s_media.reason != "vm_stopped") s_media.reason = "no_video_frames";
+		s_media.active = false; s_mediaActive.store(false); s_mediaDeadline.store(0);
+	}
+
+	static void stopMedia(const std::string& reason)
+	{
+		std::string id, path;
+		{
+			std::lock_guard lock(s_mediaMutex);
+			if (!s_media.active) return;
+			if (s_media.reason.empty() || reason == "vm_reset" || reason == "vm_stopped") s_media.reason = reason;
+			s_media.state = "stopping"; id = s_media.id; path = s_media.path; s_mediaDeadline.store(0);
+		}
+		MTGS::RunOnGSThread([id, path]() {
+			// This API checks the filename under the encoder lock, never ends GUI work.
+			GSCapture::EndMCPCapture(path);
+			std::lock_guard lock(s_mediaMutex);
+			if (s_media.id != id || !s_media.active) return;
+			s_media.state = "failed"; s_media.reason = "capture_ownership_lost";
+			s_media.active = false; s_mediaActive.store(false);
+		});
+	}
+
+	static std::string mediaStatus()
+	{
+		std::lock_guard lock(s_mediaMutex);
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("operation_id", s_media.id);
+		j.kv("state", s_media.state); j.kv("active", s_media.active); j.kv("reason", s_media.reason);
+		j.kv("session", s_media.session); j.kv("execution_epoch", s_media.epoch); j.kv("elf", s_media.elf);
+		j.key("elf_crc"); j.valHex32(s_media.crc); j.kv("path", s_media.path);
+		j.kv("video", true); j.kv("audio", s_media.audio); j.kv("width", static_cast<uint64_t>(s_media.width)); j.kv("height", static_cast<uint64_t>(s_media.height));
+		j.kv("video_frames", s_media.frames); j.kv("max_frames", s_media.maxFrames);
+		j.kv("payload_bytes", s_media.payload); j.kv("max_payload_bytes", s_media.maxPayload);
+		j.kv("container", "mp4"); j.endObject(); return j.str();
+	}
+
+	static std::string mediaCommand(const std::unordered_map<std::string, JsonValue>& params, const std::string& cmd)
+	{
+		const std::string id = getStr(params, "operation_id");
+		if (id.size() != 32 || id.find_first_not_of("0123456789abcdef") != std::string::npos) return failure("Invalid media operation ID");
+		if (cmd != "media_start")
+		{
+			{ std::lock_guard lock(s_mediaMutex); if (s_media.id != id) return failure("Unknown media operation"); }
+			if (cmd == "media_stop") stopMedia("stopped");
+			else if (s_mediaDeadline.load() && steadyMillis() >= s_mediaDeadline.load()) stopMedia("time_limit");
+			return mediaStatus();
+		}
+		const auto frames = getNum(params, "frames", 120), timeout = getNum(params, "timeout_ms", 15000), maxPayload = getNum(params, "max_payload_bytes", 64 * 1024 * 1024);
+		const auto width = getNum(params, "width", 640), height = getNum(params, "height", 480);
+		const bool audio = getBool(params, "audio", true);
+		if (frames < 1 || frames > 300 || timeout < 100 || timeout > 30000 || maxPayload < 1024 || maxPayload > 128 * 1024 * 1024 ||
+			width < 64 || width > 1280 || height < 64 || height > 1024 || width % 8 || height % 8)
+			return failure("Invalid capture frame/time/payload or resolution bounds");
+		if (!MTGS::IsOpen() || (VMManager::GetState() != VMState::Running && VMManager::GetState() != VMState::Paused)) return failure("No active graphics renderer");
+		if (s_step.active || s_operation.active) return failure("An execution operation is active");
+#ifdef _WIN32
+		const uint64_t process = GetCurrentProcessId();
+#else
+		const uint64_t process = getpid();
+#endif
+		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
+			getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			return failure("Media capture VM identity changed");
+		const std::string directory = Path::Combine(EmuFolders::DataRoot, "mcp-media");
+		const std::string path = Path::Combine(directory, id + ".mp4");
+		{
+			std::lock_guard lock(s_mediaMutex);
+			if (s_media.active) return failure("A media capture is active or cleanup is pending");
+			if (FileSystem::FileExists(path.c_str())) return failure("Capture file already exists");
+			if (!FileSystem::CreateDirectoryPath(directory.c_str(), false)) return failure("Cannot create capture output directory");
+			s_media = {}; s_media.id = id; s_media.path = path; s_media.elf = VMManager::GetCurrentELF(); s_media.crc = VMManager::GetCurrentCRC();
+			s_media.session = s_session.load(); s_media.epoch = s_executionEpoch; s_media.maxFrames = frames; s_media.maxPayload = maxPayload;
+			s_media.width = static_cast<u32>(width); s_media.height = static_cast<u32>(height); s_media.audio = audio; s_media.state = "queued"; s_media.active = true;
+			++s_mediaSequence; s_mediaActive.store(true); s_mediaDeadline.store(steadyMillis() + timeout);
+		}
+		MTGS::RunOnGSThread([id, path, width, height, audio]() {
+			{ std::lock_guard lock(s_mediaMutex); if (s_media.id != id || !s_media.active || s_media.state != "queued") return; }
+			const bool started = g_gs_renderer && !GSCapture::IsCapturing() && !FileSystem::FileExists(path.c_str()) &&
+				g_gs_renderer->BeginMCPCapture(path, GSVector2i(static_cast<int>(width), static_cast<int>(height)), audio);
+			std::lock_guard lock(s_mediaMutex);
+			if (s_media.id != id || !s_media.active) return;
+			if (!started) { s_media.state = "failed"; s_media.reason = "encoder_start_failed_or_busy"; s_media.active = false; s_mediaActive.store(false); s_mediaDeadline.store(0); }
+			else if (s_media.state == "queued") s_media.state = "recording";
+		});
+		return mediaStatus();
 	}
 
 	static std::string readHistory(bool events, uint64_t after, size_t limit, int waitMs = 0)
@@ -1609,6 +1755,7 @@ namespace DebugServer
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
+		if (cmd == "media_start" || cmd == "media_status" || cmd == "media_stop") return mediaCommand(params, cmd);
 		if (cmd == "gs_dump_start" || cmd == "gs_dump_status" || cmd == "gs_dump_cancel") return dumpCommand(params, cmd);
 		if (cmd == "iop_module_snapshot") return guardedIopModules(params);
 		if (cmd == "progress_watch_start" || cmd == "progress_watch_status" || cmd == "progress_watch_cancel") return progressWatch(params, cmd);
@@ -1735,7 +1882,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2563,7 +2710,7 @@ namespace DebugServer
 		++s_session;
 		const uint64_t watchdogSession = s_session.load();
 		std::thread([watchdogSession]() {
-			uint64_t queuedOperation = 0, queuedException = 0, queuedExpiry = 0, queuedDump = 0;
+			uint64_t queuedOperation = 0, queuedException = 0, queuedExpiry = 0, queuedDump = 0, queuedMedia = 0;
 			while (s_running.load() && s_session.load() == watchdogSession)
 			{
 				std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -2577,6 +2724,15 @@ namespace DebugServer
 				const auto progressId = s_progressWatchId.load();
 				const auto dumpExpiry = s_dumpDeadline.load();
 				const auto dumpSequence = s_dumpSequence.load();
+				const auto mediaExpiry = s_mediaDeadline.load();
+				const auto mediaSequence = s_mediaSequence.load();
+				if (mediaExpiry && now >= mediaExpiry && queuedMedia != mediaSequence)
+				{
+					queuedMedia = mediaSequence;
+					Host::RunOnCPUThread([watchdogSession, mediaSequence]() {
+						if (s_session.load() == watchdogSession && s_mediaSequence.load() == mediaSequence) stopMedia("time_limit");
+					});
+				}
 				if (dumpExpiry && now >= dumpExpiry && queuedDump != dumpSequence)
 				{
 					queuedDump = dumpSequence;
@@ -2623,6 +2779,7 @@ namespace DebugServer
 
 	void Stop()
 	{
+		stopMedia("vm_stopped");
 		cancelDump("vm_stopped");
 		if (s_progress.state == "armed") s_progress.state = "vm_stopped";
 		s_progressNext.store(0);
@@ -2706,6 +2863,7 @@ namespace DebugServer
 
 	void OnVMReset()
 	{
+		stopMedia("vm_reset");
 		cancelDump("vm_reset");
 		s_iopModuleRoot = 0;
 		if (s_progress.state == "armed") s_progress.state = "vm_changed";

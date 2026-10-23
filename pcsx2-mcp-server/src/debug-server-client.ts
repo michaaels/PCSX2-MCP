@@ -31,6 +31,7 @@ import { progressOptions, progressState } from './progress.js';
 import { parseIopModuleSnapshot } from './iop-modules.js';
 import { defaultPorts, tcpPort } from './ports.js';
 import { dumpOptions, parseDump, type DumpOptions } from './gs-dump.js';
+import { mediaOptions, parseMedia, type MediaOptions } from './media.js';
 
 export interface DebugRegister {
   name: string;
@@ -395,6 +396,25 @@ export class DebugServerClient {
   async gsDumpStatus(id: string, cancel = false) {
     watchId.parse(id);
     return parseDump(await this.sessionCommand({ cmd: cancel ? 'gs_dump_cancel' : 'gs_dump_status', operation_id: id }), id);
+  }
+
+  async startMediaCapture(id: string, expected: { process_id: number; session: number; execution_epoch: number; elf: string; elf_crc: string }, options: MediaOptions = {}) {
+    watchId.parse(id);
+    const input = mediaOptions.parse(options);
+    const response = await this.send({ cmd: 'media_start', operation_id: id, ...input,
+      expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
+      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc });
+    if (!response.ok) throw Object.assign(new Error(response.error ?? 'Media capture start rejected'), { native_rejected: true });
+    const result = parseMedia(response, id);
+    if (result.session !== expected.session || result.execution_epoch !== expected.execution_epoch || result.elf !== expected.elf ||
+        Number(result.elf_crc) !== Number(expected.elf_crc) || result.max_frames !== input.frames || result.max_payload_bytes !== input.max_payload_bytes ||
+        result.width !== input.width || result.height !== input.height || result.audio !== input.audio)
+      throw new Error('Media capture response identity/bounds do not match the request');
+    return result;
+  }
+  async mediaStatus(id: string, stop = false) {
+    watchId.parse(id);
+    return parseMedia(await this.sessionCommand({ cmd: stop ? 'media_stop' : 'media_status', operation_id: id }), id);
   }
 
   async getCapabilities() {

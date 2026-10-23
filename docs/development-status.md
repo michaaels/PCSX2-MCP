@@ -1,6 +1,6 @@
 # MCP development progress
 
-Updated: 2026-10-21. This records the debugging extensions after `origin/main`
+Updated: 2026-10-22. This records the debugging extensions after the original main
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
 
@@ -23,6 +23,7 @@ behavior, native integration and tests can be reviewed together.
 | IOP runtime modules | `49bf380` | Bounded paused loadcore inventory, address-to-runtime-range association and frozen module observations in exception reports. [Usage](iop-modules.md). |
 | Independent emulator instances | F1, 2026-10-21 | Validated environment/explicit ports, per-process data roots, PID/port/root launch checks, exclusive Windows bind and socket session guards. [Usage and evidence](automation.md#independent-instances). |
 | Owned GS dumps | F2, 2026-10-21 | Identity-guarded uncompressed GS capture, native frame/time/byte limits, owned cancellation, close notification and checked/hashed streams. Native replay produced a rendered PNG. [Usage and evidence](gs-dumps.md). |
+| Owned video/audio capture | F3, 2026-10-22 | Per-request MP4 capture with frame/time/encoded-payload limits, exact-file stop, native close/error evidence and ffprobe checks against actual tracks/frame count/size. Audio audibility and A/V sync remain unmeasured. [Usage and evidence](media-capture.md). |
 
 ## Operational improvements
 

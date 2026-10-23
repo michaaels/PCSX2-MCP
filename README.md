@@ -337,6 +337,10 @@ For bounded paused IOP inventory and address-to-runtime-module association, see
 same runtime evidence; local IRX artifact/source binding remains unavailable.
 For the delivered improvements, implementation commits and next work, see
 [MCP development progress](docs/development-status.md).
+For owned graphics reproductions, see [GS dumps](docs/gs-dumps.md).
+For bounded MP4 recording with optional audio and actual file verification, see
+[video/audio capture](docs/media-capture.md), including the pinned Windows
+FFmpeg runtime installer and separate ffprobe requirement.
 The [debugging validation record](docs/debug-validation.md) separates automated
 protocol tests, native/live acceptance and the remaining platform/runtime limits.
 

@@ -1,6 +1,6 @@
 # Plan de implementación y publicación
 
-Actualizado: 2026-10-21. Autorizado por el usuario: implementar las mejoras del
+Actualizado: 2026-10-22. Autorizado por el usuario: implementar las mejoras del
 estudio de forks y después continuar el plan original de depuración PS2.
 
 ## Regla de entrega
@@ -18,7 +18,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 |---|---|---|
 | F1 | Puertos por proceso, directorios de datos independientes y aislamiento de sockets/sesiones; dos instancias Windows | Implementado y probado; incluido en main con esta entrega |
 | F2 | GS dumps acotados con identidad, estados y archivos verificables | Implementado y probado; incluido en main con esta entrega |
-| F3 | Captura vídeo/audio con propiedad, límites y finalización comprobada | Pendiente |
+| F3 | Captura vídeo/audio con propiedad, límites y finalización comprobada | Implementado y probado; incluido en main con esta entrega |
 | F4 | Observadores de cambios de memoria EE/IOP en el hilo CPU | Pendiente |
 | 5A2 | Vincular IRX exacto y fuentes con evidencia que contemple relocaciones | Pendiente; retomar tras F1–F4 |
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | Pendiente; requisito para F5 |
@@ -44,4 +44,10 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   captura/propiedad/límites/reset y replay nativo con PNG; 11 de regresión de
   automatización. Integración limpia/upgrade/reaplicada/build coincide en 18
   archivos. [Contrato y reproducción](gs-dumps.md).
-- Siguiente entrega: F3, captura vídeo/audio. Retomar 5A2 tras F1–F4; F5 exige 5A3.
+- F3: compilación Windows y TypeScript, 110 pruebas Node y 8 comprobaciones live
+  de vídeo/audio, límites, propiedad y reset. ffprobe decodificó 60 frames H.264
+  y audio AAC estéreo; audibilidad/sincronía no medidas. Pasaron 8 checks GS y
+  11 de automatización como regresión. Integración consistente en 20 archivos;
+  runtime oficial FFmpeg 8 fijado y verificado. [Contrato](media-capture.md).
+- Siguiente entrega: F4, observación de cambios EE/IOP. Retomar 5A2 tras F1–F4;
+  F5 exige 5A3. Cada paso sigue requiriendo publicación validada en main.
