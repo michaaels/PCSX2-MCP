@@ -7,6 +7,16 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+6B1 (2026-10-24): TypeScript build and 208 Node tests passed (15 new), with ten
+host-generated real AAC/MCP checks and ten native media checks (eight capture
+regressions plus two audio integration/refusal checks). Known tone/gap/channel
+levels and source/PCM/report SHA checks passed, along with mutation, ambiguity,
+rate/byte/runtime/cancellation controls. The fresh native SMS menu capture
+contained 47104 exact-zero frames per audio channel; this is measured silence,
+not accepted SMS playback audio. Native/Bridge hashes unchanged; no native or
+Bridge rebuild. [Audio measurement](audio-measurement.md) defines 6B2 playback,
+listening, timing and physical acceptance gates; all remain pending.
+
 6A (2026-10-24): TypeScript compiled, 193 Node tests passed (19 new), with ten
 visual live checks and seven existing workflow live regressions. Actual SMS
 PNG captures passed region/tolerance assertions. A deliberately perturbed

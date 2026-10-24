@@ -25,7 +25,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | 5A3a/5A3b implementados y probados en caminos observados; generaciones acotadas, revalidación y corte de watches IOP; cobertura directa/custom pendiente |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Implementado y probado desde power-on; inicio desde savestate pendiente |
 | 5B | Correlación del proyecto | 5B1, 5B2a y 5B2b probados: transporte real y contexto CPU/fuentes del error del actualizador en HostFs; E11/audio pendientes |
-| 6–8 | Regresión, DAP y validación física | 6A probada: comparación visual por regiones; sigue 6B de criterios/medición de audio, después estabilidad/CI/DAP/hardware |
+| 6–8 | Regresión, DAP y validación física | 6A y 6B1 probadas: comparación visual y medición PCM; sigue 6B2 de audio durante reproducción SMS, después estabilidad/CI/DAP/hardware |
 
 La dependencia de F5 evita invalidar silenciosamente la depuración existente al
 resetear/cargar estados. No es necesario cambiar de versión PCSX2 para comenzar:
@@ -124,8 +124,17 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   TypeScript, 193 pruebas Node, diez checks visuales live y siete regresiones
   workflow pasaron. El fallo controlado altera una referencia PNG, no el guest.
   Native/Bridge sin cambios ni recompilación. [Contrato](visual-regression.md).
-- Siguiente entrega del plan original: **6B**, definir captura/medición y
-  aceptación de audio antes de añadir aserciones de sonido. El recorrido del ERROR en HostFs queda probado;
+- 6B1 (2026-10-24): `pcsx2_analyze_capture_audio` offline con SHA del MP4,
+  snapshot/PCM/JSON conservados y RMS/pico/DC/ventanas de silencio por canal.
+  Sin normalización/downmix/conversión de frecuencia; diez segundos decodificados
+  y un análisis concurrente. Build TypeScript, 208 pruebas Node, diez checks
+  AAC/MCP y diez checks nativos de captura/medición/regresión pasaron. El menú
+  SMS capturado tiene PCM cero; no valida sonido de reproducción. Criterios y
+  límites en [medición de audio](audio-measurement.md). Native/Bridge sin cambios.
+- Siguiente entrega del plan original: **6B2**, capturar un clip conocido en
+  reproducción real SMS y establecer referencia/criterios por contenido antes
+  de añadir aserciones de sonido. Escucha/sincronía/hardware siguen pendientes.
+  El recorrido del ERROR en HostFs queda probado;
   E11/audio/hardware y causas de otras incidencias conservan aceptación propia.
   Mantener límites del replay y de loaders/reboots/BIOS observados. Cada paso
   requiere publicación validada en main.

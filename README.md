@@ -411,6 +411,11 @@ For owned graphics reproductions, see [GS dumps](docs/gs-dumps.md).
 For bounded MP4 recording with optional audio and actual file verification, see
 [video/audio capture](docs/media-capture.md), including the pinned Windows
 FFmpeg runtime installer and separate ffprobe requirement.
+For offline measurements of a hash-pinned AAC capture, use
+`pcsx2_analyze_capture_audio`: per-channel RMS/peak/DC, near-full-scale counts
+and silence windows with MP4/PCM/JSON evidence. See [audio measurement and
+acceptance gates](docs/audio-measurement.md); listening, A/V sync and physical
+audio are not assessed by these metrics.
 The [debugging validation record](docs/debug-validation.md) separates automated
 protocol tests, native/live acceptance and the remaining platform/runtime limits.
 

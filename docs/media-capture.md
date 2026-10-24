@@ -100,6 +100,13 @@ Results include stream timing and codec metadata, but retain
 contain silence; these checks do not establish audible playback, lip sync or
 physical PS2 behavior. Save-state/module lifetime guards remain separate work.
 
+6B1 adds the separate offline `pcsx2_analyze_capture_audio` tool. Pass the
+closed capture's `path` and `artifact.sha256` to measure decoded PCM levels and
+silence windows while preserving the source/PCM/report. This does not change
+F3 verification or make a track audibly correct. See [audio measurements and
+acceptance gates](audio-measurement.md) for definitions, bounds and remaining
+SMS playback/listening/synchronization tests.
+
 ## Recorded validation
 
 Windows PCSX2 v2.6.3, MSVC 19.51, Direct3D 11 and official FFmpeg 8 runtime:

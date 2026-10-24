@@ -8,6 +8,7 @@ behavior, native integration and tests can be reviewed together.
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Decoded audio measurements | 6B1, this delivery | SHA-pinned MP4/PCM/JSON, per-channel RMS/peak/DC and silence-window metrics; 208 Node tests, ten real AAC/MCP checks and ten native media checks. SMS playback/listening/A/V gates remain pending. [Contract](audio-measurement.md). |
 | Rendered screenshots | `eef0e8e`, `79ce272`, `d128b3b` | Bounded PNG images over MCP, renderer errors and native Windows support. [Validation](screenshot-validation.md). |
 | Debug sessions | `04bc127` | Session identity, bounded event/log history, ELF reload and context artifacts. [Usage](debug-sessions.md). |
 | Launch and automation | `2739a16` | Owned emulator launch/stop and bounded video-frame/controller operations. [Usage](automation.md). |
@@ -149,16 +150,18 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay applies
 the documented reset/restore and observed module-lifetime invalidations.
 
-1. **Validate real transport correlation (5B2).** Use the new 5B1 collector/report
-   with fresh SMS/UDPFS/Bridge logs against Jellyfin, the same build/boot and a
-   documented incident. Preserve cross-process clock uncertainty; synthetic or
-   historical receipts do not establish this acceptance.
-2. **Add measured PS2 diagnostics.** Expose verified SIF/RPC, DMA and A/V state
-   where available, and measure instrumentation overhead. Missing metrics are
-   unavailable rather than zero.
-3. **Extend regression and editor workflows.** Tolerant visual comparison,
-   defined audio criteria, long-run/recovery tests, CI separation and a DAP
-   adapter over capabilities the backend actually supports.
+1. **6B2: measure actual SMS playback audio.** 6A visual regression and 6B1
+   decoded-sample measurement are proven within their contracts. Record a
+   known clip during SMS playback with exact source/build/boot/session/interval
+   evidence and content-specific reference limits. Listening, A/V timing and
+   physical intermittent audio are not accepted by a PCM level report.
+2. **Long-run/recovery and CI.** Add repeated playback/catalog/network recovery
+   with bounded failure criteria, and CI separation for tests without BIOS or
+   hardware. 5B2 fresh transport and the scoped HostFs incident are already
+   proven; retain clock uncertainty and separate E11/audio acceptance.
+3. **Measured diagnostics and editor workflows.** Add verified SIF/RPC, DMA and
+   A/V observations where available, with overhead evidence, then a DAP adapter
+   over supported operations. Unavailable metrics must remain explicit.
 4. **Extend scoped coverage with separate acceptance.** Savestate-start movies
    require a checked/copied companion and finalized asynchronous save handling.
    Additional loader/reset/BIOS coverage and universal generations remain pending.

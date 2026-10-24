@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { DebugServerClient } from './debug-server-client.js';
 import { watchId } from './exceptions.js';
 import { mediaOptions, verifyMedia, type MediaOptions } from './media.js';
+import { analyzeCaptureAudio, audioMeasurementOptions } from './audio-measurement.js';
 
 export async function stopMediaCapture(client: DebugServerClient, id: string) {
   const deadline = performance.now() + 15000;
@@ -48,6 +49,12 @@ export async function readMediaCapture(client: DebugServerClient, id: string, wa
   }
 }
 export function registerMediaTools(server: McpServer, getClient: () => DebugServerClient | null) {
+  server.tool('pcsx2_analyze_capture_audio', 'Measure one SHA256-pinned local MP4 AAC stereo 48000 Hz track offline. Preserves MP4, decoded float PCM, per-channel RMS/peak/DC, near-full-scale counts and bounded silence windows. Requires ffmpeg/ffprobe (PCSX2_FFMPEG/PCSX2_FFPROBE overrides). At most ten decoded seconds, 144 MiB input and one analysis per MCP. Does not connect to a VM or judge audible quality, clipping causes, dropouts, A/V sync or physical PS2 behavior; acceptance remains not_evaluated.',
+    audioMeasurementOptions.shape, async (input, extra) => {
+      try { return { content: [{ type: 'text' as const, text: JSON.stringify(await analyzeCaptureAudio(input, extra.signal), null, 2) }] }; }
+      catch (error) { return { content: [{ type: 'text' as const, text: JSON.stringify({ error: error instanceof Error ? error.message : 'Audio measurement failed',
+        ...(error instanceof Error && 'artifact_directory' in error ? { artifact_directory: error.artifact_directory } : {}) }) }], isError: true }; }
+    });
   async function run(operation: (client: DebugServerClient) => Promise<unknown>) {
     try {
       const client = getClient(); if (!client?.isConnected()) throw new Error('Connect to DebugServer first');

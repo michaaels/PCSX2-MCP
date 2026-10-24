@@ -49,6 +49,14 @@ try {
   assert.equal(completed.artifact.audio_audibility, 'not_measured');
   assert.equal((await inspector.getStatus()).paused, false);
   passed('records exactly 60 video frames and stereo audio to a closed MP4; ffprobe validates the actual tracks and SHA256');
+  const measured = await call('pcsx2_analyze_capture_audio', { capture_path: completed.path,
+    capture_sha256: completed.artifact.sha256, output_directory: output });
+  results.audio_measurement = measured;
+  assert.equal(measured.source.sha256, completed.artifact.sha256);
+  assert.ok(measured.metrics.frame_count > 0); assert.equal(measured.metrics.sample_rate, 48000);
+  assert.equal(measured.acceptance, 'not_evaluated'); assert.equal(measured.av_sync, 'not_measured');
+  assert.equal((await inspector.getStatus()).paused, false);
+  passed('fresh native SMS capture yields hash-pinned per-channel PCM metrics without pausing VM or claiming audible playback');
   await inspector.pause();
   const b = await start({ frames: 8, audio: false, width: 320, height: 240 });
   const pending = await read(b.operation_id, 0);
@@ -66,6 +74,11 @@ try {
   assert.equal(limited.artifact.streams.length, 1); assert.equal((await inspector.getStatus()).paused, true);
   results.video_only = limited;
   passed('foreign stop and competing start preserve ownership across reconnect; video-only capture caps frames during explicit frame advance');
+  const noAudio = await mcp.callTool({ name: 'pcsx2_analyze_capture_audio', arguments: {
+    capture_path: limited.path, capture_sha256: limited.artifact.sha256, output_directory: output } });
+  assert.equal(noAudio.isError, true); assert.equal((await inspector.getStatus()).paused, true);
+  results.no_audio_refusal = JSON.parse(noAudio.content[0].text);
+  passed('actual native video-only MP4 refuses audio analysis and preserves paused VM');
   const c = await start({ timeout_ms: 200, audio: false });
   const expired = await read(c.operation_id);
   assert.equal(expired.active, false); assert.equal(expired.state, 'failed');
