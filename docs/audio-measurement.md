@@ -119,7 +119,7 @@ transiently replaces files and restores them between checks.
 | Gate | Required evidence | Current status |
 |---|---|---|
 | 6B1 instrument correctness | Known PCM levels/channels/DC/thresholds/gaps, real AAC pipeline, failure controls and native capture integration | Proven in the scope below |
-| 6B2 emulator playback | Fresh recording of a known permitted clip actually played by SMS, exact build/boot/session and source interval, known expected sound/channel behavior, repeat measurements with justified per-content limits | Pending; the menu capture below contains zero PCM |
+| 6B2 emulator playback | Fresh recording of a known permitted clip actually played by SMS, exact build/boot/session and source interval, known expected sound/channel behavior, repeat measurements with justified per-content limits | Not accepted: 6B2a reaches the actual player but records zero PCM/stalled clocks; SIF2 wait observed. [Incident](sms-playback-audio.md) |
 | Audible quality | Listening evidence for the exact capture and output route, content expectations and observed defects; quantitative levels alone cannot pass this gate | Pending |
 | A/V timing | A source with known coincident visual/audio markers, verified video/audio timestamp alignment and an explicitly agreed offset/drift tolerance; include encoder/capture uncertainty | Pending; stream metadata alone is insufficient |
 | Physical console | Independent acquisition/listening with console model, capture device, sample rate, interval and repeated playback/recovery evidence | Pending for this MCP delivery |

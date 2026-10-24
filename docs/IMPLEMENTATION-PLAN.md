@@ -14,6 +14,11 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Secuencia
 
+Restricción de despliegue indicada por el usuario (2026-10-24): Jellyfin remoto
+en Atom con 1 GB de RAM. El Bridge del PC recibe el original estático y realiza
+FFmpeg localmente. Mantener pruebas cortas y seriales; no asumir capacidad de
+transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
+
 | Paso | Trabajo | Estado |
 |---|---|---|
 | F1 | Puertos por proceso, directorios de datos independientes y aislamiento de sockets/sesiones; dos instancias Windows | Implementado y probado; incluido en main con esta entrega |
@@ -25,7 +30,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | 5A3a/5A3b implementados y probados en caminos observados; generaciones acotadas, revalidación y corte de watches IOP; cobertura directa/custom pendiente |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Implementado y probado desde power-on; inicio desde savestate pendiente |
 | 5B | Correlación del proyecto | 5B1, 5B2a y 5B2b probados: transporte real y contexto CPU/fuentes del error del actualizador en HostFs; E11/audio pendientes |
-| 6–8 | Regresión, DAP y validación física | 6A y 6B1 probadas: comparación visual y medición PCM; sigue 6B2 de audio durante reproducción SMS, después estabilidad/CI/DAP/hardware |
+| 6–8 | Regresión, DAP y validación física | 6A/6B1 probadas; 6B2a reproduce silencio/bloqueo y localiza espera SIF2. Sigue 6B2b: investigar ACK y aceptar reproducción; después estabilidad/CI/DAP/hardware |
 
 La dependencia de F5 evita invalidar silenciosamente la depuración existente al
 resetear/cargar estados. No es necesario cambiar de versión PCSX2 para comenzar:
@@ -131,9 +136,17 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   AAC/MCP y diez checks nativos de captura/medición/regresión pasaron. El menú
   SMS capturado tiene PCM cero; no valida sonido de reproducción. Criterios y
   límites en [medición de audio](audio-measurement.md). Native/Bridge sin cambios.
-- Siguiente entrega del plan original: **6B2**, capturar un clip conocido en
-  reproducción real SMS y establecer referencia/criterios por contenido antes
-  de añadir aserciones de sonido. Escucha/sincronía/hardware siguen pendientes.
+- 6B2a (2026-10-24): receta real con selección por mando, IDs/estáticos DWARF,
+  fuente/ELF/clip exactos, captura temprana/tardía y relojes del reproductor.
+  El clip preparado por Jellyfin Linux coincide por SHA; ambas capturas dan
+  PCM cero y los relojes dejan de cambiar. Otra ejecución verifica la llamada
+  a WaitSema y no alcanza el marcador siguiente a la primera espera SIF2 en diez
+  segundos. Las pruebas de reproducción conservan fallo; siete checks aceptan
+  solamente integridad de evidencia. Build TypeScript, 215 Node, ocho controles
+  DWARF y cuatro regresiones de transporte pasaron. [Contrato](sms-playback-audio.md).
+- Siguiente entrega del plan original: **6B2b**, investigar la confirmación de
+  cabecera SIF2 con evidencia IOP/PCSX2, después aceptar el clip reproducido con
+  audio y repeticiones. Escucha/sincronía/hardware siguen pendientes.
   El recorrido del ERROR en HostFs queda probado;
   E11/audio/hardware y causas de otras incidencias conservan aceptación propia.
   Mantener límites del replay y de loaders/reboots/BIOS observados. Cada paso

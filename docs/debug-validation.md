@@ -7,6 +7,19 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+6B2a (2026-10-24): TypeScript build and 215 Node tests passed (seven new), eight
+real-DWARF metadata/refusal controls and four existing real transport checks
+passed against Linux Jellyfin 12.2.0. Seven evidence checks validate a measured
+failed playback attempt and a separate first-SIF2-header-wait trace. Actual
+controller selection, clip SHA, player entry/events and four source milestones
+were verified. Early/late recordings have zero PCM and unchanged nonzero player
+clocks. Runtime semaphore LW/JAL agrees with DWARF/ELF; a following source marker
+one verified LUI after the return site was not reached in ten seconds. No exact
+return-PC observation is claimed. **Playback tests remain failed.**
+[Incident contract](sms-playback-audio.md) separates evidence validation from
+audio acceptance and leaves ACK cause, E11, listening, A/V and hardware open.
+Runtime/Bridge/SMS/decoders are unchanged and were not rebuilt.
+
 6B1 (2026-10-24): TypeScript build and 208 Node tests passed (15 new), with ten
 host-generated real AAC/MCP checks and ten native media checks (eight capture
 regressions plus two audio integration/refusal checks). Known tone/gap/channel

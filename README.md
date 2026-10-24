@@ -416,6 +416,10 @@ For offline measurements of a hash-pinned AAC capture, use
 and silence windows with MP4/PCM/JSON evidence. See [audio measurement and
 acceptance gates](docs/audio-measurement.md); listening, A/V sync and physical
 audio are not assessed by these metrics.
+The [real SMS playback recipe](docs/sms-playback-audio.md) preserves actual
+controller selection, a hash-checked clip and an observed SIF2 wait incident.
+Its playback result remains failed; successful evidence verification accepts
+the diagnostic artifacts, not audible playback or a root cause.
 The [debugging validation record](docs/debug-validation.md) separates automated
 protocol tests, native/live acceptance and the remaining platform/runtime limits.
 

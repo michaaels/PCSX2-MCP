@@ -138,6 +138,11 @@ try {
     passed('captured incident boot and logger argument join exactly one subsequent console/Bridge ERROR receipt in the same run');
   }
   passed('actual SMS boot, network-ready and catalog-open events received without synthetic log injection');
+  if (process.env.PCSX2_AUDIO_FIXTURE) {
+    const { capturePlaybackAudio } = await import('./project-playback-audio.mjs');
+    result.playback_audio = await capturePlaybackAudio({ call, inspector, manifest, manifestPath, elf, output, options, journal,
+      fixturePath: process.env.PCSX2_AUDIO_FIXTURE, bootId: boots[0], passed });
+  }
   result.scope = { transport: 'fresh-SMS-UDPFS-Bridge-client-events', jellyfin: 'validate-separately-in-service-receipt',
     catalog_contents: 'not_independently_compared', playback: 'not_tested', root_cause: 'not_established' };
   result.passed = true;

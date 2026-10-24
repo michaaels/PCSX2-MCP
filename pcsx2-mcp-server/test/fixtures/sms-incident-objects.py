@@ -19,20 +19,24 @@ def type_size(die, depth=0):
     if die.tag == 'DW_TAG_array_type':
         element = type_size(die.get_DIE_from_attribute('DW_AT_type'), depth + 1)
         dimensions = list(die.iter_children())
-        if len(dimensions) != 1 or dimensions[0].tag != 'DW_TAG_subrange_type':
+        if not 1 <= len(dimensions) <= 2 or any(d.tag != 'DW_TAG_subrange_type' for d in dimensions):
             raise ValueError('Array dimensions')
-        bounds = dimensions[0].attributes
-        low = bounds.get('DW_AT_lower_bound')
-        if low is not None and low.value != 0:
-            raise ValueError('Array lower bound')
-        upper = bounds['DW_AT_upper_bound'].value
-        if not isinstance(upper, int) or not 0 <= upper < 4096:
-            raise ValueError('Array upper bound')
-        return element * (upper + 1)
+        for dimension in dimensions:
+            bounds = dimension.attributes
+            low = bounds.get('DW_AT_lower_bound')
+            if low is not None and low.value != 0:
+                raise ValueError('Array lower bound')
+            upper = bounds['DW_AT_upper_bound'].value
+            if not isinstance(upper, int) or not 0 <= upper < 4096:
+                raise ValueError('Array upper bound')
+            element *= upper + 1
+        if element > 8192:
+            raise ValueError('Array size limit')
+        return element
     raise ValueError('Unsupported fixture type')
 
 
-def inspect(file, expected):
+def inspect(file, expected, *, unit_name='SMS_JellyfinUpdate.c', names=None):
     from elftools.elf.elffile import ELFFile
     from elftools.dwarf.descriptions import describe_form_class
     if file.stat().st_size > 256 * 1024 * 1024:
@@ -50,7 +54,7 @@ def inspect(file, expected):
            if section.name.startswith('.debug')):
         raise ValueError('Debug section limit')
     dwarf = elf.get_dwarf_info()
-    names = {'s_UpdateDir': 128, 's_UpdatesDisabled': 4}
+    names = names or {'s_UpdateDir': 128, 's_UpdatesDisabled': 4}
     found = {name: [] for name in names}
     dies = 0
     for index, cu in enumerate(dwarf.iter_CUs()):
@@ -61,7 +65,7 @@ def inspect(file, expected):
         unit = attr.value.decode('utf-8') if attr else ''
         if len(unit) > 1024:
             raise ValueError('CU name')
-        if unit.replace('\\', '/').split('/')[-1] != 'SMS_JellyfinUpdate.c':
+        if unit.replace('\\', '/').split('/')[-1] != unit_name:
             continue
         for die in cu.iter_DIEs():
             dies += 1
