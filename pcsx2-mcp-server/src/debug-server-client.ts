@@ -21,6 +21,7 @@ import * as net from 'node:net';
 import { parseScreenshot, type Screenshot } from './screenshot.js';
 import { capabilitiesResponse, eventsResponse, logsResponse, parseContext, type DebugEventType } from './debug-session.js';
 import { z } from 'zod';
+import { parseSifSnapshot, type SifIdentity } from './sif-state.js';
 import { parseMovie, movieOptions, type MovieOptions, type ReplayOptions } from './input-movie.js';
 import { automationResponse, controllerResponse, inputOptions, buttons, type InputOptions } from './automation.js';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -411,6 +412,13 @@ export class DebugServerClient {
       .parse(await this.sessionCommand({ cmd: 'read_memory', address: '0x' + value.replace(/^0x/, ''), length, cpu, strict: true }));
     if (response.hex.length !== length * 2) throw new Error('Strict memory read returned an unexpected byte count');
     return response.hex;
+  }
+
+  async sifSnapshot(expected: SifIdentity) {
+    return parseSifSnapshot(await this.sessionCommand({ cmd: 'sif_snapshot', expected_process_id: expected.process_id,
+      expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
+      expected_iop_reset_epoch: expected.iop_reset_epoch, expected_iop_lifetime_epoch: expected.iop_lifetime_epoch,
+      expected_elf: expected.elf, expected_elf_crc: expected.elf_crc }), expected);
   }
 
   async resolveAddress(value: string, cpu: CpuTarget = 'ee') {

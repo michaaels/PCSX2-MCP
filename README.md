@@ -39,6 +39,13 @@
 
 ---
 
+## Paused SIF/PGIF diagnostics
+
+`pcsx2_sif_snapshot` reads SIF0/1/2 DMA, SBUS, PGIF FIFO counters and the last
+64 observed PGIF DMA writes with before/after backing words. Requires a rebuilt
+native integration and Node server; call with `{}` on a paused VM. See the
+[contract, Windows validation and SMS investigation](docs/sif-diagnostics.md).
+
 ## Quick Start (3 steps)
 
 ### 1. Download

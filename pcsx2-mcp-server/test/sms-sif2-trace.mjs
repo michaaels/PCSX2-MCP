@@ -7,7 +7,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
-export async function traceSif2({ call, inspector, manifest, snapshot, elf, run, groups, checkIdentity, playerState }) {
+export async function traceSif2({ call, inspector, manifest, snapshot, elf, run, groups, checkIdentity, playerState, captureSif }) {
   const name = 'src/SMS_SPU.c', sourcePath = path.join(snapshot, name), source = await fs.readFile(sourcePath);
   const sha = createHash('sha256').update(source).digest('hex');
   assert.equal(sha, manifest.sources.find(s => s.path === name)?.sha256);
@@ -44,6 +44,7 @@ export async function traceSif2({ call, inspector, manifest, snapshot, elf, run,
     await checkIdentity(); step.status = await inspector.getStatus(); assert.ok(step.status.paused);
     assert.ok(point.addresses.some(pc => Number(pc) === Number(step.status.pc)));
     step.player_state = await playerState(); step.registers = await inspector.readRegisters('ee', 0);
+    if (captureSif) step.sif = await captureSif();
     step.instruction_hex = await inspector.readMemoryStrict(step.status.pc, 32);
     if (label === 'before_header_ack_wait') {
       const bytes = Buffer.from(step.instruction_hex, 'hex'), pc = Number(step.status.pc);

@@ -30,7 +30,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | 5A3a/5A3b implementados y probados en caminos observados; generaciones acotadas, revalidación y corte de watches IOP; cobertura directa/custom pendiente |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Implementado y probado desde power-on; inicio desde savestate pendiente |
 | 5B | Correlación del proyecto | 5B1, 5B2a y 5B2b probados: transporte real y contexto CPU/fuentes del error del actualizador en HostFs; E11/audio pendientes |
-| 6–8 | Regresión, DAP y validación física | 6A/6B1 probadas; 6B2a reproduce silencio/bloqueo y localiza espera SIF2. Sigue 6B2b: investigar ACK y aceptar reproducción; después estabilidad/CI/DAP/hardware |
+| 6–8 | Regresión, DAP y validación física | 6A/6B1 probadas; 6B2a reproduce silencio/bloqueo y localiza espera SIF2. 6B2b1 observa SIF/PGIF y la escritura BCR sin efecto; sigue 6B2b2: investigar/corregir ACK y aceptar reproducción; después estabilidad/CI/DAP/hardware |
 
 La dependencia de F5 evita invalidar silenciosamente la depuración existente al
 resetear/cargar estados. No es necesario cambiar de versión PCSX2 para comenzar:
@@ -144,7 +144,14 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   segundos. Las pruebas de reproducción conservan fallo; siete checks aceptan
   solamente integridad de evidencia. Build TypeScript, 215 Node, ocho controles
   DWARF y cuatro regresiones de transporte pasaron. [Contrato](sms-playback-audio.md).
-- Siguiente entrega del plan original: **6B2b**, investigar la confirmación de
+- 6B2b1 (2026-10-24): `pcsx2_sif_snapshot`, estado pausado SIF0/1/2/SBUS/PGIF
+  e historial de 64 escrituras DMA reales con ancho y palabras antes/después.
+  Dos ejecuciones SMS observan escritura alta BCR de 16 bits sin cambio del
+  backing; SIF2/PGIF queda detenido y el PCM continúa cero. No se modifica
+  transporte DMA ni SMS/Bridge/decodificadores. Windows y TypeScript compilan;
+  223 Node, integración de 26 archivos, cinco checks live y 12 de evidencia
+  pasan. La reproducción sigue fallida. [Contrato y límites](sif-diagnostics.md).
+- Siguiente entrega del plan original: **6B2b2**, investigar la confirmación de
   cabecera SIF2 con evidencia IOP/PCSX2, después aceptar el clip reproducido con
   audio y repeticiones. Escucha/sincronía/hardware siguen pendientes.
   El recorrido del ERROR en HostFs queda probado;

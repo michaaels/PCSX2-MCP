@@ -7,6 +7,14 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+6B2b1 (2026-10-24): native Windows and TypeScript builds passed, with 223 Node
+tests (eight new), five real native/MCP SIF checks and 26-file pristine/upgrade/
+idempotence integration. Two fresh SMS runs retain failed playback: both observe
+an unchanged BCR word on the high-half 16-bit PGIF write, with stalled SIF2/PGIF;
+early/late native captures still contain zero PCM. Five SIF and seven existing
+audio evidence checks pass without accepting playback. SMS/Bridge unchanged.
+[Contract, excluded attempts and remaining gates](sif-diagnostics.md).
+
 6B2a (2026-10-24): TypeScript build and 215 Node tests passed (seven new), eight
 real-DWARF metadata/refusal controls and four existing real transport checks
 passed against Linux Jellyfin 12.2.0. Seven evidence checks validate a measured

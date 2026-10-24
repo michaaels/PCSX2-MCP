@@ -51,6 +51,10 @@ typedef int socket_t;
 #include "R5900.h"
 #include "R5900OpcodeTables.h"
 #include "R3000A.h"
+#include "Common.h"
+#include "Sif.h"
+#include "IopHw.h"
+#include "ps2/pgif.h"
 #include "SymbolGuardian.h"
 #include "SymbolImporter.h"
 #include "Host.h"
@@ -92,6 +96,9 @@ typedef int socket_t;
 // Forward declarations — these are PCSX2 globals
 extern R5900DebugInterface r5900Debug;
 extern R3000DebugInterface r3000Debug;
+// PGIF control objects, read directly without invoking FIFO/MMIO handlers.
+extern ringBuf_t rb_gp0, rb_gp1;
+extern dma_t dma;
 
 namespace DebugServer
 {
@@ -147,6 +154,13 @@ namespace DebugServer
 	static uint64_t s_executionEpoch = 1, s_stepSequence = 0;
 	static uint64_t s_inspectionRevision = 1;
 	static uint64_t s_iopResetEpoch = 1;
+	struct PgifWriteObservation
+	{
+		uint64_t sequence, session, epoch, resetEpoch, lifetimeEpoch;
+		u32 address, value, bits, before, after, iopPC, iopCycles;
+	};
+	static std::deque<PgifWriteObservation> s_pgifWrites;
+	static uint64_t s_pgifWriteSequence = 0;
 	static u32 s_iopModuleRoot = 0;
 	static uint64_t s_iopModuleDiscovery = 0, s_iopModuleSnapshot = 0;
 	struct GuardedStep
@@ -1243,6 +1257,73 @@ namespace DebugServer
 			if (std::find(group.addresses.begin(), group.addresses.end(), address) != group.addresses.end() &&
 				std::find(group.relinquished.begin(), group.relinquished.end(), address) == group.relinquished.end())
 				group.relinquished.push_back(address);
+	}
+
+	static std::string sifSnapshot(const std::unordered_map<std::string, JsonValue>& params)
+	{
+		if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused)
+			return failure("Pause the active VM before reading SIF state");
+#ifdef _WIN32
+		const uint64_t process = GetCurrentProcessId();
+#else
+		const uint64_t process = getpid();
+#endif
+		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
+			getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
+			getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch) ||
+			getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+			getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			return failure("VM/ELF/IOP identity changed before SIF snapshot");
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("process_id", process);
+		j.kv("session", s_session.load()); j.kv("execution_epoch", s_executionEpoch);
+		j.kv("iop_reset_epoch", s_iopResetEpoch); j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch);
+		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.kv("paused", true);
+		auto hex = [&j](const char* key, u32 value) { j.key(key); j.valHex32(value); };
+		j.key("sample"); j.startObject(); hex("ee_pc", cpuRegs.pc); hex("ee_cycles", cpuRegs.cycle);
+		hex("iop_pc", psxRegs.pc); hex("iop_cycles", psxRegs.cycle); j.endObject();
+		j.key("sbus"); j.startObject();
+		hex("mscom", psHu32(SBUS_F200)); hex("smcom", psHu32(SBUS_F210));
+		hex("msflg", psHu32(SBUS_F220)); hex("smflg", psHu32(SBUS_F230)); hex("f240", psHu32(SBUS_F240));
+		hex("ee_intc_stat", psHu32(INTC_STAT)); hex("ee_intc_mask", psHu32(INTC_MASK));
+		hex("ee_dmac_stat", dmacRegs.stat._u32);
+		hex("iop_ireg", psxHu32(HW_IREG)); hex("iop_imask", psxHu32(HW_IMASK)); hex("iop_ictrl", psxHu32(HW_ICTRL)); j.endObject();
+		j.key("channels"); j.startArray();
+		const _sif* states[] = {&sif0, &sif1, &sif2};
+		const DMACh* channels[] = {&sif0ch, &sif1ch, &sif2dma};
+		const u32 iopBases[] = {0x1f801520, 0x1f801530, 0x1f8010a0};
+		for (int i = 0; i < 3; ++i)
+		{
+			const auto& s = *states[i]; const auto& c = *channels[i]; const auto base = iopBases[i];
+			j.startObject(); j.kv("sif", i); j.key("ee"); j.startObject();
+			hex("chcr", c.chcr._u32); hex("madr", c.madr); hex("qwc", c.qwc); hex("tadr", c.tadr); j.endObject();
+			j.key("iop_backing"); j.startObject(); hex("madr", psxHu32(base)); hex("bcr", psxHu32(base + 4));
+			hex("chcr", psxHu32(base + 8)); hex("tadr", psxHu32(base + 12)); j.endObject();
+			j.key("backend"); j.startObject(); j.kv("ee_busy", s.ee.busy); j.kv("ee_end", s.ee.end);
+			j.kv("iop_busy", s.iop.busy); j.kv("iop_end", s.iop.end); j.kv("iop_counter", s.iop.counter);
+			j.kv("fifo_words", s.fifo.size); j.kv("fifo_read_pos", s.fifo.readPos); j.kv("fifo_write_pos", s.fifo.writePos);
+			j.endObject(); j.endObject();
+		}
+		j.endArray(); j.key("pgif"); j.startObject();
+		hex("ctrl_backing", psHu32(PGIF_CTRL)); hex("stat_backing", psHu32(PGPU_STAT));
+		auto fifo = [&j](const char* name, const ringBuf_t& f) { j.key(name); j.startObject(); j.kv("capacity", f.size);
+			j.kv("words", f.count); j.kv("head", f.head); j.kv("tail", f.tail); j.endObject(); };
+		fifo("data_fifo", rb_gp0); fifo("command_fifo", rb_gp1);
+		j.kv("linked_list_active", dma.state.ll_active); j.kv("to_gpu_active", dma.state.to_gpu_active);
+		j.kv("to_iop_active", dma.state.to_iop_active); j.endObject();
+		j.key("writes"); j.startObject(); j.kv("capacity", 64); j.kv("observed", s_pgifWriteSequence);
+		j.kv("dropped", s_pgifWriteSequence - s_pgifWrites.size()); j.key("entries"); j.startArray();
+		for (const auto& e : s_pgifWrites)
+		{
+			j.startObject(); j.kv("sequence", e.sequence); j.kv("session", e.session); j.kv("execution_epoch", e.epoch);
+			j.kv("iop_reset_epoch", e.resetEpoch); j.kv("iop_lifetime_epoch", e.lifetimeEpoch);
+			hex("address", e.address); hex("value", e.value); j.kv("bits", e.bits);
+			hex("word_before", e.before); hex("word_after", e.after); hex("raw_iop_pc", e.iopPC); hex("iop_cycles", e.iopCycles);
+			j.endObject();
+		}
+		j.endArray(); j.endObject(); j.endObject(); return j.str();
 	}
 
 	static std::string sourceBreakpoints(const std::unordered_map<std::string, JsonValue>& params, bool install)
@@ -2370,6 +2451,7 @@ namespace DebugServer
 			return readHistory(cmd == "read_events", static_cast<uint64_t>(after), static_cast<size_t>(limit), static_cast<int>(wait));
 		}
 		if (cmd == "capture_context") return onCPU([params]() { return captureContext(params); });
+		if (cmd == "sif_snapshot") return sifSnapshot(params); // executeCommand already marshals this command.
 		if (cmd == "capabilities")
 		{
 			return onCPU([]() {
@@ -2387,7 +2469,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies", "sif_snapshot"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2987,7 +3069,7 @@ namespace DebugServer
 			j.kv("error", "Unknown command: " + cmd);
 			j.key("available_commands"); j.startArray();
 			const char* cmds[] = {
-				"status", "capabilities", "read_events", "read_logs", "capture_context", "load_elf",
+				"status", "capabilities", "read_events", "read_logs", "capture_context", "load_elf", "sif_snapshot",
 				"frame_advance", "input_frames", "automation_status", "automation_cancel", "controller_state",
 				"lookup_symbols", "resolve_address", "breakpoint_symbol", "import_symbols",
 				"install_source_breakpoints", "remove_source_breakpoints",
@@ -3221,6 +3303,7 @@ namespace DebugServer
 		s_iopModuleRoot = 0;
 		s_eeOrigin = {}; s_iopOrigin = {};
 		++s_session;
+		s_pgifWrites.clear(); s_pgifWriteSequence = 0;
 		s_registrationNamespace = std::to_string(timestampMillis()) + ":" + std::to_string(s_session.load()) + ":" +
 			std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
 		const uint64_t watchdogSession = s_session.load();
@@ -3447,8 +3530,17 @@ namespace DebugServer
 		return true;
 	}
 
+	void OnPgifDmaWrite(uint32_t address, uint32_t value, uint32_t bits, uint32_t before, uint32_t after)
+	{
+		if (!s_running.load() || !VMManager::HasValidVM()) return;
+		if (s_pgifWrites.size() == 64) s_pgifWrites.pop_front();
+		s_pgifWrites.push_back({++s_pgifWriteSequence, s_session.load(), s_executionEpoch, s_iopResetEpoch,
+			s_iopLifetimeEpoch, address, value, bits, before, after, psxRegs.pc, psxRegs.cycle});
+	}
+
 	void OnVMReset()
 	{
+		s_pgifWrites.clear(); s_pgifWriteSequence = 0;
 		if (!s_movie.starting) finishMovie("vm_reset");
 		invalidateLoad("vm_changed");
 		s_sifReset = {}; lifetimeBoundary("vm_reset");
@@ -3655,6 +3747,7 @@ namespace DebugServer
 
 	void OnStateLoadAttempt()
 	{
+		s_pgifWrites.clear(); s_pgifWriteSequence = 0;
 		finishMovie("savestate_load_attempt");
 		finishGuardedStep("savestate_load_attempt"); finishOperation("savestate_load_attempt"); ++s_executionEpoch;
 		++s_inspectionRevision; invalidateLoad("savestate_load_attempt");

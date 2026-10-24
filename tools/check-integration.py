@@ -30,7 +30,8 @@ def main():
              'pcsx2/GS/Renderers/Common/GSRenderer.cpp', 'pcsx2/GS/Renderers/Common/GSRenderer.h',
              'pcsx2/GS/GSDump.cpp', 'pcsx2/GS/GSCapture.h', 'pcsx2/GS/GSCapture.cpp', 'pcsx2/Sif1.cpp',
              'pcsx2/Recording/InputRecording.cpp', 'pcsx2/Recording/InputRecordingFile.cpp',
-             'pcsx2/Recording/InputRecording.h', 'pcsx2/Recording/InputRecordingFile.h']
+             'pcsx2/Recording/InputRecording.h', 'pcsx2/Recording/InputRecordingFile.h',
+             'pcsx2/ps2/Iop/IopHwWrite.cpp']
     generated = ['pcsx2/DebugTools/DebugServer.cpp', 'pcsx2/DebugTools/DebugServer.h']
 
     def git(root, revision, filename):

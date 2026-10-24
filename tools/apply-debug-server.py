@@ -405,6 +405,16 @@ def main() -> None:
     breakpoint_files.update({recording: recording_text, recording_h: recording_h_text,
                             movie_file: movie_file_text, movie_file_h: movie_file_h_text})
 
+    iop_hw_write = source / 'pcsx2/ps2/Iop/IopHwWrite.cpp'
+    iop_hw_text = replace_once(iop_hw_write.read_text(encoding='utf-8'), '#include "IopHw_Internal.h"',
+        '#include "IopHw_Internal.h"\n#include "DebugTools/DebugServer.h"', str(iop_hw_write))
+    iop_hw_text = replace_once(iop_hw_text, '\t\tpsxDma2GpuW(addr, val);',
+        '\t\t// Read backing storage only; the original MMIO handler still runs exactly once.\n'
+        '\t\tconst u32 before = psxHu32(addr & ~3u);\n'
+        '\t\tpsxDma2GpuW(addr, val);\n'
+        '\t\tDebugServer::OnPgifDmaWrite(addr, val, sizeof(T) * 8, before, psxHu32(addr & ~3u));', str(iop_hw_write))
+    breakpoint_files[iop_hw_write] = iop_hw_text
+
     for name in ('DebugServer.cpp', 'DebugServer.h'):
         original = repo / 'pcsx2-plugin' / name
         target = source / 'pcsx2/DebugTools' / name

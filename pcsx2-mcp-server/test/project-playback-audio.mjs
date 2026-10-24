@@ -18,6 +18,7 @@ export const playbackFixture = z.object({ library_id: z.string().regex(/^[a-f0-9
   capture_frames: z.number().int().min(60).max(240).default(180),
   input_frames: z.number().int().min(6).max(30).default(12),
   trace_sif2: z.boolean().default(false),
+  sif_snapshots: z.boolean().default(false),
 }).strict();
 
 /** A fixture-only tone-presence measurement, never a general sound-quality assertion. */
@@ -179,6 +180,11 @@ export async function capturePlaybackAudio({ call, inspector, manifest, manifest
       state = await menu(); assert.equal(state.s_Stage, 3); assert.match(state.s_Session, /^[a-f0-9-]{36}$/);
       run.player_entry = { status: stopped, boot_id: state.s_Boot, playback_session: state.s_Session, breakpoint: group };
       run.state_at_entry = await playerState();
+      const captureSif = async () => fixture.sif_snapshots ? call('pcsx2_sif_snapshot') : undefined;
+      if (fixture.sif_snapshots) {
+        run.sif_at_entry = await captureSif();
+        assert.deepEqual(await captureSif(), run.sif_at_entry, 'Repeated paused SIF snapshots must preserve state/history');
+      }
       // The service owner passes the exact published directory; never infer a source from an arbitrary filename.
       const directory = process.env.PCSX2_AUDIO_PUBLISHED_DIRECTORY; assert.ok(directory && path.isAbsolute(directory));
       const files = (await fs.readdir(directory)).filter(n => /^[a-f0-9]{64}\.mpg$/.test(n)); assert.equal(files.length, 1);
@@ -186,7 +192,7 @@ export async function capturePlaybackAudio({ call, inspector, manifest, manifest
       assert.equal(hash(bytes), fixture.reference_sha256, 'Actual Bridge-published clip differs from the pinned reference');
       run.published = { path: published, sha256: hash(bytes), size_bytes: bytes.length };
       const removed = await call('pcsx2_remove_source_breakpoints', { group_id: group.group_id }); assert.ok(removed.complete); groups.delete(group.group_id);
-      if (fixture.trace_sif2) await traceSif2({ call, inspector, manifest, snapshot, elf, run, groups, checkIdentity, playerState });
+      if (fixture.trace_sif2) await traceSif2({ call, inspector, manifest, snapshot, elf, run, groups, checkIdentity, playerState, captureSif });
       const playerName = 'src/SMS_Player.c', playerPath = path.join(snapshot, playerName), playerSource = await fs.readFile(playerPath);
       assert.equal(hash(playerSource), manifest.sources.find(s => s.path === playerName)?.sha256);
       run.milestones = [];
@@ -231,9 +237,11 @@ export async function capturePlaybackAudio({ call, inspector, manifest, manifest
       run.tone_present = run.tone.every((t, i) => t.tone_power_fraction >= .5 && t.rms_amplitude >= report.reference.tone[i].rms_amplitude / 100);
       run.observation = run.tone_present ? 'known_tone_measured' : 'known_tone_not_established';
       run.state_after_capture = await playerState();
+      if (fixture.sif_snapshots) run.sif_after_capture = await captureSif();
       if (!run.tone_present) {
         await inspector.resume(); await delay(5000); await inspector.pause();
         run.state_after_additional_5s = await playerState();
+        if (fixture.sif_snapshots) run.sif_after_additional_5s = await captureSif();
         const lateMenu = await menu();
         if (lateMenu.s_Stage === 3 && lateMenu.s_Session === run.player_entry.playback_session) {
           const late = await call('pcsx2_capture_start', { frames: fixture.capture_frames, width: 320, height: 240, audio: true, timeout_ms: 15000 });
@@ -244,6 +252,7 @@ export async function capturePlaybackAudio({ call, inspector, manifest, manifest
           run.late_measurement = await call('pcsx2_analyze_capture_audio', { capture_path: run.late_capture.path,
             capture_sha256: run.late_capture.artifact.sha256, output_directory: output });
           run.state_after_late_capture = await playerState();
+          if (fixture.sif_snapshots) run.sif_after_late_capture = await captureSif();
         }
       }
       assert.ok(run.tone_present, 'Known clip tone not established in actual SMS capture; inspect retained evidence');
@@ -257,6 +266,10 @@ export async function capturePlaybackAudio({ call, inspector, manifest, manifest
     return { artifact_path: path.join(output, 'playback-audio.json'), passed: true, repetitions: report.runs.length };
   } catch (error) {
     report.failure = error instanceof assert.AssertionError ? error.message : 'Playback audio operation failed; inspect private evidence';
+    if (fixture.sif_snapshots) {
+      try { await inspector.pause(); report.failure_sif = await call('pcsx2_sif_snapshot'); }
+      catch { report.failure_sif_unavailable = true; }
+    }
     try {
       await inspector.pause(); report.failure_threads = await inspector.getThreads(); report.failure_context = await inspector.captureContext({ width: 320, height: 240 });
       if (report.failure_context.screenshot.ok) {

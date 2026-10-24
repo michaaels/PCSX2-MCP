@@ -8,6 +8,7 @@ behavior, native integration and tests can be reviewed together.
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| SIF/PGIF observations | 6B2b1, this delivery | Read-only paused state and last 64 actual PGIF DMA writes; high-half BCR write leaves backing word unchanged in two SMS runs. Windows build, 223 Node, 26-file integration, five live and 12 evidence checks passed. Playback still fails; ACK fix pending. [Contract](sif-diagnostics.md). |
 | Real SMS audio incident | 6B2a, this delivery | Known clip selected through actual controller/UDPFS/Jellyfin; zero PCM and stalled player clocks, separate verified first SIF2 header-ACK wait. Playback remains failed. 215 Node, eight DWARF controls, four transport regressions and seven evidence checks. [Scope](sms-playback-audio.md). |
 | Decoded audio measurements | 6B1, this delivery | SHA-pinned MP4/PCM/JSON, per-channel RMS/peak/DC and silence-window metrics; 208 Node tests, ten real AAC/MCP checks and ten native media checks. SMS playback/listening/A/V gates remain pending. [Contract](audio-measurement.md). |
 | Rendered screenshots | `eef0e8e`, `79ce272`, `d128b3b` | Bounded PNG images over MCP, renderer errors and native Windows support. [Validation](screenshot-validation.md). |
@@ -151,7 +152,8 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay applies
 the documented reset/restore and observed module-lifetime invalidations.
 
-1. **6B2b: investigate SIF2 acknowledgment and accept actual playback.** 6B2a
+1. **6B2b2: investigate/fix SIF2 routing and accept actual playback.** 6B2b1 adds
+   paused SIF/PGIF state and bounded write observations; see [evidence](sif-diagnostics.md). 6B2a
    now measures a real failed attempt: known clip, zero captured PCM, stalled
    player clocks and a separate verified first header-ACK wait. Investigate the
    IOP/emulator acknowledgment path with independent evidence, then repeat the

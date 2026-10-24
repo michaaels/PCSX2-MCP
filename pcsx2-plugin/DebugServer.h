@@ -71,6 +71,8 @@ namespace DebugServer
 	void OnIOPModuleService(uint32_t ordinal);
 	void OnSIF1Tag(uint32_t address, uint32_t words, bool interrupt);
 	void OnSIF1Write(uint32_t address, uint32_t words);
+	// CPU-thread observation only: called after the original PGIF DMA write.
+	void OnPgifDmaWrite(uint32_t address, uint32_t value, uint32_t bits, uint32_t before, uint32_t after);
 	void OnStateLoadAttempt();
 	bool IOPExceptionCaptured();
 	// JIT trap call sites: preserve provenance without changing guest PC/CP0/BD.

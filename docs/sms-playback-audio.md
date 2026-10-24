@@ -176,3 +176,10 @@ playback/audio result and regression checks. Listening, A/V alignment, long-run
 stability and physical-console acceptance remain the separate gates in
 [audio measurement](audio-measurement.md). Do not modify optimized decoders
 or change runtime based only on this bounded EE wait observation.
+
+## 6B2b1 follow-up
+
+The optional local fixture flag `sif_snapshots:true` adds read-only paused
+SIF/PGIF observations at entry, capture boundaries and the source wait marker.
+The new runs still fail audio acceptance; [SIF diagnostics](sif-diagnostics.md)
+records the unchanged high-half BCR write and remaining ACK investigation.
