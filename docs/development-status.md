@@ -4,10 +4,18 @@ Updated: 2026-10-24. This records the debugging extensions after the original ma
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
 
+## Active scope
+
+User direction on 2026-10-24: test the MCP independently of SMS and debug that
+project in another chat. The standalone suite and its own acceptance take
+priority. Application audio/SIF2 work remains a separate backlog.
+[Commands and evidence](standalone-validation.md); [handoff](MCP-HANDOFF.md).
+
 ## Delivered improvements
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Standalone validation and step cleanup | S1, this delivery | Independent rendered and EE/IOP homebrew, repeatable runner; legacy step/step-over remove owned private points before returning. Windows/TypeScript, 223 Node, 18 live and 26-file integration passed. [Contract](standalone-validation.md). |
 | SIF/PGIF observations | 6B2b1, this delivery | Read-only paused state and last 64 actual PGIF DMA writes; high-half BCR write leaves backing word unchanged in two SMS runs. Windows build, 223 Node, 26-file integration, five live and 12 evidence checks passed. Playback still fails; ACK fix pending. [Contract](sif-diagnostics.md). |
 | Real SMS audio incident | 6B2a, this delivery | Known clip selected through actual controller/UDPFS/Jellyfin; zero PCM and stalled player clocks, separate verified first SIF2 header-ACK wait. Playback remains failed. 215 Node, eight DWARF controls, four transport regressions and seven evidence checks. [Scope](sms-playback-audio.md). |
 | Decoded audio measurements | 6B1, this delivery | SHA-pinned MP4/PCM/JSON, per-channel RMS/peak/DC and silence-window metrics; 208 Node tests, ten real AAC/MCP checks and ten native media checks. SMS playback/listening/A/V gates remain pending. [Contract](audio-measurement.md). |
@@ -152,21 +160,25 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay applies
 the documented reset/restore and observed module-lifetime invalidations.
 
-1. **6B2b2: investigate/fix SIF2 routing and accept actual playback.** 6B2b1 adds
+1. **S2: expand independent MCP reliability coverage.** Add instruction/deadline/
+   reset/IOP stepping cases and bounded recovery/CI; preserve explicit unsupported
+   branch and device limits. S1 is accepted for the documented 18 native checks.
+   See [standalone validation](standalone-validation.md).
+2. **Application backlog, separate chat: 6B2b2.** 6B2b1 adds
    paused SIF/PGIF state and bounded write observations; see [evidence](sif-diagnostics.md). 6B2a
    now measures a real failed attempt: known clip, zero captured PCM, stalled
    player clocks and a separate verified first header-ACK wait. Investigate the
    IOP/emulator acknowledgment path with independent evidence, then repeat the
    clip successfully. Listening, A/V timing and physical intermittent audio
    remain separate; the incident verifier accepts evidence only.
-2. **Long-run/recovery and CI.** Add repeated playback/catalog/network recovery
+3. **Long-run/recovery and CI.** Add repeated playback/catalog/network recovery
    with bounded failure criteria, and CI separation for tests without BIOS or
    hardware. 5B2 fresh transport and the scoped HostFs incident are already
    proven; retain clock uncertainty and separate E11/audio acceptance.
-3. **Measured diagnostics and editor workflows.** Add verified SIF/RPC, DMA and
+4. **Measured diagnostics and editor workflows.** Add verified SIF/RPC, DMA and
    A/V observations where available, with overhead evidence, then a DAP adapter
    over supported operations. Unavailable metrics must remain explicit.
-4. **Extend scoped coverage with separate acceptance.** Savestate-start movies
+5. **Extend scoped coverage with separate acceptance.** Savestate-start movies
    require a checked/copied companion and finalized asynchronous save handling.
    Additional loader/reset/BIOS coverage and universal generations remain pending.
    Existing IOP source bindings always require fresh revalidation.

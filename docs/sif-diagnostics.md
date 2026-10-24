@@ -122,3 +122,11 @@ against pinned source and a focused transfer fixture before proposing a runtime
 fix. A high-half merge alone is not assumed sufficient. Then rerun the exact
 clip/ACK recipe and retain failures until tone and player progression are
 demonstrated. Listening, A/V timing, stability and hardware remain separate gates.
+
+## Scope update: independent MCP validation
+
+The user moved application debugging to a separate chat. [S1](standalone-validation.md)
+now validates this tool with standalone rendered and EE/IOP fixtures, without
+SMS/Jellyfin. The half/full-word DMA and programmed-I/O controls independently
+show that the BCR merge alone is insufficient. No SIF2 runtime fix was applied.
+The application 6B2b2 backlog above is not the next automatic MCP task.

@@ -7,6 +7,14 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+S1 (2026-10-24): user-directed standalone validation without SMS/Jellyfin.
+Windows build, TypeScript/223 Node, 18 native checks and 26-file integration pass.
+Minimal rendered homebrew tests source/arguments, step ownership, frames, PNG
+and verified video; four EE/IOP cases validate observation against positive and
+blocked controls. A real leaked temporary breakpoint in legacy step/step-over
+was fixed; the same isolated scenario now completes. IRX helper default output
+remains byte-identical. [Evidence, excluded attempts and limits](standalone-validation.md).
+
 6B2b1 (2026-10-24): native Windows and TypeScript builds passed, with 223 Node
 tests (eight new), five real native/MCP SIF checks and 26-file pristine/upgrade/
 idempotence integration. Two fresh SMS runs retain failed playback: both observe

@@ -11,10 +11,10 @@ import struct
 IMAGE = 'ps2dev/ps2dev@sha256:da02eb0870afcfdb7198195de40d04cd121bd893668c7342fb84b3c4d273e9d1'
 
 
-def restore_iop_program_headers(output):
+def restore_iop_program_headers(output, stem='iop-exceptions'):
     """Legacy iop-strip drops PHT for 0xff80; preserve the original load contract."""
-    debug = (output / 'iop-exceptions.debug.irx').read_bytes()
-    filename = output / 'iop-exceptions.irx'
+    debug = (output / (stem + '.debug.irx')).read_bytes()
+    filename = output / (stem + '.irx')
     stripped = filename.read_bytes()
     if struct.unpack_from('<HH', stripped, 42) != (0, 0):
         raise ValueError('Unexpected iop-strip program table; review pinned toolchain')

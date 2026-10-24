@@ -1,0 +1,8 @@
+IOP_BIN = sif-transfer.irx
+IOP_OBJS = iop-sif-transfer.o
+IOP_CFLAGS = -g -gdwarf-2
+all: $(IOP_BIN)
+include $(PS2SDK)/samples/Makefile.pref
+include $(PS2SDK)/samples/Makefile.iopglobal
+IOP_LDFLAGS := $(filter-out -s,$(IOP_LDFLAGS)) -Wl,-Map,sif-transfer.map
+IOP_LDFLAGS += $(foreach s,info abbrev line frame pubnames aranges str,-Wl,--section-start=.debug_$(s)=0)

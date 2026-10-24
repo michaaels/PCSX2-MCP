@@ -39,6 +39,14 @@
 
 ---
 
+## Test the MCP without a project
+
+Run `tools/validate-standalone-mcp.py` with a rebuilt emulator, a configured data
+root and a new output folder. It builds minimal homebrew fixtures and checks
+debugging, source/arguments, screenshots/video and SIF observations without SMS
+or Jellyfin. See [Windows commands and evidence](docs/standalone-validation.md)
+and [context for another debugging chat](docs/MCP-HANDOFF.md).
+
 ## Paused SIF/PGIF diagnostics
 
 `pcsx2_sif_snapshot` reads SIF0/1/2 DMA, SBUS, PGIF FIFO counters and the last

@@ -1259,6 +1259,67 @@ namespace DebugServer
 				group.relinquished.push_back(address);
 	}
 
+	// Legacy commands own an ordinary private breakpoint: descriptions apply only
+	// to non-temporary points, and Qt's asynchronous temporary cleanup is unrelated.
+	static std::string legacyStep(DebugInterface* cpu, const std::string& cpuName, bool over)
+	{
+		u32 pc = 0, target = 0;
+		uint64_t epoch = 0, session = 0;
+		std::string marker;
+		const auto type = getBpCpu(cpuName);
+		const auto prepared = onCPU([&]() -> std::string {
+			if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused)
+				return failure("Instruction stepping requires a paused VM");
+			if (g_InputRecording.isActive() || s_operation.active || s_step.active)
+				return failure("Stop recording or the active execution operation before stepping");
+			pc = cpu->getPC(); epoch = s_executionEpoch; session = s_session.load();
+			bool valid = true; const u32 opcode = cpu->read32(pc, valid);
+			if (!valid || (pc & 3)) return failure("Invalid instruction PC");
+			const u32 op = opcode >> 26;
+			target = pc + (over && (op == 3 || (op == 0 && (opcode & 63) == 9)) ? 8 : 4);
+			if (!cpu->isValidAddress(target)) return failure("Invalid step target");
+			const auto points = CBreakPoints::GetBreakpoints(type, true);
+			if (std::any_of(points.begin(), points.end(), [target](const BreakPoint& bp) { return bp.addr == target; }))
+				return failure("Existing breakpoint at step target; breakpoint preserved");
+			marker = s_registrationNamespace + ":legacy-step:" + std::to_string(++s_stepSequence);
+			CBreakPoints::AddBreakPoint(type, target, false, true, false);
+			CBreakPoints::ChangeBreakPointDescription(type, target, marker);
+			CBreakPoints::SetSkipFirst(type, std::any_of(points.begin(), points.end(), [pc](const BreakPoint& bp) {
+				return bp.addr == pc && bp.enabled;
+			}) ? pc : 0);
+			cpu->resumeCpu();
+			return {};
+		});
+		if (!prepared.empty()) return prepared;
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(over ? 10 : 5);
+		while (!cpu->isCpuPaused() && s_running.load() && std::chrono::steady_clock::now() < deadline)
+			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		return onCPU([&]() -> std::string {
+			const bool changed = session != s_session.load() || epoch != s_executionEpoch || !VMManager::HasValidVM();
+			const bool timedOut = !changed && !cpu->isCpuPaused();
+			if (timedOut) cpu->pauseCpu();
+			const auto points = CBreakPoints::GetBreakpoints(type, true);
+			const auto count = std::count_if(points.begin(), points.end(), [target](const BreakPoint& bp) { return bp.addr == target; });
+			const auto own = std::find_if(points.begin(), points.end(), [&](const BreakPoint& bp) {
+				return bp.addr == target && bp.description == marker && bp.enabled && !bp.temporary && !bp.stepping && !bp.hasCond;
+			});
+			if (count == 1 && own != points.end()) CBreakPoints::RemoveBreakPoint(type, target);
+			else if (count) return failure("Step breakpoint changed ownership; preserved, cleanup unconfirmed");
+			// A unique session marker proves ownership independently of guest epochs.
+			// On a changed VM, remove only that exact debugger point; never pause it.
+			if (changed) return failure("VM changed during legacy step; owned breakpoint removed or already absent");
+			if (timedOut) return failure("Instruction step timed out; VM paused and owned breakpoint removed");
+			const u32 next = cpu->getPC();
+			if (next != target) return failure("Instruction step interrupted before target; owned breakpoint removed");
+			JsonBuilder j; j.startObject(); j.kv("ok", true);
+			j.key("old_pc"); j.valHex32(pc); j.key("new_pc"); j.valHex32(next);
+			j.kv("disasm", cpu->disasm(next, true));
+			j.kv("in_bios", next < 0x00100000 || (next >= 0x80000000 && next < 0x80100000));
+			bool valid = true; j.key("opcode"); j.valHex32(cpu->read32(next, valid));
+			j.endObject(); return j.str();
+		});
+	}
+
 	static std::string sifSnapshot(const std::unordered_map<std::string, JsonValue>& params)
 	{
 		if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused)
@@ -2855,89 +2916,9 @@ namespace DebugServer
 				JsonBuilder result; result.startObject(); result.kv("ok", true); result.endObject(); return result.str();
 			});
 		}
-		// ----- STEP -----
-		else if (cmd == "step")
-		{
-			const auto allowed = onCPU([]() { return g_InputRecording.isActive() ? failure("Stop input recording/replay before stepping") : std::string{}; });
-			if (!allowed.empty()) return allowed;
-			u32 pc = cpu->getPC();
-
-			// Skip current BP if we're sitting on one (matches PCSX2 GUI behavior)
-			CBreakPoints::SetSkipFirst(getBpCpu(cpuName), pc);
-
-			u32 nextPc = pc + 4;
-			CBreakPoints::AddBreakPoint(getBpCpu(cpuName), nextPc, true, true, true);
-			cpu->resumeCpu();
-
-			// Wait for it to hit (with timeout)
-			int timeout = 5000; // ms
-			while (!cpu->isCpuPaused() && timeout > 0)
-			{
-				std::this_thread::sleep_for(std::chrono::milliseconds(1));
-				timeout--;
-			}
-
-			u32 newPc = cpu->getPC();
-			bool inBios = (newPc < 0x00100000) || (newPc >= 0x80000000 && newPc < 0x80100000);
-
-			j.startObject();
-			j.kv("ok", true);
-			j.key("old_pc"); j.valHex32(pc);
-			j.key("new_pc"); j.valHex32(newPc);
-			j.kv("disasm", cpu->disasm(newPc, true));
-			j.kv("in_bios", inBios);
-
-			bool valid = true;
-			u32 opcode = cpu->read32(newPc, valid);
-			j.key("opcode"); j.valHex32(opcode);
-			j.endObject();
-		}
-		// ----- STEP OVER -----
-		else if (cmd == "step_over")
-		{
-			const auto allowed = onCPU([]() { return g_InputRecording.isActive() ? failure("Stop input recording/replay before stepping") : std::string{}; });
-			if (!allowed.empty()) return allowed;
-			u32 pc = cpu->getPC();
-
-			// Skip current BP if we're sitting on one (matches PCSX2 GUI behavior)
-			CBreakPoints::SetSkipFirst(getBpCpu(cpuName), pc);
-
-			bool valid = true;
-			u32 opcode = cpu->read32(pc, valid);
-			u32 op = (opcode >> 26) & 63;
-
-			u32 bpAddr = pc + 8; // default: skip instruction + delay slot
-			if (op == 3 || // JAL
-				(op == 0 && (opcode & 63) == 9)) // JALR
-			{
-				bpAddr = pc + 8;
-			}
-			else
-			{
-				bpAddr = pc + 4;
-			}
-
-			CBreakPoints::AddBreakPoint(getBpCpu(cpuName), bpAddr, true, true, true);
-			cpu->resumeCpu();
-
-			int timeout = 10000;
-			while (!cpu->isCpuPaused() && timeout > 0)
-			{
-				std::this_thread::sleep_for(std::chrono::milliseconds(1));
-				timeout--;
-			}
-
-			u32 newPc = cpu->getPC();
-			bool inBios = (newPc < 0x00100000) || (newPc >= 0x80000000 && newPc < 0x80100000);
-
-			j.startObject();
-			j.kv("ok", true);
-			j.key("old_pc"); j.valHex32(pc);
-			j.key("new_pc"); j.valHex32(newPc);
-			j.kv("disasm", cpu->disasm(newPc, true));
-			j.kv("in_bios", inBios);
-			j.endObject();
-		}
+		// ----- LEGACY INSTRUCTION STEPPING -----
+		else if (cmd == "step" || cmd == "step_over")
+			return legacyStep(cpu, cpuName, cmd == "step_over");
 		// ----- GET THREADS -----
 		else if (cmd == "get_threads")
 		{

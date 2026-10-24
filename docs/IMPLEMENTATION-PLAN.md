@@ -12,15 +12,29 @@ el avance en una rama de trabajo. No publicar pruebas fallidas como aceptadas ni
 incluir BIOS, credenciales, contenido privado o artefactos locales de ejecución.
 Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
+## Prioridad actual: MCP independiente
+
+Petición del usuario (2026-10-24): probar el MCP sin depender de SMS; depurar el
+proyecto en otro chat. **S1** entrega fixtures homebrew autónomos, un comando de
+validación, 18 checks live y 223 Node, y corrige la fuga del breakpoint temporal
+de `step`/`step_over`. [Contrato](standalone-validation.md) y [traspaso](MCP-HANDOFF.md).
+
+Sigue S2: ampliar casos independientes de instrucciones/timeouts/reset/IOP,
+estabilidad/reconexión y CI; después DAP sobre capacidades acreditadas. La
+corrección SIF2/audio del cliente queda como backlog de aplicación, sin aceptación
+nueva ni cambio del transporte DMA. No retomarla automáticamente al continuar MCP.
+
 ## Secuencia
 
-Restricción de despliegue indicada por el usuario (2026-10-24): Jellyfin remoto
-en Atom con 1 GB de RAM. El Bridge del PC recibe el original estático y realiza
+Contexto del proyecto, aclarado por el usuario (2026-10-24): Jellyfin remoto
+en Atom con 1 GB de RAM puede sufrir cortes por capacidad; no es causa probada.
+La suite autónoma no lo usa ni lo mide. El Bridge del PC recibe el original estático y realiza
 FFmpeg localmente. Mantener pruebas cortas y seriales; no asumir capacidad de
 transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S1 | Validación del MCP con homebrew independiente; cleanup propio de step/step-over | Windows/TypeScript, 223 Node, 18 live y 26 archivos de integración probados; sin SMS/Jellyfin |
 | F1 | Puertos por proceso, directorios de datos independientes y aislamiento de sockets/sesiones; dos instancias Windows | Implementado y probado; incluido en main con esta entrega |
 | F2 | GS dumps acotados con identidad, estados y archivos verificables | Implementado y probado; incluido en main con esta entrega |
 | F3 | Captura vídeo/audio con propiedad, límites y finalización comprobada | Implementado y probado; incluido en main con esta entrega |
@@ -151,7 +165,12 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   transporte DMA ni SMS/Bridge/decodificadores. Windows y TypeScript compilan;
   223 Node, integración de 26 archivos, cinco checks live y 12 de evidencia
   pasan. La reproducción sigue fallida. [Contrato y límites](sif-diagnostics.md).
-- Siguiente entrega del plan original: **6B2b2**, investigar la confirmación de
+- S1 (2026-10-24): suite independiente y corrección de `step`/`step_over`, sin
+  tocar SMS/Bridge/DMA. Los fixtures de EE/IOP distinguen límite del emulador de
+  observación correcta del MCP. Build Windows, 223 Node, 18 live y 26 archivos
+  de integración pasaron. El helper IRX conserva bytes del modo previo.
+  [Evidencia y límites](standalone-validation.md).
+- Backlog de aplicación, para el otro chat: **6B2b2**, investigar la confirmación de
   cabecera SIF2 con evidencia IOP/PCSX2, después aceptar el clip reproducido con
   audio y repeticiones. Escucha/sincronía/hardware siguen pendientes.
   El recorrido del ERROR en HostFs queda probado;
