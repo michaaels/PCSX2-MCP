@@ -5,6 +5,17 @@ debug the application in a separate chat. SMS, Jellyfin and media playback are
 not prerequisites for this suite. Their incident recipes remain historical and
 do not determine whether these MCP checks pass.
 
+## S2a update
+
+The current runner also builds `build-instruction-fixture.py` and runs 14
+instruction checks, for **32 live checks and 231 Node tests**. It accepts
+`--instruction-fixture` alongside the render/SIF reuse options. MCP step tools
+now support EE/IOP CPU selection, native execution budgets and partial JSON
+results. IOP deterministic vectors clear the current interrupt-enable bit in
+their own fixture. [Full contract and limits](instruction-control.md).
+
+The S1 counts and observations below remain historical evidence of that delivery.
+
 ## Run on Windows
 
 Use the current compiled PCSX2 integration and a private configuration root with
@@ -108,7 +119,8 @@ The first transfer fixture failed to link an unavailable EE `DelayThread` API;
 the final fixture uses a bounded CP0-count observation loop. None of these
 attempts is substituted for the accepted runs.
 
-Next MCP work: expand independent instruction/deadline/reset/IOP stepping
-coverage, then bounded long-run/reconnect/CI tests and editor integration.
+Next MCP work after S2a: reset/restore/GUI replacement and reconnect-generation
+coverage, interrupt-active IOP observations and broader branch/device cases;
+then bounded long-run/CI tests and editor integration.
 Application SIF2/audio investigation is a separate backlog; it is not the
 automatic next task when continuing MCP development.

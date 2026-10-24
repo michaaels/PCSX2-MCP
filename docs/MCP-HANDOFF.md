@@ -9,9 +9,14 @@ Local Windows components:
 - MCP entry: `D:\dev\PCSX2-MCP\pcsx2-mcp-server\dist\index.js`
 - Independent test command: `tools/validate-standalone-mcp.py`
 - Test contract and remaining limits: [standalone validation](standalone-validation.md)
-- Current delivery evidence: ignored `release/standalone-delivery-20261024.json`
+- S2a contract: [bounded EE/IOP instruction control](instruction-control.md)
+- Current delivery evidence: ignored `release/instruction-delivery-20261024.json`
+- S1 evidence: ignored `release/standalone-delivery-20261024.json`
 
-The standalone suite uses minimal homebrew programs. It covers launch, identity,
+The current standalone suite passes 231 Node and 32 live checks. Step tools
+accept CPU selection and bounded execution, returning structured/partial JSON.
+The IOP instruction fixture isolates IRQ; arbitrary interrupt-active stepping
+remains a separate gate. The standalone suite uses minimal homebrew programs. It covers launch, identity,
 breakpoints, memory/register/source/argument reads, instruction control, real
 screenshots/video and SIF observation guards without SMS/Jellyfin. It is not
 proof that an arbitrary project or every PS2 instruction/device works.

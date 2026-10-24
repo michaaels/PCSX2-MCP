@@ -1261,10 +1261,13 @@ namespace DebugServer
 
 	// Legacy commands own an ordinary private breakpoint: descriptions apply only
 	// to non-temporary points, and Qt's asynchronous temporary cleanup is unrelated.
-	static std::string legacyStep(DebugInterface* cpu, const std::string& cpuName, bool over)
+	static std::string legacyStep(DebugInterface* cpu, const std::string& cpuName, bool over,
+		const std::unordered_map<std::string, JsonValue>& params)
 	{
 		u32 pc = 0, target = 0;
-		uint64_t epoch = 0, session = 0;
+		uint64_t epoch = 0, session = 0, resetEpoch = 0, lifetimeEpoch = 0;
+		const auto timeout = getNum(params, "timeout_ms", 1000);
+		if (timeout < 10 || timeout > 5000) return failure("Instruction timeout_ms must be 10-5000");
 		std::string marker;
 		const auto type = getBpCpu(cpuName);
 		const auto prepared = onCPU([&]() -> std::string {
@@ -1273,6 +1276,22 @@ namespace DebugServer
 			if (g_InputRecording.isActive() || s_operation.active || s_step.active)
 				return failure("Stop recording or the active execution operation before stepping");
 			pc = cpu->getPC(); epoch = s_executionEpoch; session = s_session.load();
+			resetEpoch = s_iopResetEpoch; lifetimeEpoch = s_iopLifetimeEpoch;
+#ifdef _WIN32
+			const uint64_t process = GetCurrentProcessId();
+#else
+			const uint64_t process = getpid();
+#endif
+			if (params.find("expected_process_id") != params.end() &&
+				(getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+				 getNum(params, "expected_session", -1) != static_cast<int64_t>(session) ||
+				 getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(epoch) ||
+				 getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+				 getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC() ||
+				 getNum(params, "expected_pc", -1) != pc ||
+				 (cpuName == "iop" && (getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(resetEpoch) ||
+				 getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(lifetimeEpoch)))))
+				return failure("VM/ELF/CPU identity changed before instruction step");
 			bool valid = true; const u32 opcode = cpu->read32(pc, valid);
 			if (!valid || (pc & 3)) return failure("Invalid instruction PC");
 			const u32 op = opcode >> 26;
@@ -1291,11 +1310,12 @@ namespace DebugServer
 			return {};
 		});
 		if (!prepared.empty()) return prepared;
-		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(over ? 10 : 5);
+		const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout);
 		while (!cpu->isCpuPaused() && s_running.load() && std::chrono::steady_clock::now() < deadline)
 			std::this_thread::sleep_for(std::chrono::milliseconds(1));
 		return onCPU([&]() -> std::string {
-			const bool changed = session != s_session.load() || epoch != s_executionEpoch || !VMManager::HasValidVM();
+			const bool changed = session != s_session.load() || epoch != s_executionEpoch || !VMManager::HasValidVM() ||
+				(cpuName == "iop" && (resetEpoch != s_iopResetEpoch || lifetimeEpoch != s_iopLifetimeEpoch));
 			const bool timedOut = !changed && !cpu->isCpuPaused();
 			if (timedOut) cpu->pauseCpu();
 			const auto points = CBreakPoints::GetBreakpoints(type, true);
@@ -1312,6 +1332,15 @@ namespace DebugServer
 			const u32 next = cpu->getPC();
 			if (next != target) return failure("Instruction step interrupted before target; owned breakpoint removed");
 			JsonBuilder j; j.startObject(); j.kv("ok", true);
+#ifdef _WIN32
+			j.kv("process_id", static_cast<uint64_t>(GetCurrentProcessId()));
+#else
+			j.kv("process_id", static_cast<uint64_t>(getpid()));
+#endif
+			j.kv("cpu", cpuName); j.kv("session", session); j.kv("execution_epoch", epoch);
+			j.kv("iop_reset_epoch", s_iopResetEpoch); j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch);
+			j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+			j.kv("paused", true); j.kv("cleanup_confirmed", true);
 			j.key("old_pc"); j.valHex32(pc); j.key("new_pc"); j.valHex32(next);
 			j.kv("disasm", cpu->disasm(next, true));
 			j.kv("in_bios", next < 0x00100000 || (next >= 0x80000000 && next < 0x80100000));
@@ -2530,7 +2559,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies", "sif_snapshot"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies", "sif_snapshot", "bounded_instruction_step"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -2918,7 +2947,7 @@ namespace DebugServer
 		}
 		// ----- LEGACY INSTRUCTION STEPPING -----
 		else if (cmd == "step" || cmd == "step_over")
-			return legacyStep(cpu, cpuName, cmd == "step_over");
+			return legacyStep(cpu, cpuName, cmd == "step_over", params);
 		// ----- GET THREADS -----
 		else if (cmd == "get_threads")
 		{

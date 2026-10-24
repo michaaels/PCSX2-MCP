@@ -1,0 +1,8 @@
+EE_BIN = instruction-control.elf
+EE_OBJS = ee-instructions.o ee-vectors.o
+EE_CFLAGS = -g -O0
+all: $(EE_BIN)
+include $(PS2SDK)/samples/Makefile.pref
+include $(PS2SDK)/samples/Makefile.eeglobal
+ee-vectors.o: instructions.S
+	$(EE_CC) $(EE_CFLAGS) $(EE_INCS) -c $< -o $@

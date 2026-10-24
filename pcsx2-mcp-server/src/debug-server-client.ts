@@ -8,7 +8,7 @@
  *   - Expression evaluation with symbol lookup
  *   - Conditional breakpoints
  *   - Memory watchpoints (read/write/onChange)
- *   - Step and step-over (delay slot aware)
+ *   - Bounded instruction control; guarded EE source stepping
  *   - Thread list, module list
  *   - String reading, address validation
  * 
@@ -798,15 +798,23 @@ export class DebugServerClient {
   }
 
   /** Single-step one instruction (delay slot aware) */
-  async step(cpu: CpuTarget = 'ee'): Promise<StepResult> {
-    const resp = await this.send({ cmd: 'step', cpu });
-    if (!resp.ok) throw new Error(resp.error);
-    return resp;
+  async step(cpu: CpuTarget = 'ee', timeoutMs = 1000, expected?: SifIdentity & { pc: string }): Promise<StepResult> {
+    return this.instructionCommand('step', cpu, timeoutMs, expected);
   }
 
   /** Step over a JAL/JALR — effectively "next" */
-  async stepOver(cpu: CpuTarget = 'ee'): Promise<StepResult> {
-    const resp = await this.send({ cmd: 'step_over', cpu });
+  async stepOver(cpu: CpuTarget = 'ee', timeoutMs = 1000, expected?: SifIdentity & { pc: string }): Promise<StepResult> {
+    return this.instructionCommand('step_over', cpu, timeoutMs, expected);
+  }
+
+  private async instructionCommand(cmd: 'step' | 'step_over', cpu: CpuTarget, timeoutMs: number, expected?: SifIdentity & { pc: string }): Promise<StepResult> {
+    z.enum(['ee', 'iop']).parse(cpu); z.number().int().min(10).max(5000).parse(timeoutMs);
+    const resp = await this.send({ cmd, cpu, timeout_ms: timeoutMs, ...(expected ? {
+      expected_process_id: expected.process_id, expected_session: expected.session,
+      expected_execution_epoch: expected.execution_epoch, expected_elf: expected.elf, expected_elf_crc: expected.elf_crc,
+      expected_iop_reset_epoch: expected.iop_reset_epoch, expected_iop_lifetime_epoch: expected.iop_lifetime_epoch,
+      expected_pc: expected.pc,
+    } : {}) });
     if (!resp.ok) throw new Error(resp.error);
     return resp;
   }

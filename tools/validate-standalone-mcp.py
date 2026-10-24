@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--output',required=True,type=Path,help='New directory; artifacts are never overwritten')
     parser.add_argument('--render-fixture',type=Path,help='Existing build-standalone-fixture output; otherwise build it using Docker')
     parser.add_argument('--sif-fixture',type=Path,help='Existing build-sif-transfer-fixture output; otherwise build it using Docker')
+    parser.add_argument('--instruction-fixture',type=Path,help='Existing build-instruction-fixture output; otherwise build it using Docker')
     args=parser.parse_args()
     repo=Path(__file__).resolve().parent.parent
     emulator=args.emulator.resolve();configured=args.data_directory.resolve();output=args.output.resolve()
@@ -44,15 +45,18 @@ def main():
         run('node-tests',npm,repo/'pcsx2-mcp-server')
         render=args.render_fixture.resolve() if args.render_fixture else output/'render-fixture'
         sif=args.sif_fixture.resolve() if args.sif_fixture else output/'sif-fixture'
+        instructions=args.instruction_fixture.resolve() if args.instruction_fixture else output/'instruction-fixture'
         if not args.render_fixture:run('build-render',[sys.executable,repo/'tools/build-standalone-fixture.py',render])
         if not args.sif_fixture:run('build-sif',[sys.executable,repo/'tools/build-sif-transfer-fixture.py',sif])
+        if not args.instruction_fixture:run('build-instructions',[sys.executable,repo/'tools/build-instruction-fixture.py',instructions])
         # Check retained build inputs against this checkout as well as checking manifests in Node.
-        for fixture,source in [(render,'standalone'),(sif,'sif-transfer')]:
+        for fixture,source in [(render,'standalone'),(sif,'sif-transfer'),(instructions,'instruction-control')]:
             manifest=json.loads((fixture/'manifest.json').read_text())
             for file in (repo/'pcsx2-mcp-server/test/fixtures'/source).iterdir():
                 if file.is_file():assert sha(file)==manifest['sha256'][file.name],f'Stale fixture input {file.name}'
         scripts=[('standalone','standalone-live.mjs',render),('sif-transfer','sif-transfer-live.mjs',sif),
-                 ('sif-guards','sif-live.mjs',render/'standalone.elf')]
+                 ('sif-guards','sif-live.mjs',render/'standalone.elf'),
+                 ('instructions','instruction-live.mjs',instructions)]
         for name,script,fixture in scripts:
             target=output/name
             run(name,['node',repo/'pcsx2-mcp-server/test'/script,emulator,fixture,configured,target])

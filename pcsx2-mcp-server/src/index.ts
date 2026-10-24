@@ -34,6 +34,7 @@ import { defaultPorts, tcpPort } from './ports.js';
 import { registerGsDumpTools } from './gs-dump-tools.js';
 import { registerMediaTools } from './media-tools.js';
 import { registerSifTools } from './sif-tools.js';
+import { registerInstructionTools } from './instruction-tools.js';
 import { registerInputMovieTools } from './input-movie-tools.js';
 import { registerProjectDiagnosticTools } from './project-diagnostic-tools.js';
 import { registerVisualTools } from './visual-tools.js';
@@ -408,37 +409,7 @@ server.tool('pcsx2_list_watchpoints', 'List all memory watchpoints with hit coun
 // ==========================================================
 //  TOOL: pcsx2_step / step_over / continue / pause
 // ==========================================================
-server.tool('pcsx2_step', 'Execute one MIPS instruction. Returns new PC + native disasm. Requires DebugServer.',
-  { count: z.number().min(1).max(100).default(1), show_registers: z.boolean().default(false) },
-  async ({ count, show_registers }) => {
-    if (!hasDebug()) return { content: [{ type: 'text' as const, text: 'Error: DebugServer not connected.' }], isError: true };
-    try {
-      const results: string[] = [];
-      for (let i = 0; i < count; i++) {
-        const r = await debugServer!.step();
-        results.push(`Step ${i + 1}: PC=${r.new_pc}  ${r.opcode}  ${r.disasm}`);
-      }
-      if (show_registers) {
-        const regs = await debugServer!.readRegisters('ee', 0); // GPR only
-        results.push('', '--- GPR ---');
-        for (const reg of (regs as any).GPR?.regs || [])
-          results.push(`  ${(reg.name as string).padEnd(6)} = ${reg.display}`);
-      }
-      return { content: [{ type: 'text' as const, text: results.join('\n') }] };
-    } catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
-  }
-);
-
-server.tool('pcsx2_step_over', 'Step OVER a JAL/JALR call — like "next" in a debugger. Requires DebugServer.',
-  {},
-  async () => {
-    if (!hasDebug()) return { content: [{ type: 'text' as const, text: 'Error: DebugServer not connected.' }], isError: true };
-    try {
-      const r = await debugServer!.stepOver();
-      return { content: [{ type: 'text' as const, text: `Stepped over: ${r.old_pc} → ${r.new_pc}\n${r.disasm}` }] };
-    } catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
-  }
-);
+registerInstructionTools(server, () => debugServer);
 
 server.tool('pcsx2_continue', 'Resume execution until breakpoint or halt.',
   {},

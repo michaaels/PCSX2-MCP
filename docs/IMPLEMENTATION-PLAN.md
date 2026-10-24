@@ -19,7 +19,12 @@ proyecto en otro chat. **S1** entrega fixtures homebrew autónomos, un comando d
 validación, 18 checks live y 223 Node, y corrige la fuga del breakpoint temporal
 de `step`/`step_over`. [Contrato](standalone-validation.md) y [traspaso](MCP-HANDOFF.md).
 
-Sigue S2: ampliar casos independientes de instrucciones/timeouts/reset/IOP,
+S2a entrega selección EE/IOP, presupuesto nativo de ejecución y resultados
+parciales de `step`/`step_over`: 231 Node y 32 live pasaron, sin SMS/Jellyfin.
+El fixture IOP aísla IRQ; no acredita cualquier flujo de juego.
+[Contrato](instruction-control.md).
+
+Sigue S2b: ampliar reset/restore, reemplazos GUI, reconexión y casos con IRQ IOP,
 estabilidad/reconexión y CI; después DAP sobre capacidades acreditadas. La
 corrección SIF2/audio del cliente queda como backlog de aplicación, sin aceptación
 nueva ni cambio del transporte DMA. No retomarla automáticamente al continuar MCP.
@@ -34,6 +39,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S2a | Avance EE/IOP con deadline, guardas nativas y resultados parciales | Windows/TypeScript, 231 Node, 32 live y 26 archivos de integración probados; IRQ IOP aislada en fixture |
 | S1 | Validación del MCP con homebrew independiente; cleanup propio de step/step-over | Windows/TypeScript, 223 Node, 18 live y 26 archivos de integración probados; sin SMS/Jellyfin |
 | F1 | Puertos por proceso, directorios de datos independientes y aislamiento de sockets/sesiones; dos instancias Windows | Implementado y probado; incluido en main con esta entrega |
 | F2 | GS dumps acotados con identidad, estados y archivos verificables | Implementado y probado; incluido en main con esta entrega |

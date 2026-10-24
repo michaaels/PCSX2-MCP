@@ -47,6 +47,13 @@ debugging, source/arguments, screenshots/video and SIF observations without SMS
 or Jellyfin. See [Windows commands and evidence](docs/standalone-validation.md)
 and [context for another debugging chat](docs/MCP-HANDOFF.md).
 
+## Bounded EE/IOP stepping
+
+`pcsx2_step` and `pcsx2_step_over` accept `cpu: "ee" | "iop"` and
+`timeout_ms: 10..5000` (default 1000). They return structured results and partial
+execution on errors. Requires the rebuilt native integration.
+[Contract and independent tests](docs/instruction-control.md).
+
 ## Paused SIF/PGIF diagnostics
 
 `pcsx2_sif_snapshot` reads SIF0/1/2 DMA, SBUS, PGIF FIFO counters and the last

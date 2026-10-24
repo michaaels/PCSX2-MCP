@@ -7,6 +7,14 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+S2a (2026-10-24): Windows/TypeScript, 231 Node (eight new), 32 independent live
+checks and 26-file integration passed. EE/IOP instructions, real call step-over,
+foreign point refusal/interruption, 100 ms native timeout/recovery, stale native
+identity and partial sequences are observed. The old ten-second client disconnect
+is retained as a failed baseline. Deterministic IOP vectors use fixture-owned
+IRQ isolation; general interrupt-active stepping is not accepted.
+[Contract and retained evidence](instruction-control.md).
+
 S1 (2026-10-24): user-directed standalone validation without SMS/Jellyfin.
 Windows build, TypeScript/223 Node, 18 native checks and 26-file integration pass.
 Minimal rendered homebrew tests source/arguments, step ownership, frames, PNG

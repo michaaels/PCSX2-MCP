@@ -1,0 +1,10 @@
+IOP_BIN = instruction-control.irx
+IOP_OBJS = iop-instructions.o iop-vectors.o
+IOP_CFLAGS = -g -gdwarf-2
+all: $(IOP_BIN)
+include $(PS2SDK)/samples/Makefile.pref
+include $(PS2SDK)/samples/Makefile.iopglobal
+IOP_LDFLAGS := $(filter-out -s,$(IOP_LDFLAGS)) -Wl,-Map,instruction-control.map
+IOP_LDFLAGS += $(foreach s,info abbrev line frame pubnames aranges str,-Wl,--section-start=.debug_$(s)=0)
+iop-vectors.o: instructions.S
+	$(IOP_CC) $(IOP_CFLAGS) $(IOP_INCS) -c $< -o $@
