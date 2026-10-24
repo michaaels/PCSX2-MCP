@@ -258,6 +258,19 @@ maximum wall lifetime. Savestate-start movies remain unsupported. See
 verification and Windows evidence. Replay does not establish network/timing
 determinism or physical-console behavior.
 
+### Project diagnostic evidence
+
+| Tool | Description |
+|---|---|
+| `pcsx2_diagnostics_collect` | Read-only sanitized native history tied to a checked project manifest/ELF |
+| `pcsx2_diagnostics_correlate` | Offline association of an explicit build/boot in Bridge JSONL with a hash-pinned capture |
+
+See [project diagnostics](docs/project-diagnostics.md) for the SMS/UDPFS field
+inventory, bounds, privacy projection and separate clock domains. Missing or
+ambiguous evidence stays partial; these tools do not establish synchronized
+timing, transport latency or root cause. Real Jellyfin/UDPFS session acceptance
+is the next 5B2 step.
+
 ### PS2Recomp Integration
 | Tool | Description |
 |---|---|

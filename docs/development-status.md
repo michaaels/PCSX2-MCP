@@ -27,6 +27,17 @@ behavior, native integration and tests can be reviewed together.
 
 ## Operational improvements
 
+5B1 (2026-10-23) adds `pcsx2_diagnostics_collect` and
+`pcsx2_diagnostics_correlate`: bounded sanitized native history and offline
+build/boot association with Bridge client-event JSONL. Manifest/ELF/capture
+hashes, exact reported fields and explicit missing/ambiguous evidence prevent
+silent mixing. Clock uncertainty stays unbounded; no exact timeline or cause
+is inferred. TypeScript and 174 Node tests passed; seven new live checks and
+11 input-movie regressions passed. Bridge association used synthetic receipts
+and historical journals; fresh Jellyfin/UDPFS acceptance remains 5B2.
+[Inventory, contract and evidence](project-diagnostics.md). Native/Bridge runtime
+did not change and was not rebuilt.
+
 F5 (2026-10-23) adds five native input-movie tools: bounded power-on recording,
 read-only copied replay, EOF stop, owned status/stop and offline inspection.
 Reset/restore invalidate EE inspection and pending observers as well as IOP
@@ -108,8 +119,10 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay applies
 the documented reset/restore and observed module-lifetime invalidations.
 
-1. **Correlate project diagnostics (5B).** Relate EE/IOP events and emulator/build
-   identity to application/network logs, preserving cross-process clock uncertainty.
+1. **Validate real transport correlation (5B2).** Use the new 5B1 collector/report
+   with fresh SMS/UDPFS/Bridge logs against Jellyfin, the same build/boot and a
+   documented incident. Preserve cross-process clock uncertainty; synthetic or
+   historical receipts do not establish this acceptance.
 2. **Add measured PS2 diagnostics.** Expose verified SIF/RPC, DMA and A/V state
    where available, and measure instrumentation overhead. Missing metrics are
    unavailable rather than zero.

@@ -7,7 +7,14 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
-The latest delivery is F5 (2026-10-23): Windows/TypeScript compiled, 163 Node
+5B1 (2026-10-23): TypeScript compiled and 174 Node tests passed. Seven new
+checks against real SMS/native collection and synthetic/historical Bridge
+evidence passed, plus 11 input-movie live regressions. See
+[project diagnostics](project-diagnostics.md) for the exact distinction and
+reproduction. Native/Bridge runtime did not change; their builds were not
+repeated. A fresh real Jellyfin/UDPFS session remains pending in 5B2.
+
+The preceding delivery is F5 (2026-10-23): Windows/TypeScript compiled, 163 Node
 tests, 11 input-movie live checks and 33 regressions passed. Pristine/upgrade/
 reapply/build integration agrees across 25 native files.
 [Input movies](input-movies.md) records reproduction, receipts and limits.

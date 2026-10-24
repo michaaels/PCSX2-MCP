@@ -24,7 +24,8 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | 5A2b | Procedencia del archivo realmente cargado y cobertura adicional IRX/imports/exports | Implementado y probado para HostFs/0xff80 y exports acotados; otros dispositivos/dialectos pendientes |
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | 5A3a/5A3b implementados y probados en caminos observados; generaciones acotadas, revalidación y corte de watches IOP; cobertura directa/custom pendiente |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Implementado y probado desde power-on; inicio desde savestate pendiente |
-| 5B–8 | Correlación del proyecto, diagnósticos medidos, regresión, DAP y validación física | Continuar el roadmap original |
+| 5B | Correlación del proyecto | 5B1 implementado/probado: inventario, captura y asociación offline; sigue 5B2 con transporte real |
+| 5C–8 | Diagnósticos medidos, regresión, DAP y validación física | Continuar el roadmap original |
 
 La dependencia de F5 evita invalidar silenciosamente la depuración existente al
 resetear/cargar estados. No es necesario cambiar de versión PCSX2 para comenzar:
@@ -87,7 +88,16 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   163 pruebas Node, 11 checks nuevos y 33 de regresión; integración consistente
   en 25 archivos. [Contrato](input-movies.md). Inicio desde savestate, otros
   formatos y determinismo de red permanecen pendientes.
-- Siguiente entrega del plan original: **5B**, correlación entre sesión/build,
-  EE/IOP y logs Bridge/UDPFS con incertidumbre temporal explícita. Mantener las
-  limitaciones del replay y de loaders/reboots/BIOS observados. Cada paso
+- 5B1 (2026-10-23): inventario verificado de identidades/relojes SMS, relay
+  UDPFS, Bridge y MCP; captura nativa de solo lectura y asociación offline por
+  build/boot/sesión/secuencia/campos exactos, sin logs arbitrarios ni secretos.
+  Hashes de manifiesto/ELF/captura/JSONL, pérdidas/ambigüedad explícitas y relojes
+  separados con incertidumbre no acotada. TypeScript y 174 pruebas Node pasaron;
+  7 checks nuevos con SMS real/recibo Bridge sintético/journal histórico y 11 de
+  replay como regresión. Native/Bridge no cambiaron ni se recompilaron.
+  [Contrato y evidencia](project-diagnostics.md).
+- Siguiente entrega del plan original: **5B2**, sesión fresca SMS → UDPFS →
+  Bridge contra Jellyfin con el mismo build/boot y una incidencia documentada.
+  No presentar la asociación sintética/histórica como transporte real nuevo.
+  Mantener límites del replay y de loaders/reboots/BIOS observados. Cada paso
   requiere publicación validada en main.
