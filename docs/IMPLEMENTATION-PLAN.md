@@ -1,6 +1,6 @@
 # Plan de implementación y publicación
 
-Actualizado: 2026-10-23. Autorizado por el usuario: implementar las mejoras del
+Actualizado: 2026-10-24. Autorizado por el usuario: implementar las mejoras del
 estudio de forks y después continuar el plan original de depuración PS2.
 
 ## Regla de entrega
@@ -24,7 +24,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | 5A2b | Procedencia del archivo realmente cargado y cobertura adicional IRX/imports/exports | Implementado y probado para HostFs/0xff80 y exports acotados; otros dispositivos/dialectos pendientes |
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | 5A3a/5A3b implementados y probados en caminos observados; generaciones acotadas, revalidación y corte de watches IOP; cobertura directa/custom pendiente |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Implementado y probado desde power-on; inicio desde savestate pendiente |
-| 5B | Correlación del proyecto | 5B1 implementado/probado: inventario, captura y asociación offline; sigue 5B2 con transporte real |
+| 5B | Correlación del proyecto | 5B1 y 5B2a probados: captura/asociación y cuatro eventos reales SMS/UDPFS/Bridge contra Jellyfin; sigue 5B2b con contexto de incidencia |
 | 5C–8 | Diagnósticos medidos, regresión, DAP y validación física | Continuar el roadmap original |
 
 La dependencia de F5 evita invalidar silenciosamente la depuración existente al
@@ -96,8 +96,16 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   7 checks nuevos con SMS real/recibo Bridge sintético/journal histórico y 11 de
   replay como regresión. Native/Bridge no cambiaron ni se recompilaron.
   [Contrato y evidencia](project-diagnostics.md).
-- Siguiente entrega del plan original: **5B2**, sesión fresca SMS → UDPFS →
-  Bridge contra Jellyfin con el mismo build/boot y una incidencia documentada.
-  No presentar la asociación sintética/histórica como transporte real nuevo.
+- 5B2a (cierre 2026-10-24): harness de transporte real con journal nuevo,
+  copia privada del ELF, Ethernet/HostFs aislados y limpieza de instancia propia.
+  Jellyfin 12.2.0 y usuario dedicado verificados; cuatro eventos del mismo
+  build/boot asociados, incluido ERROR `update_path_failed`. Cuatro checks live,
+  ausencia de Bridge con fallo esperado y rechazo previo de journal histórico.
+  No cambia runtime; no se repiten builds/suites anteriores. El proyecto añade
+  un comando de orquestación con `.env` local y recibo de servicios.
+  [Contrato, evidencia y límites](project-diagnostics.md#5b2a-fresh-sms-transport-acceptance).
+- Siguiente entrega del plan original: **5B2b**, contexto CPU/fuentes/módulos de
+  una incidencia seleccionada en el mismo build/boot. La observación de ERROR
+  no diagnostica E11, audio ni reproducción; mantiene causa desconocida.
   Mantener límites del replay y de loaders/reboots/BIOS observados. Cada paso
   requiere publicación validada en main.

@@ -1,6 +1,6 @@
 # MCP development progress
 
-Updated: 2026-10-23. This records the debugging extensions after the original main
+Updated: 2026-10-24. This records the debugging extensions after the original main
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
 
@@ -27,6 +27,16 @@ behavior, native integration and tests can be reviewed together.
 
 ## Operational improvements
 
+5B2a (closed 2026-10-24) validates fresh actual SMS → UDPFS → Bridge events
+against Jellyfin 12.2.0 with a verified dedicated nonadministrator user.
+The live harness requires a new journal and private emulator/project settings;
+four events of the same build/boot matched, including `update_path_failed`.
+Four live checks passed, with expected failure for a missing Bridge journal
+and pre-launch rejection of historical receipts. Emulator and owned services
+were stopped. The 174-test runtime baseline is unchanged; no builds or old
+suites were repeated. Playback, hardware and incident CPU/source investigation
+remain pending. [Evidence and reproduction](project-diagnostics.md#5b2a-fresh-sms-transport-acceptance).
+
 5B1 (2026-10-23) adds `pcsx2_diagnostics_collect` and
 `pcsx2_diagnostics_correlate`: bounded sanitized native history and offline
 build/boot association with Bridge client-event JSONL. Manifest/ELF/capture
@@ -34,7 +44,7 @@ hashes, exact reported fields and explicit missing/ambiguous evidence prevent
 silent mixing. Clock uncertainty stays unbounded; no exact timeline or cause
 is inferred. TypeScript and 174 Node tests passed; seven new live checks and
 11 input-movie regressions passed. Bridge association used synthetic receipts
-and historical journals; fresh Jellyfin/UDPFS acceptance remains 5B2.
+and historical journals; 5B2a above subsequently validated fresh transport.
 [Inventory, contract and evidence](project-diagnostics.md). Native/Bridge runtime
 did not change and was not rebuilt.
 

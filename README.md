@@ -268,8 +268,10 @@ determinism or physical-console behavior.
 See [project diagnostics](docs/project-diagnostics.md) for the SMS/UDPFS field
 inventory, bounds, privacy projection and separate clock domains. Missing or
 ambiguous evidence stays partial; these tools do not establish synchronized
-timing, transport latency or root cause. Real Jellyfin/UDPFS session acceptance
-is the next 5B2 step.
+timing, transport latency or root cause. 5B2a has now associated four fresh SMS
+events through UDPFS/Bridge against real Jellyfin on Windows; the guide includes
+the live harness and distinguishes that transport result from playback/hardware
+and the pending CPU/source investigation of a selected incident.
 
 ### PS2Recomp Integration
 | Tool | Description |

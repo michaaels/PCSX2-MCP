@@ -7,12 +7,23 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+5B2a (closed 2026-10-24): four actual SMS transport live checks passed against
+Jellyfin 12.2.0 and an isolated Bridge/UDPFS. All four build/boot console events
+matched fresh persisted receipts. A missing-Bridge run failed acceptance as
+expected and stopped its emulator; an old journal was rejected before launch.
+The new harness passed Node syntax validation and the project orchestration
+passed Python syntax and real execution. Runtime source/build hashes retain
+the 5B1 baseline, so builds and prior suites were not repeated.
+[Project diagnostics](project-diagnostics.md#5b2a-fresh-sms-transport-acceptance)
+records scope and ignored evidence paths. Playback/hardware and incident
+CPU/source investigation are still pending.
+
 5B1 (2026-10-23): TypeScript compiled and 174 Node tests passed. Seven new
 checks against real SMS/native collection and synthetic/historical Bridge
 evidence passed, plus 11 input-movie live regressions. See
 [project diagnostics](project-diagnostics.md) for the exact distinction and
 reproduction. Native/Bridge runtime did not change; their builds were not
-repeated. A fresh real Jellyfin/UDPFS session remains pending in 5B2.
+repeated. Fresh client-event transport was subsequently validated in 5B2a.
 
 The preceding delivery is F5 (2026-10-23): Windows/TypeScript compiled, 163 Node
 tests, 11 input-movie live checks and 33 regressions passed. Pristine/upgrade/

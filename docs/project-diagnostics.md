@@ -1,9 +1,10 @@
-# Project diagnostic evidence: 5B1
+# Project diagnostic evidence: 5B1 and 5B2a
 
 Implemented and tested on Windows on 2026-10-23. This delivery inventories the
 existing SMS/UDPFS/Bridge fields and adds bounded native collection plus offline
-association. It does not complete stage 5B's real Jellyfin transport/incident
-acceptance. No Bridge, SMS, decoder or native PCSX2 behavior changed.
+association. 5B2a subsequently validated fresh SMS transport against real
+Jellyfin on Windows (closed on 2026-10-24). Incident CPU/source investigation
+remains pending. No Bridge, SMS, decoder or native PCSX2 behavior changed.
 
 ## Observed contracts
 
@@ -147,9 +148,90 @@ so native compilation/integration checks were not repeated; the tested binary
 and plugin retain the F5 receipt's hashes. Bridge runtime did not change, so its
 build/tests were not rerun.
 
-**Next is 5B2:** capture a fresh real SMS → UDPFS → Bridge session against
-Jellyfin with the same build/boot, retain explicit transport/session evidence,
-and apply the report to a recorded incident. Correlating playback-manager logs,
-wire metrics, finite clock calibration, instrumentation overhead and causal
-diagnosis remain pending. This does not extend the observed IOP binding scope
-or [input-movie](input-movies.md) savestate support.
+## 5B2a: fresh SMS transport acceptance
+
+The new `test/project-transport-live.mjs` harness launches the retained debug ELF
+in its own data directory. A private byte-identical ELF copy receives an
+`IPCONFIG.DAT`; HostFs and Ethernet sockets settings affect only that instance.
+It never overwrites the retained build, changes its PC or injects client events.
+The harness requires a previously absent Bridge journal, checks the ELF hash/CRC,
+collects actual console fields and polls for fresh matching build/boot receipts.
+After catalog-open it allows three more seconds for queued diagnostics.
+
+Inputs are:
+
+```text
+node test/project-transport-live.mjs <PCSX2> <manifest> <configured-data-root> <fresh-Bridge-JSONL> <new-output> <guest-IPv4>
+```
+
+Use absolute local paths. The Bridge and UDPFS adapter must already be running
+against real Jellyfin with a new cache directory. The guest IPv4 is the host's
+LAN address when using PCSX2 sockets NAT, as in the project fixture. The harness
+does not receive credentials, start these services, change firewall rules or
+assert Jellyfin authentication itself. Retain a separate service receipt.
+`PCSX2_TRANSPORT_TIMEOUT_MS` selects a 1000–60000 ms polling budget (default
+45000); individual MCP calls also have a 60000 ms deadline. Output contains a
+private filtered Bridge snapshot, sanitized native capture, correlation report
+and `validation.json`. All selected Bridge events must have exact console
+matches; missing receipts fail, with partial native evidence retained. Cleanup
+uses `pcsx2_stop` only for the emulator owned by this MCP; failure to confirm
+cleanup fails acceptance. Existing journals are rejected before launch.
+
+The PS2 project adds `tools/validate-diagnostic-transport.py` to create the local
+ignored `.env`, new cache, Bridge and UDPFS processes and an optional owned
+loopback Jellyfin. It validates `/Users/Me` using the same Authorization header
+as the Bridge, checks the configured dedicated nonadministrator user, verifies
+Bridge readiness and stops only its child services. A preexisting Jellyfin is
+left running. Run it from `D:\dev\PS2\ps2_multinet`, for example:
+
+```powershell
+rtk python tools/validate-diagnostic-transport.py --bridge-env artifacts/athena-preview/jellyfin/bridge.env --bind <host-LAN-IPv4> --output artifacts/debug-validation/<new-run> --jellyfin-data artifacts/athena-preview/jellyfin
+```
+
+The `athena-preview/jellyfin` path refers only to an existing local Jellyfin
+test-server directory. The PS2 runtime remains SMS/UDPFS. Omit `--jellyfin-data`
+to use the existing Jellyfin endpoint configured in the source `.env`; no
+credentials belong in command arguments or reports. Source credentials and
+prior caches/configuration are retained. The owned server requires a matching
+loopback-only configuration and an unused port.
+
+The final run used Jellyfin **12.2.0**, a verified dedicated nonadministrator
+user and SMS build **`7a4a8cee9f5f9008`**, boot **`2610241359171665`**.
+Four actual persisted receipts matched all four console events: `boot` (0),
+`network_ready` (1), `catalog_open` (2) and ERROR `update_path_failed` (3).
+No synthetic receipts or old journals participated. Four live checks passed,
+including confirmed emulator cleanup; service cleanup was also confirmed.
+A separate real SMS run with no Bridge journal correctly failed acceptance,
+preserved native evidence and closed its owned emulator. A preexisting journal
+was also refused before creating output or launching PCSX2.
+
+Local evidence, all ignored:
+
+| Evidence | Location |
+|---|---|
+| Real Jellyfin/Bridge identity checks and service cleanup | PS2 project `artifacts/debug-validation/transport-20261023-final/services.json` |
+| Four live checks, capture and four-event association | Same folder, `sms/validation.json` |
+| Missing-Bridge negative acceptance | MCP `release/project-transport-no-bridge-20261023/validation.json` |
+| Preexisting-journal refusal | MCP `release/project-transport-stale-journal-20261023.json` |
+| Source/build/report hashes and publication | MCP `release/project-transport-acceptance-20261024.json` |
+
+These are client-event observations. Catalog contents were not independently
+compared, playback was not selected, and no new A/V or physical-console result
+is claimed. `update_path_failed` is recorded as an observed incident, not a
+diagnosis of the physical `E11 SifInitRpc` hang or intermittent audio. It is
+consistent with the updater's USB-only path guard under a HostFs debug launch;
+the guard's runtime state/call site was not captured. Clock uncertainty remains
+unbounded and root cause remains `not_established`.
+
+The existing 174 Node-test acceptance belongs to 5B1; its runtime source/build
+hashes remain unchanged. This delivery changes the live harness and project
+orchestration only, so Node/TypeScript/native/Bridge builds and historical
+regression suites were not repeated. Syntax checks and the live positive and
+negative paths above validate the new harness.
+
+**Next is 5B2b:** select an incident and capture its CPU/source/module context
+with the same build/boot, separating facts, missing data and hypotheses.
+Correlating playback-manager logs, wire metrics, finite clock calibration,
+instrumentation overhead and causal diagnosis remain pending. This does not
+extend the observed IOP binding scope or [input-movie](input-movies.md)
+savestate support.
