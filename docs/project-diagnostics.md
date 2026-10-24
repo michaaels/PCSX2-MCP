@@ -3,8 +3,9 @@
 Implemented and tested on Windows on 2026-10-23. This delivery inventories the
 existing SMS/UDPFS/Bridge fields and adds bounded native collection plus offline
 association. 5B2a subsequently validated fresh SMS transport against real
-Jellyfin on Windows (closed on 2026-10-24). Incident CPU/source investigation
-remains pending. No Bridge, SMS, decoder or native PCSX2 behavior changed.
+Jellyfin on Windows (closed on 2026-10-24). The subsequent
+[5B2b incident recipe](project-incidents.md) captures the CPU/source path of the
+HostFs updater error. No Bridge, SMS, decoder or native PCSX2 behavior changed.
 
 ## Observed contracts
 
@@ -257,8 +258,9 @@ orchestration only, so Node/TypeScript/native/Bridge builds and historical
 regression suites were not repeated. Syntax checks and the live positive and
 negative paths above validate the new harness.
 
-**Next is 5B2b:** select an incident and capture its CPU/source/module context
-with the same build/boot, separating facts, missing data and hypotheses.
+**5B2b is now validated** for the HostFs `update_path_failed` case:
+[CPU/source/module context and exact event association](project-incidents.md).
+The next item is 6A visual regression with tolerances/regions.
 Correlating playback-manager logs, wire metrics, finite clock calibration,
 instrumentation overhead and causal diagnosis remain pending. This does not
 extend the observed IOP binding scope or [input-movie](input-movies.md)

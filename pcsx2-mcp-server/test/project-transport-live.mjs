@@ -14,6 +14,8 @@ import { DebugServerClient } from '../dist/debug-server-client.js';
 assert.equal(process.argv.length, 8);
 const [executable, manifestPath, configured, journal, output] = process.argv.slice(2, 7).map(p => path.resolve(p));
 const guestIP = process.argv[7]; assert.ok(isIPv4(guestIP));
+const incidentMode = process.env.PCSX2_TRANSPORT_INCIDENT;
+assert.ok(incidentMode === undefined || incidentMode === 'update_path_failed', 'Unsupported SMS incident recipe');
 const waitMs = Number(process.env.PCSX2_TRANSPORT_TIMEOUT_MS ?? 45000);
 assert.ok(Number.isInteger(waitMs) && waitMs >= 1000 && waitMs <= 60000, 'Transport wait must be 1000–60000 ms');
 assert.equal(await fs.stat(journal).then(() => true, e => { if (e.code === 'ENOENT') return false; throw e; }), false,
@@ -82,6 +84,10 @@ try {
     env: { ...process.env, PCSX2_DEBUG_PORT: String(port) }, stderr: 'pipe' }));
   const launch = await call('pcsx2_launch', { executable, elf, data_directory: root }); owned = true;
   assert.equal(launch.sha256, manifest.elf_sha256); await inspector.connect();
+  if (incidentMode) {
+    const { captureUpdateIncident } = await import('./project-incident-support.mjs');
+    result.incident = await captureUpdateIncident({ call, inspector, manifest, manifestPath, elf, output, options, waitMs, passed });
+  }
   const deadline = performance.now() + waitMs;
   let captured, matching = [], catalogSeenAt;
   while (performance.now() < deadline) {
@@ -118,6 +124,19 @@ try {
   assert.ok(matching.some(row => row.event === 'boot'));
   assert.ok(matching.some(row => row.event === 'network_ready'));
   assert.ok(matching.some(row => row.event === 'catalog_open'));
+  if (result.incident) {
+    assert.equal(result.incident.boot_id, boots[0]);
+    const events = matching.filter(row => row.event === result.incident.event && row.level === 'ERROR');
+    assert.equal(events.length, 1, 'Incident requires exactly one matching persisted error in this boot');
+    const console = capture.client_logs.filter(log => log.event === result.incident.event && log.client_session === boots[0]
+      && log.client_sequence === events[0].sequence && log.level === events[0].level);
+    assert.equal(console.length, 1);
+    result.incident.join = { boot_id: boots[0], client_sequence: events[0].sequence,
+      native_log_sequence: console[0].native_sequence, correlation_sha256: associated.artifact.sha256,
+      relation: 'guard_then_logger_argument_then_exact_console_and_bridge_fields',
+      replay_timing: 'debugger_pauses_perturb_execution', e11_audio_causality: 'not_established' };
+    passed('captured incident boot and logger argument join exactly one subsequent console/Bridge ERROR receipt in the same run');
+  }
   passed('actual SMS boot, network-ready and catalog-open events received without synthetic log injection');
   result.scope = { transport: 'fresh-SMS-UDPFS-Bridge-client-events', jellyfin: 'validate-separately-in-service-receipt',
     catalog_contents: 'not_independently_compared', playback: 'not_tested', root_cause: 'not_established' };

@@ -27,6 +27,17 @@ behavior, native integration and tests can be reviewed together.
 
 ## Operational improvements
 
+5B2b (2026-10-24) adds an optional SMS incident recipe to the live transport
+harness. It reached the exact `SMS_JellyfinUpdateCheck` guard, verified an empty
+path via DWARF/runtime byte-load addressing, observed the direct logger call
+and argument, captured EE registers/45 IOP runtime modules, then joined the
+subsequent ERROR to its real console/Bridge fields in the same boot. Eight
+incident live checks, four transport regressions and four metadata refusals
+passed. Core runtime/build hashes retain the historical 174-test baseline;
+no rebuild or historical suite rerun. This verifies the HostFs emission path,
+not physical E11/audio causality. [Evidence, recipe and limits](project-incidents.md).
+The next original-roadmap item is 6A tolerant visual regression by regions.
+
 5B2a (closed 2026-10-24) validates fresh actual SMS → UDPFS → Bridge events
 against Jellyfin 12.2.0 with a verified dedicated nonadministrator user.
 The live harness requires a new journal and private emulator/project settings;

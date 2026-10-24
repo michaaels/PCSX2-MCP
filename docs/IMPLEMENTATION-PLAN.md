@@ -24,8 +24,8 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | 5A2b | Procedencia del archivo realmente cargado y cobertura adicional IRX/imports/exports | Implementado y probado para HostFs/0xff80 y exports acotados; otros dispositivos/dialectos pendientes |
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | 5A3a/5A3b implementados y probados en caminos observados; generaciones acotadas, revalidación y corte de watches IOP; cobertura directa/custom pendiente |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Implementado y probado desde power-on; inicio desde savestate pendiente |
-| 5B | Correlación del proyecto | 5B1 y 5B2a probados: captura/asociación y cuatro eventos reales SMS/UDPFS/Bridge contra Jellyfin; sigue 5B2b con contexto de incidencia |
-| 5C–8 | Diagnósticos medidos, regresión, DAP y validación física | Continuar el roadmap original |
+| 5B | Correlación del proyecto | 5B1, 5B2a y 5B2b probados: transporte real y contexto CPU/fuentes del error del actualizador en HostFs; E11/audio pendientes |
+| 6–8 | Regresión, DAP y validación física | Sigue 6A: comparación visual tolerante por regiones; diagnósticos/mediciones adicionales conservan su alcance pendiente |
 
 La dependencia de F5 evita invalidar silenciosamente la depuración existente al
 resetear/cargar estados. No es necesario cambiar de versión PCSX2 para comenzar:
@@ -110,8 +110,15 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   conservado en ejecución. Solo cambió la URL del `.env` local del proyecto;
   sin cambios de runtime ni nueva aceptación A/V/hardware.
   [Evidencia y reproducción](project-diagnostics.md#revalidation-against-the-users-linux-jellyfin).
-- Siguiente entrega del plan original: **5B2b**, contexto CPU/fuentes/módulos de
-  una incidencia seleccionada en el mismo build/boot. La observación de ERROR
-  no diagnostica E11, audio ni reproducción; mantiene causa desconocida.
+- 5B2b (2026-10-24): receta opcional `--incident` en el comando del proyecto.
+  Breakpoints por fuente, estáticas por DWARF contrastado con symtab, lectura
+  efectiva de la guarda, llamada JAL/argumento real y contexto EE/IOP se unieron
+  al ERROR posterior del mismo build/boot contra Jellyfin Linux. Ocho checks
+  live, cuatro de transporte como regresión y cuatro rechazos de metadatos.
+  No cambia runtime ni modifica código/registros/datos guest; la ejecución se
+  pausa y reanuda explícitamente. [Contrato y evidencia](project-incidents.md).
+- Siguiente entrega del plan original: **6A**, comparación visual con tolerancia
+  y regiones configuradas. El recorrido del ERROR en HostFs queda probado;
+  E11/audio/hardware y causas de otras incidencias conservan aceptación propia.
   Mantener límites del replay y de loaders/reboots/BIOS observados. Cada paso
   requiere publicación validada en main.

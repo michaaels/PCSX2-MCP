@@ -271,7 +271,8 @@ ambiguous evidence stays partial; these tools do not establish synchronized
 timing, transport latency or root cause. 5B2a has now associated four fresh SMS
 events through UDPFS/Bridge against real Jellyfin on Windows; the guide includes
 the live harness and distinguishes that transport result from playback/hardware
-and the pending CPU/source investigation of a selected incident.
+and [the verified CPU/source path](docs/project-incidents.md) for the observed
+HostFs `update_path_failed` incident. Physical E11/audio remain undiagnosed.
 
 ### PS2Recomp Integration
 | Tool | Description |

@@ -7,6 +7,15 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+5B2b (2026-10-24): eight incident live checks and four normal transport live
+regressions passed against the user's Linux Jellyfin 12.2.0. The recipe links
+the actual source guard, DWARF static objects, byte-load effective address,
+verified JAL/logger argument and stable EE/IOP context to the same boot's ERROR.
+Four offline metadata controls refused unsupported/conflicting files. Syntax
+and links checked; runtime source/build hashes retain the historical 174-test
+acceptance, without rebuilding unchanged components. [Project incident](project-incidents.md)
+records evidence and the limited HostFs finding. No E11/audio/hardware diagnosis.
+
 5B2a (closed 2026-10-24): four actual SMS transport live checks passed against
 Jellyfin 12.2.0 and an isolated Bridge/UDPFS. All four build/boot console events
 matched fresh persisted receipts. A missing-Bridge run failed acceptance as
