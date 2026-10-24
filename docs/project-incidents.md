@@ -119,6 +119,7 @@ historical suites were not repeated.
 
 Local artifacts can contain native ELF paths/runtime inventory; keep them
 private. Published documentation excludes endpoints, tokens and raw journals.
-5B2b closes for this HostFs incident. Next is 6A: visual regression with
-tolerances and configured regions. E11/audio/hardware, broader incident recipes,
+5B2b closes for this HostFs incident. The subsequent
+[6A visual regression](visual-regression.md) supplies pixel tolerances/regions;
+next is 6B audio criteria. E11/audio/hardware, broader incident recipes,
 playback-manager/wire metrics and clock calibration retain separate acceptance.

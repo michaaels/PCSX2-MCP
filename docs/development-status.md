@@ -27,6 +27,15 @@ behavior, native integration and tests can be reviewed together.
 
 ## Operational improvements
 
+6A (2026-10-24) adds offline `pcsx2_compare_screenshots` and scenario
+`assert_screenshot`: decoded pixel tolerances, explicit named regions/masks,
+hash-pinned references, sampled local ELF/process/session/epoch identity and
+input/diff/JSON evidence preserved on failure. TypeScript and 193 Node tests
+passed, plus ten visual live checks and seven workflow regressions. A perturbed
+reference fixture triggered the expected 16-pixel failure; no guest change or
+gameplay/perceptual/A/V/hardware validation is claimed. Native/Bridge unchanged.
+[Contract, bounds and evidence](visual-regression.md). Next: 6B audio criteria.
+
 5B2b (2026-10-24) adds an optional SMS incident recipe to the live transport
 harness. It reached the exact `SMS_JellyfinUpdateCheck` guard, verified an empty
 path via DWARF/runtime byte-load addressing, observed the direct logger call

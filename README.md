@@ -230,6 +230,7 @@ custom/direct loader tracking remains partial.
 | Tool | Description |
 |---|---|
 | `pcsx2_screenshot` | Return the current rendered PS2 frame as a PNG image (updated DebugServer required) |
+| `pcsx2_compare_screenshots` | Offline hash-pinned pixel comparison with channel/fraction tolerances, named regions, ignored rectangles and saved diff/report |
 
 The tool returns MCP `image` content (`image/png`, base64) and a text description of the actual dimensions.
 It captures the GS output without desktop windows, PCSX2 menus, or the OSD. Nothing is written to disk.
@@ -239,6 +240,13 @@ Optional `width` (default 640, range 1–1280) and `height` (default 480, range 
 output dimensions. PCSX2 preserves the configured aspect ratio and crops letterbox borders, so the returned
 image can be smaller than the requested bounds. PNG data is limited to 6 MiB. Pine-only connections and
 old DebugServer builds return a tool error with setup guidance.
+
+Scenario action `assert_screenshot` adds the same comparison to a live paused
+capture with an expected local ELF SHA and process/session/epoch checks. A
+mismatch preserves the comparison evidence and stops subsequent actions.
+Legacy screenshot SHA assertions still compare exact encoded bytes.
+See [visual regression](docs/visual-regression.md) for policy, format limits,
+baseline provenance and Windows acceptance; no perceptual/A/V/hardware claim.
 
 ### Native input recording and replay
 

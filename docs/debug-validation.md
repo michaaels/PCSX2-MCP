@@ -7,6 +7,15 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+6A (2026-10-24): TypeScript compiled, 193 Node tests passed (19 new), with ten
+visual live checks and seven existing workflow live regressions. Actual SMS
+PNG captures passed region/tolerance assertions. A deliberately perturbed
+reference fixture failed exactly 16 pixels, preserved diff/input reports and
+prevented subsequent frame execution. Native source/executable hashes are
+unchanged; native/Bridge builds were not repeated. [Visual regression](visual-regression.md)
+records the pixel metric, provenance, limits and local artifacts. No audio,
+perceptual correctness or hardware acceptance was added.
+
 5B2b (2026-10-24): eight incident live checks and four normal transport live
 regressions passed against the user's Linux Jellyfin 12.2.0. The recipe links
 the actual source guard, DWARF static objects, byte-load effective address,

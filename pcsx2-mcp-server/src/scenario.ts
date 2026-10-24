@@ -6,6 +6,8 @@ import { DebugServerClient } from './debug-server-client.js';
 import { inputOptions } from './automation.js';
 import { address, cpu } from './symbols.js';
 import { writeContextArtifacts } from './context-artifacts.js';
+import { visualAssertionOptions } from './visual-comparison.js';
+import { compareScenarioScreenshot } from './visual-tools.js';
 
 const name = z.string().min(1).max(128);
 const frameCount = z.number().int().min(1).max(600).default(1);
@@ -22,6 +24,7 @@ export const scenarioStep = z.discriminatedUnion('action', [
   z.object({ action: z.literal('run_to_symbol'), symbol: z.string().min(1).max(256), cpu, timeout_ms: stepTimeout }).strict(),
   z.object({ action: z.literal('run_to_address'), address, cpu, timeout_ms: stepTimeout }).strict(),
   z.object({ action: z.literal('screenshot'), ...bounds, expected_sha256: z.string().regex(/^[\da-f]{64}$/i).optional() }).strict(),
+  z.object({ action: z.literal('assert_screenshot'), ...bounds, ...visualAssertionOptions.shape }).strict(),
   z.object({ action: z.literal('context'), ...bounds, cpu,
     memory_address: address.default('0x0'), memory_length: z.number().int().min(0).max(4096).default(0) }).strict(),
 ]);
@@ -62,7 +65,7 @@ export class ScenarioRunner {
       let identityChanged = false;
       function sameIdentity(current: Awaited<ReturnType<DebugServerClient['getCapabilities']>>) {
         const same = identity && current.session === identity.session && current.process_id === identity.process_id &&
-          current.elf === identity.elf && current.elf_crc === identity.elf_crc;
+            current.elf === identity.elf && current.elf_crc === identity.elf_crc && current.execution_epoch === identity.execution_epoch;
         if (!same) { identityChanged = true; report.vm_changed = true; }
         return same;
       }
@@ -169,6 +172,15 @@ export class ScenarioRunner {
             check(!step.expected_sha256 || step.expected_sha256.toLowerCase() === hash, `Screenshot SHA256 mismatch: got ${hash}; image saved at ${filename}`);
             return { file: filename, width: image.width, height: image.height, sha256: hash };
           }
+          case 'assert_screenshot': {
+            const { action: _action, width, height, ...visual } = step;
+            const compared = await compareScenarioScreenshot(client, visual, { width, height }, directory, signal);
+            // Preserve comparison artifacts when the assertion throws, so a
+            // stopped scenario still explains exactly which regions failed.
+            report.steps[index].result = compared;
+            check(compared.passed, `Visual screenshot regression: ${compared.reason}; report saved at ${compared.artifacts.report.path}`);
+            return compared;
+          }
           case 'context': {
             const context = await client.captureContext({ cpu: step.cpu, width: step.width, height: step.height, memoryAddress: step.memory_address, memoryLength: step.memory_length });
             const saved = await writeContextArtifacts(context, directory, prefix);
@@ -203,6 +215,7 @@ export class ScenarioRunner {
         report.error = errorText(error);
         if (allowDiagnostic && !identityChanged) {
           try {
+              check(sameIdentity(await client.getCapabilities()), 'VM/ELF/epoch changed; failure diagnostic capture skipped');
             await client.pause(); touchedVM = true;
             const context = await client.captureContext();
             report.diagnostic = (await writeContextArtifacts(context, directory, 'failure')).artifacts;

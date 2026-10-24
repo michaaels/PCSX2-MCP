@@ -4,7 +4,9 @@
   "description": "ULTIMATE PCSX2 Debugger MCP Server — custom C++ DebugServer plugin + Pine IPC",
   "type": "module",
   "main": "dist/index.js",
-  "bin": { "pcsx2-mcp": "dist/index.js" },
+  "bin": {
+    "pcsx2-mcp": "dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -13,10 +15,12 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "pngjs": "7.0.0",
     "zod": "^3.24.4"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",
+    "@types/pngjs": "6.0.5",
     "typescript": "^5.8.3"
   }
 }

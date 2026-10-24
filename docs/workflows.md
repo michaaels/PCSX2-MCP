@@ -93,15 +93,19 @@ can still produce a partial CPU context; the report preserves that limitation.
 | `run_to_symbol` | Exact `symbol`, optional `cpu` and `timeout_ms`; waits for a real instruction breakpoint. |
 | `run_to_address` | `address`, optional `cpu` and `timeout_ms`; same run-to behavior. |
 | `screenshot` | Optional `width`, `height`, `expected_sha256`; saves PNG and its SHA256. |
+| `assert_screenshot` | `baseline_path`, `baseline_sha256`, `expected_elf_sha256`, optional image bounds and `policy`; checks decoded pixels with explicit channel/fraction thresholds, regions and masks; saves comparison evidence even on mismatch. |
 | `context` | Optional CPU, image bounds and memory address/length; saves context JSON and PNG, requires an available frame to pass. |
 
 Addresses are hexadecimal with optional `0x`. Expression expectations are decimal or
 `0x` hexadecimal strings, not JSON numbers. Screenshot hashes compare exact encoded
-PNG bytes; there is no visual-tolerance, mask, perceptual or audio comparison yet.
+PNG bytes. Separate `assert_screenshot` supports pixel tolerances/regions/masks;
+[visual regression](visual-regression.md) specifies the metric, baseline
+provenance and limits. Neither action provides perceptual or audio validation.
 
 The runner pauses before setup and **leaves the VM paused** on completion/failure.
 It stops at the first failure, so later actions do not run. It checks process/session,
-current ELF path and CRC between steps; an optional `expected_elf_crc` in the recipe
+current ELF path, CRC and execution epoch (when supplied by the backend) between steps;
+an optional `expected_elf_crc` in the recipe
 rejects the wrong build before changing VM state. CRC is not a cryptographic build
 identity; the launch tool separately returns the input ELF's SHA256.
 
@@ -128,11 +132,20 @@ An already running native command, artifact I/O or diagnostic/cleanup work may o
 that deadline. Failures to capture diagnostics or confirm final pause appear explicitly
 in the report. Invalid recipe/output-directory errors before execution may return only
 a tool error because no run could be created.
-If an ELF/session identity change is detected, the runner skips further pause,
+Identity is checked again before failure diagnostics. If an ELF/session/epoch
+identity change is detected, the runner skips further pause,
 diagnostic capture and breakpoint removal against that changed VM. The report marks
 `vm_changed` and any `pending_breakpoint` needing review; final pause is not claimed.
 
 ## Build and validation
+
+6A (2026-10-24) compiled TypeScript and passed 193 Node tests, ten visual live
+checks and seven workflow live regressions. The workflow harness now forwards
+the configured private port/data root and confirms owned process cleanup.
+No native commands changed, so native/Bridge builds were not repeated.
+[Visual acceptance and reproduction](visual-regression.md) records the bounded
+pixel metric and intentionally perturbed reference fixture. Results below
+retain the original symbol/scenario acceptance.
 
 Run `python tools/apply-debug-server.py <pcsx2-v2.6.3>`, build PCSX2, then build/test
 the Node server with `npm test`. The suite contains 36 automated tests at this stage.

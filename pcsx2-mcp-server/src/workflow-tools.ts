@@ -23,7 +23,7 @@ export function registerWorkflowTools(server: McpServer, getClient: () => DebugS
       'Scenarios support frames, input, assertions (memory/expression/new logs/controller), run-to-symbol/address, screenshots and contexts.\n' +
       'Provide output_directory: a unique run folder contains the recipe and JSON report, PNGs and a failure context when available.\n' +
       'The connection is exclusive during a scenario. External UI/clients can still interfere. No arbitrary scripts, commands, memory writes or build steps are executed.\n' +
-      'Screenshot hash assertions compare exact encoded PNGs; they are not visual similarity checks.\n',
+        'Screenshot hash assertions compare exact encoded PNGs. assert_screenshot compares opaque PNG pixels with explicit channel/fraction tolerances, named regions and ignored rectangles; it pins the reference PNG and current local ELF SHA and saves comparison evidence. It is not perceptual, gameplay or audio validation.\n',
     }],
   }));
   server.tool('pcsx2_import_symbols', 'Request asynchronous import of the current EE ELF symbols without opening the graphical debugger or changing persistent settings. Uses configured extra symbol files, skips function scanning/hashing. Success means requested; query until expected symbols appear. Repeat after ELF reload if automatic import is disabled. A stripped ELF may provide no names.',

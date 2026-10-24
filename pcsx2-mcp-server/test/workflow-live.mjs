@@ -22,8 +22,9 @@ async function call(name, args = {}) {
 }
 function passed(message) { results.checks.push(message); console.log('PASS ' + message); }
 try {
-  await mcp.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../dist/index.js', import.meta.url))], stderr: 'pipe' }));
-  const launched = await call('pcsx2_launch', { executable, elf }); owns = true;
+  await mcp.connect(new StdioClientTransport({ command: process.execPath, args: [fileURLToPath(new URL('../dist/index.js', import.meta.url))], env: { ...process.env }, stderr: 'pipe' }));
+  const launched = await call('pcsx2_launch', { executable, elf,
+    ...(process.env.PCSX2_MCP_DATA_DIR ? { data_directory: process.env.PCSX2_MCP_DATA_DIR } : {}) }); owns = true;
   await inspector.connect();
   for (let attempt = 0; !(await inspector.getCapabilities()).elf; attempt++) {
     assert.ok(attempt < 80, 'ELF did not boot'); await delay(250);
@@ -126,7 +127,13 @@ try {
   results.passed = true;
 } finally {
   inspector.disconnect();
-  if (owns) await mcp.callTool({ name: 'pcsx2_stop', arguments: {} }).catch(() => {});
+  if (owns) {
+    try {
+      const stopped = await mcp.callTool({ name: 'pcsx2_stop', arguments: {} });
+      results.cleanup_confirmed = !stopped.isError && JSON.parse(stopped.content[0].text).stopped === true;
+    } catch { results.cleanup_confirmed = false; }
+    if (!results.cleanup_confirmed) results.passed = false;
+  }
   await mcp.close();
   results.finished_at = new Date().toISOString();
   await fs.writeFile(path.join(output, 'results.json'), JSON.stringify(results, null, 2));

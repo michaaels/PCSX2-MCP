@@ -25,7 +25,7 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | 5A3a/5A3b implementados y probados en caminos observados; generaciones acotadas, revalidación y corte de watches IOP; cobertura directa/custom pendiente |
 | F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Implementado y probado desde power-on; inicio desde savestate pendiente |
 | 5B | Correlación del proyecto | 5B1, 5B2a y 5B2b probados: transporte real y contexto CPU/fuentes del error del actualizador en HostFs; E11/audio pendientes |
-| 6–8 | Regresión, DAP y validación física | Sigue 6A: comparación visual tolerante por regiones; diagnósticos/mediciones adicionales conservan su alcance pendiente |
+| 6–8 | Regresión, DAP y validación física | 6A probada: comparación visual por regiones; sigue 6B de criterios/medición de audio, después estabilidad/CI/DAP/hardware |
 
 La dependencia de F5 evita invalidar silenciosamente la depuración existente al
 resetear/cargar estados. No es necesario cambiar de versión PCSX2 para comenzar:
@@ -117,8 +117,15 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   live, cuatro de transporte como regresión y cuatro rechazos de metadatos.
   No cambia runtime ni modifica código/registros/datos guest; la ejecución se
   pausa y reanuda explícitamente. [Contrato y evidencia](project-incidents.md).
-- Siguiente entrega del plan original: **6A**, comparación visual con tolerancia
-  y regiones configuradas. El recorrido del ERROR en HostFs queda probado;
+- 6A (2026-10-24): `pcsx2_compare_screenshots` offline y acción de escenario
+  `assert_screenshot`, con SHA de referencia/ELF, tolerancias por canal/fracción,
+  regiones/máscaras, diff e informe conservados. Guardas de época y diagnóstico
+  de fallo; codec PNG fijado con límites de formato/tamaño/descompresión.
+  TypeScript, 193 pruebas Node, diez checks visuales live y siete regresiones
+  workflow pasaron. El fallo controlado altera una referencia PNG, no el guest.
+  Native/Bridge sin cambios ni recompilación. [Contrato](visual-regression.md).
+- Siguiente entrega del plan original: **6B**, definir captura/medición y
+  aceptación de audio antes de añadir aserciones de sonido. El recorrido del ERROR en HostFs queda probado;
   E11/audio/hardware y causas de otras incidencias conservan aceptación propia.
   Mantener límites del replay y de loaders/reboots/BIOS observados. Cada paso
   requiere publicación validada en main.

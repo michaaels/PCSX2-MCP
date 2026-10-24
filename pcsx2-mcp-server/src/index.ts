@@ -35,6 +35,7 @@ import { registerGsDumpTools } from './gs-dump-tools.js';
 import { registerMediaTools } from './media-tools.js';
 import { registerInputMovieTools } from './input-movie-tools.js';
 import { registerProjectDiagnosticTools } from './project-diagnostic-tools.js';
+import { registerVisualTools } from './visual-tools.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -97,6 +98,7 @@ registerGsDumpTools(server, () => debugServer);
 registerMediaTools(server, () => debugServer);
 registerInputMovieTools(server, () => debugServer);
 registerProjectDiagnosticTools(server, () => debugServer);
+registerVisualTools(server);
 registerAutomationTools(server, () => debugServer, client => { debugServer?.disconnect(); debugServer = client; });
 process.stdin.once('end', () => { debugServer?.disconnect(); pine?.disconnect(); });
 

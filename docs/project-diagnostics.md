@@ -260,7 +260,8 @@ negative paths above validate the new harness.
 
 **5B2b is now validated** for the HostFs `update_path_failed` case:
 [CPU/source/module context and exact event association](project-incidents.md).
-The next item is 6A visual regression with tolerances/regions.
+The subsequent [6A visual regression](visual-regression.md) adds tolerances/
+regions; next is 6B audio criteria.
 Correlating playback-manager logs, wire metrics, finite clock calibration,
 instrumentation overhead and causal diagnosis remain pending. This does not
 extend the observed IOP binding scope or [input-movie](input-movies.md)
