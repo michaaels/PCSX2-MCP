@@ -104,6 +104,12 @@ se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está
   No cambia runtime; no se repiten builds/suites anteriores. El proyecto añade
   un comando de orquestación con `.env` local y recibo de servicios.
   [Contrato, evidencia y límites](project-diagnostics.md#5b2a-fresh-sms-transport-acceptance).
+- Revalidación 5B2a en Linux (2026-10-24): endpoint activo indicado por el usuario,
+  Jellyfin 12.2.0 y credenciales locales verificadas. El mismo harness pasó
+  cuatro checks con otros cuatro recibos reales y boot nuevo; servidor externo
+  conservado en ejecución. Solo cambió la URL del `.env` local del proyecto;
+  sin cambios de runtime ni nueva aceptación A/V/hardware.
+  [Evidencia y reproducción](project-diagnostics.md#revalidation-against-the-users-linux-jellyfin).
 - Siguiente entrega del plan original: **5B2b**, contexto CPU/fuentes/módulos de
   una incidencia seleccionada en el mismo build/boot. La observación de ERROR
   no diagnostica E11, audio ni reproducción; mantiene causa desconocida.

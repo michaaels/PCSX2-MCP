@@ -223,6 +223,34 @@ consistent with the updater's USB-only path guard under a HostFs debug launch;
 the guard's runtime state/call site was not captured. Clock uncertainty remains
 unbounded and root cause remains `not_established`.
 
+### Revalidation against the user's Linux Jellyfin
+
+On 2026-10-24 the user supplied the active Linux endpoint. Its Jellyfin 12.2.0
+instance accepted the locally stored dedicated nonadministrator credentials;
+only `JELLYFIN_URL` changed in the project's ignored Linux Bridge `.env`.
+The unchanged live harness then passed all four checks against that external
+server. Build `7a4a8cee9f5f9008`, fresh boot `2610241416021665`, produced four
+new persisted receipts, all exactly associated with console: `boot`,
+`network_ready`, `catalog_open` and `update_path_failed`.
+
+The Linux server was not started/stopped by the test (`owned:false`). Its
+availability was checked again after owned Bridge/UDPFS/emulator cleanup.
+No playback or hardware validation was added. Incident context remains 5B2b;
+the same ERROR observation does not establish E11/audio causality.
+
+Local project evidence is
+`artifacts/debug-validation/transport-linux-20261024/services.json` and
+`sms/validation.json` in that folder; preflight is
+`artifacts/debug-validation/linux-preflight-20261024.json`.
+The MCP hash/publication receipt is
+`release/project-transport-linux-acceptance-20261024.json`. The endpoint and
+credentials remain local and are excluded from published evidence. To repeat
+from the PS2 project, with its existing Linux `.env` configured:
+
+```powershell
+rtk python tools/validate-diagnostic-transport.py --bridge-env artifacts/linux-jellyfin/bridge.env --bind <host-LAN-IPv4> --output artifacts/debug-validation/<new-Linux-run>
+```
+
 The existing 174 Node-test acceptance belongs to 5B1; its runtime source/build
 hashes remain unchanged. This delivery changes the live harness and project
 orchestration only, so Node/TypeScript/native/Bridge builds and historical
