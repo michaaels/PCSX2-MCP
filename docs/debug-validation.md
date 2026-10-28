@@ -7,6 +7,15 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+S2b2a (2026-10-27): Windows/TypeScript builds, 255 Node (eight new), 45 live
+checks (eight new) and 26-file integration passed. A real empty-slot baseline
+reproduced the old false `Loaded` reply. Guarded native loading now reports the
+actual boolean/error and before/after identities, with one retained receipt;
+PINE save/load only acknowledges submission. Missing/corrupt/incomplete states,
+exact restored RAM, pre-dispatch cancellation and receipt reconnect/retention
+were exercised. Native in-flight interruption and GUI coverage are not accepted;
+GUI runtime initialization failed twice. [Contract](state-load-outcomes.md).
+
 S2b1 (2026-10-27): TypeScript build, 247 Node (16 new) and 37 live checks passed.
 The original ten-test fault baseline had eight failures, one timeout and one pass. Connection generations now
 isolate queued/pending work, buffers, callbacks, scoped continuations and owner

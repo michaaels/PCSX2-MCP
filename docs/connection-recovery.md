@@ -91,7 +91,15 @@ release/reconnect-acceptance-20261027/reconnect/validation.json
 release/reconnect-delivery-20261027.json
 ```
 
-## Remaining scope
+## Follow-up: S2b2a
+
+[Actual state-load outcomes](state-load-outcomes.md) closes the empty-slot false
+success defect, adds failed-file/pre-dispatch cancellation checks and a retained
+native receipt. That later delivery rebuilds native PCSX2 and passes 255 Node /
+45 live checks; the S2b1 native-unchanged counts above remain historical.
+GUI and true native in-flight interruption remain unverified.
+
+## Remaining scope at S2b1
 
 The successful restore check is not universal savestate compatibility. GUI
 replacement of owned breakpoints during a step, failed/cancelled restore paths,

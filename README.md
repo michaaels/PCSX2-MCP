@@ -53,6 +53,14 @@ DebugServer connections isolate queued requests, buffers and callbacks across
 reconnects. Independent tests also cover actual ELF reset and savestate restore.
 [Contract, evidence and limits](docs/connection-recovery.md).
 
+## Verified savestate loads
+
+`pcsx2_load_state` on rebuilt native PCSX2 returns the actual load result,
+including empty/corrupt-slot errors, with a guarded paused identity and a retained
+operation receipt. `pcsx2_load_state_status` reads that receipt without loading
+again. PINE save/load acknowledgements report `queued_unconfirmed`.
+[Outcomes, cancellation limits and validation](docs/state-load-outcomes.md).
+
 ## Bounded EE/IOP stepping
 
 `pcsx2_step` and `pcsx2_step_over` accept `cpu: "ee" | "iop"` and

@@ -456,6 +456,21 @@ export class DebugServerClient {
       expected_elf: expected.elf, expected_elf_crc: expected.elf_crc }), expected);
   }
 
+  async requestStateLoad(id: string, slot: number, expected: SifIdentity) {
+    z.string().regex(/^[\da-f]{32}$/).parse(id); z.number().int().min(0).max(9).parse(slot);
+    const response = await this.send({ cmd: 'state_load', operation_id: id, slot,
+      expected_process_id: expected.process_id, expected_session: expected.session,
+      expected_execution_epoch: expected.execution_epoch, expected_iop_reset_epoch: expected.iop_reset_epoch,
+      expected_iop_lifetime_epoch: expected.iop_lifetime_epoch, expected_elf: expected.elf, expected_elf_crc: expected.elf_crc });
+    if (!response.ok) throw Object.assign(new Error(response.error ?? 'State load not confirmed'), { native_refused: response.refused === true });
+    return response;
+  }
+
+  async stateLoadReceipt(id: string) {
+    z.string().regex(/^[\da-f]{32}$/).parse(id);
+    return this.sessionCommand({ cmd: 'state_load_status', operation_id: id });
+  }
+
   async resolveAddress(value: string, cpu: CpuTarget = 'ee') {
     address.parse(value);
     const result = resolvedResponse.parse(await this.sessionCommand({ cmd: 'resolve_address', address: '0x' + value.replace(/^0x/, ''), cpu }));

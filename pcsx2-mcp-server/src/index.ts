@@ -35,6 +35,7 @@ import { registerGsDumpTools } from './gs-dump-tools.js';
 import { registerMediaTools } from './media-tools.js';
 import { registerSifTools } from './sif-tools.js';
 import { registerInstructionTools } from './instruction-tools.js';
+import { registerStateTools } from './state-tools.js';
 import { registerInputMovieTools } from './input-movie-tools.js';
 import { registerProjectDiagnosticTools } from './project-diagnostic-tools.js';
 import { registerVisualTools } from './visual-tools.js';
@@ -487,21 +488,15 @@ server.tool('pcsx2_game_info', 'Get game title, ID, version from PCSX2. Requires
   }
 );
 
-server.tool('pcsx2_save_state', 'Save emulator state. Requires Pine.', { slot: z.number().min(0).max(9) },
+server.tool('pcsx2_save_state', 'Queue a save-state request through PINE; acknowledgement does not verify a completed file.', { slot: z.number().int().min(0).max(9) },
   async ({ slot }) => {
     if (!hasPine()) return { content: [{ type: 'text' as const, text: 'Pine not connected.' }], isError: true };
-    try { await pine!.saveState(slot); return { content: [{ type: 'text' as const, text: `Saved to slot ${slot}` }] }; }
+    try { await pine!.saveState(slot); return { content: [{ type: 'text' as const, text: JSON.stringify({ slot, outcome: 'queued_unconfirmed', completion_confirmed: false }) }] }; }
     catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
   }
 );
 
-server.tool('pcsx2_load_state', 'Load emulator state. Requires Pine.', { slot: z.number().min(0).max(9) },
-  async ({ slot }) => {
-    if (!hasPine()) return { content: [{ type: 'text' as const, text: 'Pine not connected.' }], isError: true };
-    try { await pine!.loadState(slot); return { content: [{ type: 'text' as const, text: `Loaded from slot ${slot}` }] }; }
-    catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
-  }
-);
+registerStateTools(server, () => debugServer, () => pine);
 
 // ==========================================================
 //  TOOL: pcsx2_find_pattern

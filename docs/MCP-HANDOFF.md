@@ -11,11 +11,18 @@ Local Windows components:
 - Test contract and remaining limits: [standalone validation](standalone-validation.md)
 - S2a contract: [bounded EE/IOP instruction control](instruction-control.md)
 - S2b1 contract: [connection/reset/restore recovery](connection-recovery.md)
-- Current delivery evidence: ignored `release/reconnect-delivery-20261027.json`
+- S2b2a contract: [actual state-load outcomes](state-load-outcomes.md)
+- Current delivery evidence: ignored `release/state-load-delivery-20261027.json`
+- S2b1 evidence: ignored `release/reconnect-delivery-20261027.json`
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
 
-The current standalone suite passes 247 Node and 37 live checks. Connections
+The current standalone suite passes 255 Node and 45 live checks, with a rebuilt
+native executable and 26-file integration. Guarded native state loads report the
+actual result and retain the last receipt for status queries. PINE save/load
+acknowledges only submission. Pre-dispatch cancellation sends no load; a native
+load already dispatched cannot be cancelled. GUI coverage remains pending due
+to computer-use initialization failure. Connections
 isolate old callbacks/queued commands, with actual reset/restore evidence. Step tools
 accept CPU selection and bounded execution, returning structured/partial JSON.
 The IOP instruction fixture isolates IRQ; arbitrary interrupt-active stepping

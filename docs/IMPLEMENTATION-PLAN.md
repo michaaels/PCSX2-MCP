@@ -28,8 +28,16 @@ S2b1 separa colas/respuestas/continuaciones por conexión y prueba reset y resto
 reales: 247 Node y 37 live pasaron. Native permanece sin cambios.
 [Contrato](connection-recovery.md).
 
-Sigue S2b2: reemplazos GUI, restore fallido/cancelado y casos con IRQ IOP;
-después estabilidad/CI y DAP sobre capacidades acreditadas. La
+S2b2a corrige el falso `Loaded` de PINE: carga nativa con resultado real,
+identidad guardada y último recibo consultable; PINE solo confirma envío.
+Windows/TypeScript, 255 Node, 45 live y 26 archivos de integración pasaron.
+[Contrato y límites](state-load-outcomes.md).
+
+Sigue S2b2b: reemplazos GUI, interrupción nativa pendiente y casos con IRQ IOP;
+la GUI no se probó porque el runtime de control falló al inicializar también
+tras reiniciarlo. La cancelación previa al envío sí está probada; una carga
+nativa ya enviada no se puede interrumpir con esta herramienta. Después siguen
+estabilidad/CI y DAP sobre capacidades acreditadas. La
 corrección SIF2/audio del cliente queda como backlog de aplicación, sin aceptación
 nueva ni cambio del transporte DMA. No retomarla automáticamente al continuar MCP.
 
@@ -43,6 +51,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S2b2a | Resultado real de carga de estado y último recibo consultable | Windows/TypeScript, 255 Node, 45 live y 26 archivos probados; GUI e interrupción nativa pendientes |
 | S2b1 | Generaciones de conexión, reset y restore reales | 247 Node y 37 live probados; native sin cambios; GUI/restore fallido/IRQ IOP pendientes |
 | S2a | Avance EE/IOP con deadline, guardas nativas y resultados parciales | Windows/TypeScript, 231 Node, 32 live y 26 archivos de integración probados; IRQ IOP aislada en fixture |
 | S1 | Validación del MCP con homebrew independiente; cleanup propio de step/step-over | Windows/TypeScript, 223 Node, 18 live y 26 archivos de integración probados; sin SMS/Jellyfin |

@@ -5,6 +5,16 @@ debug the application in a separate chat. SMS, Jellyfin and media playback are
 not prerequisites for this suite. Their incident recipes remain historical and
 do not determine whether these MCP checks pass.
 
+## S2b2a update
+
+The current runner adds eight native savestate checks, for **45 live checks and
+255 Node tests**. Rebuild PCSX2 and Node for actual guarded load outcomes and
+receipt status. PINE save/load acknowledgements remain unconfirmed. The suite
+uses private states and tests empty/corrupt/missing-content files, exact restored
+RAM, cancellation before dispatch, refusals and receipt retention/reconnect.
+[Contract and limits](state-load-outcomes.md). GUI and native in-flight
+interruption remain unverified.
+
 ## S2b1 update
 
 The current command adds five native connection/reset/restore checks, for
@@ -43,11 +53,12 @@ Elsewhere, pass your configured root. Test processes copy the INI into their
 own roots, use separate debug ports and stop only the emulators they launch.
 BIOS files, local settings and generated artifacts are not published.
 
-The command builds/tests TypeScript, builds the fixtures and runs three native
+The command builds/tests TypeScript, builds the fixtures and runs six native
 suites sequentially. `validation.json` and separate build/suite logs record the
 result and hashes. Reuse retained fixtures without Docker using both
 `--render-fixture <directory>` and `--sif-fixture <directory>`; their manifests
-and source inputs must match the current checkout.
+and source inputs must match the current checkout. Also pass
+`--instruction-fixture <directory>` to reuse the instruction fixture.
 
 ## What is actually checked
 
@@ -126,7 +137,7 @@ The first transfer fixture failed to link an unavailable EE `DelayThread` API;
 the final fixture uses a bounded CP0-count observation loop. None of these
 attempts is substituted for the accepted runs.
 
-Next MCP work after S2b1: GUI replacement, failed/cancelled restore paths,
+Next MCP work after S2b2a: GUI replacement, remaining restore interruption paths,
 interrupt-active IOP observations and broader branch/device cases;
 then bounded long-run/CI tests and editor integration.
 Application SIF2/audio investigation is a separate backlog; it is not the

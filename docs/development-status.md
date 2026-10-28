@@ -15,6 +15,7 @@ priority. Application audio/SIF2 work remains a separate backlog.
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Savestate outcomes | S2b2a, this delivery | Actual guarded native load result and last receipt; PINE acknowledgements unconfirmed. Windows/TypeScript, 255 Node, 45 live and 26-file integration passed. GUI and native in-flight interruption remain pending. [Contract](state-load-outcomes.md). |
 | Connection recovery | S2b1, this delivery | Per-connection queues/buffers/callbacks and scoped continuations; actual ELF reset and PINE restore. 247 Node and 37 live checks passed. Native unchanged. [Contract](connection-recovery.md). |
 | Bounded EE/IOP instructions | S2a, this delivery | CPU selection, shared sequence budget, native identity/PC guards, partial JSON results, timeout cleanup/recovery. 231 Node, 32 live and 26-file integration passed. IOP fixture masks current IRQ enable; broader game/branch behavior remains open. [Contract](instruction-control.md). |
 | Standalone validation and step cleanup | S1, this delivery | Independent rendered and EE/IOP homebrew, repeatable runner; legacy step/step-over remove owned private points before returning. Windows/TypeScript, 223 Node, 18 live and 26-file integration passed. [Contract](standalone-validation.md). |

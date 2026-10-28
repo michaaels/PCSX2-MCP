@@ -70,6 +70,7 @@ typedef int socket_t;
 #include "common/Console.h"
 #include "common/FileSystem.h"
 #include "common/Path.h"
+#include "common/Error.h"
 #include "GS/Renderers/Common/GSRenderer.h"
 #include "GS/GSCapture.h"
 
@@ -161,6 +162,7 @@ namespace DebugServer
 	};
 	static std::deque<PgifWriteObservation> s_pgifWrites;
 	static uint64_t s_pgifWriteSequence = 0;
+	static std::string s_stateLoadId, s_stateLoadReceipt;
 	static u32 s_iopModuleRoot = 0;
 	static uint64_t s_iopModuleDiscovery = 0, s_iopModuleSnapshot = 0;
 	struct GuardedStep
@@ -1347,6 +1349,59 @@ namespace DebugServer
 			bool valid = true; j.key("opcode"); j.valHex32(cpu->read32(next, valid));
 			j.endObject(); return j.str();
 		});
+	}
+
+	static void writeStateIdentity(JsonBuilder& j)
+	{
+#ifdef _WIN32
+		j.kv("process_id", static_cast<uint64_t>(GetCurrentProcessId()));
+#else
+		j.kv("process_id", static_cast<uint64_t>(getpid()));
+#endif
+		j.kv("session", s_session.load()); j.kv("execution_epoch", s_executionEpoch);
+		j.kv("iop_reset_epoch", s_iopResetEpoch); j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch);
+		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+	}
+
+	static std::string refuseStateLoad(const char* error)
+	{
+		JsonBuilder j; j.startObject(); j.kv("ok", false); j.kv("refused", true); j.kv("error", error); j.endObject(); return j.str();
+	}
+
+	static std::string stateLoad(const std::unordered_map<std::string, JsonValue>& params, bool status)
+	{
+		const auto id = getStr(params, "operation_id");
+		if (id.size() != 32 || !std::all_of(id.begin(), id.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }))
+			return refuseStateLoad("Invalid state-load operation ID");
+		if (status)
+			return id == s_stateLoadId && !s_stateLoadReceipt.empty() ? s_stateLoadReceipt : failure("State-load receipt unavailable; outcome not inferred");
+		if (id == s_stateLoadId) return refuseStateLoad("State-load operation ID already used; read state_load_status instead");
+		const auto slot = getNum(params, "slot", -1);
+		if (slot < 0 || slot > 9) return refuseStateLoad("State-load slot must be 0-9");
+		if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused)
+			return refuseStateLoad("Pause the active VM before loading a state");
+#ifdef _WIN32
+		const uint64_t process = GetCurrentProcessId();
+#else
+		const uint64_t process = getpid();
+#endif
+		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
+			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
+			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
+			getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
+			getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch) ||
+			getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+			getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			return refuseStateLoad("VM/ELF/IOP identity changed before state load");
+		JsonBuilder before; before.startObject(); writeStateIdentity(before); before.endObject();
+		Error error;
+		const bool loaded = VMManager::LoadStateFromSlot(static_cast<s32>(slot), false, &error);
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("operation_id", id); j.kv("slot", slot);
+		j.kv("completed", true); j.kv("loaded", loaded); j.kv("paused", VMManager::GetState() == VMState::Paused);
+		j.key("before"); j.valJson(before.str());
+		j.key("after"); j.startObject(); writeStateIdentity(j); j.endObject();
+		j.kv("error", loaded ? std::string{} : error.GetDescription());
+		j.endObject(); s_stateLoadId = id; s_stateLoadReceipt = j.str(); return s_stateLoadReceipt;
 	}
 
 	static std::string sifSnapshot(const std::unordered_map<std::string, JsonValue>& params)
@@ -2541,6 +2596,7 @@ namespace DebugServer
 			return readHistory(cmd == "read_events", static_cast<uint64_t>(after), static_cast<size_t>(limit), static_cast<int>(wait));
 		}
 		if (cmd == "capture_context") return onCPU([params]() { return captureContext(params); });
+		if (cmd == "state_load" || cmd == "state_load_status") return stateLoad(params, cmd == "state_load_status");
 		if (cmd == "sif_snapshot") return sifSnapshot(params); // executeCommand already marshals this command.
 		if (cmd == "capabilities")
 		{
@@ -2559,7 +2615,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies", "sif_snapshot", "bounded_instruction_step"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies", "sif_snapshot", "bounded_instruction_step", "guarded_state_load"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -3079,7 +3135,7 @@ namespace DebugServer
 			j.kv("error", "Unknown command: " + cmd);
 			j.key("available_commands"); j.startArray();
 			const char* cmds[] = {
-				"status", "capabilities", "read_events", "read_logs", "capture_context", "load_elf", "sif_snapshot",
+				"status", "capabilities", "read_events", "read_logs", "capture_context", "load_elf", "sif_snapshot", "state_load", "state_load_status",
 				"frame_advance", "input_frames", "automation_status", "automation_cancel", "controller_state",
 				"lookup_symbols", "resolve_address", "breakpoint_symbol", "import_symbols",
 				"install_source_breakpoints", "remove_source_breakpoints",
@@ -3313,6 +3369,7 @@ namespace DebugServer
 		s_iopModuleRoot = 0;
 		s_eeOrigin = {}; s_iopOrigin = {};
 		++s_session;
+		s_stateLoadId.clear(); s_stateLoadReceipt.clear();
 		s_pgifWrites.clear(); s_pgifWriteSequence = 0;
 		s_registrationNamespace = std::to_string(timestampMillis()) + ":" + std::to_string(s_session.load()) + ":" +
 			std::to_string(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
