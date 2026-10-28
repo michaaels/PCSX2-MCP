@@ -1,0 +1,6 @@
+EE_BIN = irq-control.elf
+EE_OBJS = ee-irq.o
+EE_CFLAGS = -g -O0
+all: $(EE_BIN)
+include $(PS2SDK)/samples/Makefile.pref
+include $(PS2SDK)/samples/Makefile.eeglobal

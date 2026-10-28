@@ -1,0 +1,10 @@
+IOP_BIN = irq-control.irx
+IOP_OBJS = iop-irq.o vectors.o
+IOP_CFLAGS = -g -gdwarf-2 -O0
+all: $(IOP_BIN)
+include $(PS2SDK)/samples/Makefile.pref
+include $(PS2SDK)/samples/Makefile.iopglobal
+IOP_LDFLAGS := $(filter-out -s,$(IOP_LDFLAGS)) -Wl,-Map,irq-control.map
+IOP_LDFLAGS += $(foreach s,info abbrev line frame pubnames aranges str,-Wl,--section-start=.debug_$(s)=0)
+vectors.o: vectors.S
+	$(IOP_CC) $(IOP_CFLAGS) $(IOP_INCS) -c $< -o $@

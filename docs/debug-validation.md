@@ -7,6 +7,15 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+S2b2b (2026-10-28): Windows/TypeScript, 255 Node, 53 standalone live checks,
+13 extra IOP exception/module/reset regressions and 26-file integration passed.
+A real IRQ-enabled breakpoint baseline changed paused PC to `0x80000080` after
+the reported hit. Pending hardware IRQ dispatch now waits for resume. Six new
+IRQ checks and two real restore abort/lost-reply cases passed; unknown completion
+is reconciled without replay. GUI initialization failed again after reset/retry.
+Native synchronous-load interruption/rollback remains deferred.
+[Evidence, excluded fixture/adapter failures and scope](irq-pause-boundary.md).
+
 S2b2a (2026-10-27): Windows/TypeScript builds, 255 Node (eight new), 45 live
 checks (eight new) and 26-file integration passed. A real empty-slot baseline
 reproduced the old false `Loaded` reply. Guarded native loading now reports the

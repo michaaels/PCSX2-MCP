@@ -53,6 +53,11 @@ DebugServer connections isolate queued requests, buffers and callbacks across
 reconnects. Independent tests also cover actual ELF reset and savestate restore.
 [Contract, evidence and limits](docs/connection-recovery.md).
 
+IRQ-enabled IOP stops preserve the breakpoint PC while a pending hardware IRQ
+waits for resume. Independent checks also cover aborting an already submitted
+restore and reconciling a lost real completion reply.
+[Validation and remaining gates](docs/irq-pause-boundary.md).
+
 ## Verified savestate loads
 
 `pcsx2_load_state` on rebuilt native PCSX2 returns the actual load result,

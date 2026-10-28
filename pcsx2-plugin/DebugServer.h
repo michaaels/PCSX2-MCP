@@ -75,6 +75,8 @@ namespace DebugServer
 	void OnPgifDmaWrite(uint32_t address, uint32_t value, uint32_t bits, uint32_t before, uint32_t after);
 	void OnStateLoadAttempt();
 	bool IOPExceptionCaptured();
+	// CPU thread: retain a pending hardware IRQ at a paused debugger boundary.
+	bool DeferIOPInterruptDispatch();
 	// JIT trap call sites: preserve provenance without changing guest PC/CP0/BD.
 	// taggedInstructionPC: aligned PC with bit 0 carrying the delay-slot flag.
 	void ExecuteEEBreak(uint32_t taggedInstructionPC, uint32_t opcode);

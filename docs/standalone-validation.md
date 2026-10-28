@@ -5,6 +5,16 @@ debug the application in a separate chat. SMS, Jellyfin and media playback are
 not prerequisites for this suite. Their incident recipes remain historical and
 do not determine whether these MCP checks pass.
 
+## S2b2b update
+
+The current command runs **53 live checks and 255 Node tests**. Six new checks
+use a fourth fixture with its own IOP thread, current IE enabled and a growing
+VBlank callback count. The native fix preserves a breakpoint stop instead of
+dispatching an IRQ after pause. Two restore cases abort after actual submission
+and discard a real completion reply, then reconcile by receipt without retry.
+Pass `--irq-fixture <directory>` to reuse its build; otherwise Docker builds it.
+[Contract, extra 13 IOP regressions and GUI blocker](irq-pause-boundary.md).
+
 ## S2b2a update
 
 The current runner adds eight native savestate checks, for **45 live checks and
@@ -39,7 +49,7 @@ Use the current compiled PCSX2 integration and a private configuration root with
 `inis/PCSX2.ini` referring to your own BIOS. Node/npm, Python and the source
 debug backends must be available. The screenshot/capture checks require the
 native FFmpeg DLLs and ffprobe described in [media capture](media-capture.md).
-Docker builds the two homebrew fixtures using the already pinned PS2SDK image.
+Docker builds the four homebrew fixtures using the already pinned PS2SDK image.
 
 This absolute command works from another directory:
 
@@ -53,7 +63,7 @@ Elsewhere, pass your configured root. Test processes copy the INI into their
 own roots, use separate debug ports and stop only the emulators they launch.
 BIOS files, local settings and generated artifacts are not published.
 
-The command builds/tests TypeScript, builds the fixtures and runs six native
+The command builds/tests TypeScript, builds the fixtures and runs seven native
 suites sequentially. `validation.json` and separate build/suite logs record the
 result and hashes. Reuse retained fixtures without Docker using both
 `--render-fixture <directory>` and `--sif-fixture <directory>`; their manifests
@@ -137,8 +147,8 @@ The first transfer fixture failed to link an unavailable EE `DelayThread` API;
 the final fixture uses a bounded CP0-count observation loop. None of these
 attempts is substituted for the accepted runs.
 
-Next MCP work after S2b2a: GUI replacement, remaining restore interruption paths,
-interrupt-active IOP observations and broader branch/device cases;
+Next MCP work after S2b2b: GUI replacement and broader branch/device cases;
+native synchronous-load interruption/rollback remains deferred;
 then bounded long-run/CI tests and editor integration.
 Application SIF2/audio investigation is a separate backlog; it is not the
 automatic next task when continuing MCP development.

@@ -98,7 +98,15 @@ release/state-load-integration-20261027/integration.json
 release/state-load-delivery-20261027.json
 ```
 
-## Next acceptance gates
+## S2b2b follow-up (2026-10-28)
+
+[Dispatched restore reconciliation](irq-pause-boundary.md) adds real socket
+forward/abort and completion-reply discard tests. They preserve an actual loaded
+receipt or return unknown until a read-only query reconciles it; no mutation is
+retried. These close the after-submission result-handling gate, not interruption
+of native deserialization or SDK cancellation-notification transport.
+
+## Next acceptance gates at S2b2a
 
 S2b2 remains partial. GUI ownership replacement during stepping was not tested:
 the computer-use runtime failed initialization with `failed to write kernel

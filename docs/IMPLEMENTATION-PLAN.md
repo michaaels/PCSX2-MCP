@@ -1,6 +1,6 @@
 # Plan de implementación y publicación
 
-Actualizado: 2026-10-27. Autorizado por el usuario: implementar las mejoras del
+Actualizado: 2026-10-28. Autorizado por el usuario: implementar las mejoras del
 estudio de forks y después continuar el plan original de depuración PS2.
 
 ## Regla de entrega
@@ -33,11 +33,17 @@ identidad guardada y último recibo consultable; PINE solo confirma envío.
 Windows/TypeScript, 255 Node, 45 live y 26 archivos de integración pasaron.
 [Contrato y límites](state-load-outcomes.md).
 
-Sigue S2b2b: reemplazos GUI, interrupción nativa pendiente y casos con IRQ IOP;
-la GUI no se probó porque el runtime de control falló al inicializar también
-tras reiniciarlo. La cancelación previa al envío sí está probada; una carga
-nativa ya enviada no se puede interrumpir con esta herramienta. Después siguen
-estabilidad/CI y DAP sobre capacidades acreditadas. La
+S2b2b reproduce y corrige el despacho IRQ posterior a una pausa IOP y añade
+cancelación tras envío real/recuperación de una respuesta de restore perdida.
+Windows/TypeScript, 255 Node, 53 live, 13 regresiones IOP adicionales y
+26 archivos de integración pasaron. [Contrato](irq-pause-boundary.md).
+
+Sigue S2b2c: reemplazos GUI. Se volvió a intentar, pero el runtime de control
+falló al inicializar también tras reiniciarlo; no hubo acciones GUI. La
+cancelación después de enviar ya tiene prueba real de resultado/consulta,
+pero no interrumpe ni revierte el cargador nativo síncrono: esa capacidad se
+mantiene diferida y requiere un límite de cancelación soportado por el core.
+Después siguen estabilidad/CI y DAP sobre capacidades acreditadas. La
 corrección SIF2/audio del cliente queda como backlog de aplicación, sin aceptación
 nueva ni cambio del transporte DMA. No retomarla automáticamente al continuar MCP.
 
@@ -51,6 +57,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S2b2b | Pausa IOP con IRQ activa y reconciliación tras cancelar/perder respuesta de restore | Windows/TypeScript, 255 Node, 53 live, 13 regresiones IOP y 26 archivos probados; GUI pendiente por fallo del runtime; interrupción/rollback nativos diferidos |
 | S2b2a | Resultado real de carga de estado y último recibo consultable | Windows/TypeScript, 255 Node, 45 live y 26 archivos probados; GUI e interrupción nativa pendientes |
 | S2b1 | Generaciones de conexión, reset y restore reales | 247 Node y 37 live probados; native sin cambios; GUI/restore fallido/IRQ IOP pendientes |
 | S2a | Avance EE/IOP con deadline, guardas nativas y resultados parciales | Windows/TypeScript, 231 Node, 32 live y 26 archivos de integración probados; IRQ IOP aislada en fixture |

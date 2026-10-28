@@ -12,21 +12,28 @@ Local Windows components:
 - S2a contract: [bounded EE/IOP instruction control](instruction-control.md)
 - S2b1 contract: [connection/reset/restore recovery](connection-recovery.md)
 - S2b2a contract: [actual state-load outcomes](state-load-outcomes.md)
-- Current delivery evidence: ignored `release/state-load-delivery-20261027.json`
+- S2b2b contract: [IRQ pause and dispatched restore reconciliation](irq-pause-boundary.md)
+- Current delivery evidence: ignored `release/irq-delivery-20261028.json`
+- S2b2a evidence: ignored `release/state-load-delivery-20261027.json`
 - S2b1 evidence: ignored `release/reconnect-delivery-20261027.json`
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
 
-The current standalone suite passes 255 Node and 45 live checks, with a rebuilt
-native executable and 26-file integration. Guarded native state loads report the
+The current standalone suite passes 255 Node and 53 live checks, plus 13 extra
+IOP exception/module/reset regressions, with a rebuilt native executable and
+26-file integration. A pending IOP hardware IRQ waits for resume after a
+debugger stop; a dedicated fixture proves IRQ-enabled stepping and timed recovery.
+Actual restore abort/lost-reply tests retain or reconcile completion without retry.
+Guarded native state loads report the
 actual result and retain the last receipt for status queries. PINE save/load
 acknowledges only submission. Pre-dispatch cancellation sends no load; a native
 load already dispatched cannot be cancelled. GUI coverage remains pending due
 to computer-use initialization failure. Connections
 isolate old callbacks/queued commands, with actual reset/restore evidence. Step tools
 accept CPU selection and bounded execution, returning structured/partial JSON.
-The IOP instruction fixture isolates IRQ; arbitrary interrupt-active stepping
-remains a separate gate. The standalone suite uses minimal homebrew programs. It covers launch, identity,
+The original instruction fixture isolates IRQ; the separate IRQ fixture exercises
+its own enabled-IRQ worker/callback. Arbitrary interrupt/device/branch behavior
+remains unaccepted. The standalone suite uses minimal homebrew programs. It covers launch, identity,
 breakpoints, memory/register/source/argument reads, instruction control, real
 screenshots/video and SIF observation guards without SMS/Jellyfin. It is not
 proof that an arbitrary project or every PS2 instruction/device works.

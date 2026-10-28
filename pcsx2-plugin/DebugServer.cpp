@@ -3881,6 +3881,15 @@ namespace DebugServer
 		return s_exception.iop && s_exceptionPending.load() != 0;
 	}
 
+	bool DeferIOPInterruptDispatch()
+	{
+		// The EE performs one final IOP event test after an IOP breakpoint exits
+		// its execution block. Delivering an IRQ there would overwrite the paused
+		// PC/CP0 after the debugger already observed the hit. Leave it pending;
+		// the ordinary event test delivers it when execution resumes.
+		return s_running.load() && VMManager::GetState() == VMState::Paused;
+	}
+
 	void OnIOPException(uint32_t code, uint32_t pc, bool branchDelay, uint32_t previousStatus)
 	{
 		const InstructionOrigin origin = s_iopOrigin;

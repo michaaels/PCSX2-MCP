@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { createServer } from 'node:net';
+import { createServer, createConnection } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -36,6 +36,31 @@ const result={kind:'guarded_state_load_validation',native_sha256:digest(await fs
  physical_validation:'not_performed',native_modified:true};
 const passed=t=>{result.checks.push(t);console.log('PASS '+t);};
 const deferred=()=>{let resolve;const promise=new Promise(ok=>{resolve=ok;});return{promise,resolve};};
+// Real loopback fault injection. Forward the mutation to PCSX2, then abort the
+// caller; optionally discard its actual native reply. Never fake a load result.
+async function loadWithFault(slot, dropReply) {
+ const abort=new AbortController(),sockets=new Set(),wire={requests:[],native_reply:null,abort_after_write:false};
+ const proxy=createServer(peer=>{
+   const upstream=createConnection({host:'127.0.0.1',port});sockets.add(peer);sockets.add(upstream);
+   for(const [a,b]of [[peer,upstream],[upstream,peer]]){a.on('error',()=>b.destroy());a.on('close',()=>{sockets.delete(a);b.destroy();});}
+   let input='',reply='',loading=false;
+   peer.setEncoding('utf8');upstream.setEncoding('utf8');
+   peer.on('data',chunk=>{input+=chunk;let end;while((end=input.indexOf('\n'))>=0){
+     const line=input.slice(0,end);input=input.slice(end+1);const command=JSON.parse(line);
+     if(command.cmd==='state_load'){loading=true;wire.requests.push(command);}
+     upstream.write(line+'\n',()=>{if(command.cmd==='state_load'){wire.abort_after_write=true;abort.abort();}});
+   }});
+   upstream.on('data',chunk=>{reply+=chunk;let end;while((end=reply.indexOf('\n'))>=0){
+     const line=reply.slice(0,end);reply=reply.slice(end+1);
+     if(loading){wire.native_reply=JSON.parse(line);loading=false;if(dropReply){peer.destroy();continue;}}
+     if(!peer.destroyed)peer.write(line+'\n');
+   }});
+ });
+ await new Promise((ok,no)=>{proxy.once('error',no);proxy.listen(0,'127.0.0.1',ok);});
+ const client=new DebugServerClient('127.0.0.1',proxy.address().port);
+ try {await client.connect();const outcome=await performStateLoad(client,null,slot,abort.signal);return{outcome,wire};}
+ finally {client.disconnect();for(const socket of sockets)socket.destroy();await new Promise(ok=>proxy.close(ok));}
+}
 let owned=false;
 async function call(name,args={}){const r=await mcp.callTool({name,arguments:args},undefined,{timeout:60000});assert.ok(!r.isError,JSON.stringify(r.content));return JSON.parse(r.content[0].text);}
 async function cursor(){let h=await inspector.readEvents(0,200);while(h.events.length===200)h=await inspector.readEvents(h.next_cursor,200);return h.next_cursor;}
@@ -127,6 +152,26 @@ try{
  assert.deepEqual(await inspector.getStatus(),status);assert.deepEqual(await inspector.getCapabilities(),cap);
  result.retained_status=retained;
  passed('receipt survives reconnect, replaced receipts remain unknown and duplicate operation ID refuses another load');
+
+ await inspector.advanceFrames(4);assert.notEqual(await inspector.readMemoryStrict(counter,4),savedCounter);
+ const aborted=await loadWithFault(4,false);result.observations.push({case:'abort_after_real_write',...aborted});
+ assert.equal(aborted.wire.abort_after_write,true);assert.equal(aborted.wire.requests.length,1);
+ assert.equal(aborted.outcome.outcome,'loaded');assert.equal(aborted.outcome.cancellation_requested,true);
+ assert.equal(aborted.outcome.receipt.operation_id,aborted.wire.requests[0].operation_id);
+ assert.deepEqual(aborted.outcome.receipt,aborted.wire.native_reply);
+ assert.equal(await inspector.readMemoryStrict(counter,4),savedCounter);
+ assert.equal((await call('pcsx2_load_state_status',{operation_id:aborted.outcome.operation_id})).loaded,true);
+ passed('abort after a real native request write preserves the completed restore and queryable receipt');
+
+ await inspector.advanceFrames(4);assert.notEqual(await inspector.readMemoryStrict(counter,4),savedCounter);
+ const dropped=await loadWithFault(4,true);result.observations.push({case:'abort_and_discard_actual_reply',...dropped});
+ assert.equal(dropped.wire.abort_after_write,true);assert.equal(dropped.wire.requests.length,1);
+ assert.equal(dropped.wire.native_reply.loaded,true);assert.equal(dropped.outcome.outcome,'unknown');
+ assert.equal(dropped.outcome.loaded,null);assert.equal(dropped.outcome.completion_confirmed,false);
+ assert.equal(dropped.outcome.cancellation_requested,true);assert.equal(await inspector.readMemoryStrict(counter,4),savedCounter);
+ const reconciled=await call('pcsx2_load_state_status',{operation_id:dropped.outcome.operation_id});
+ assert.equal(reconciled.loaded,true);assert.deepEqual(reconciled.receipt,dropped.wire.native_reply);result.reconciled=reconciled;
+ passed('lost real native completion reply remains unknown until read-only reconciliation proves the restore; no retry');
  result.passed=true;
 }catch(error){result.passed=false;result.failure=String(error);throw error;}
 finally{

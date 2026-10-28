@@ -121,6 +121,11 @@ def main() -> None:
         '#include "R3000A.h"\n#include "DebugTools/DebugServer.h"', str(iop_source))
     iop_text = replace_once(iop_text, 'void psxReset()\n{',
         'void psxReset()\n{\n\tDebugServer::OnIOPReset();', str(iop_source))
+    iop_text = replace_once(iop_text,
+        '\tif ((psxHu32(0x1078) != 0) && ((psxHu32(0x1070) & psxHu32(0x1074)) != 0))',
+        '\t// Preserve the debugger stop; deliver pending hardware IRQs on resume.\n'
+        '\tif (!DebugServer::DeferIOPInterruptDispatch() &&\n'
+        '\t\t(psxHu32(0x1078) != 0) && ((psxHu32(0x1070) & psxHu32(0x1074)) != 0))', str(iop_source))
     start = iop_text.index('void psxException(u32 code, u32 bd)')
     end = iop_text.index('\n}', start) + 2
     block = iop_text[start:end]

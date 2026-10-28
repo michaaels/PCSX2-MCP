@@ -1,6 +1,6 @@
 # MCP development progress
 
-Updated: 2026-10-27. This records the debugging extensions after the original main
+Updated: 2026-10-28. This records the debugging extensions after the original main
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
 
@@ -15,6 +15,7 @@ priority. Application audio/SIF2 work remains a separate backlog.
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| IRQ-active pause/reconciliation | S2b2b, this delivery | Defers pending IOP hardware IRQ dispatch after a debugger stop; real post-dispatch abort/lost-reply restore checks. Windows/TypeScript, 255 Node, 53 live, 13 IOP regressions and 26-file integration passed. GUI still blocked by runtime initialization. [Contract](irq-pause-boundary.md). |
 | Savestate outcomes | S2b2a, this delivery | Actual guarded native load result and last receipt; PINE acknowledgements unconfirmed. Windows/TypeScript, 255 Node, 45 live and 26-file integration passed. GUI and native in-flight interruption remain pending. [Contract](state-load-outcomes.md). |
 | Connection recovery | S2b1, this delivery | Per-connection queues/buffers/callbacks and scoped continuations; actual ELF reset and PINE restore. 247 Node and 37 live checks passed. Native unchanged. [Contract](connection-recovery.md). |
 | Bounded EE/IOP instructions | S2a, this delivery | CPU selection, shared sequence budget, native identity/PC guards, partial JSON results, timeout cleanup/recovery. 231 Node, 32 live and 26-file integration passed. IOP fixture masks current IRQ enable; broader game/branch behavior remains open. [Contract](instruction-control.md). |

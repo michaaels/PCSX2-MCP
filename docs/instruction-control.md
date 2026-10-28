@@ -135,3 +135,13 @@ reconnects. Actual reset/restore rejects old instruction identities and recovers
 fresh inspection. [Recovery contract](connection-recovery.md) records 247 Node
 and 37 live checks, with the same native executable. GUI replacement and broader
 interrupt-active instruction behavior remain separate acceptance gates.
+
+## S2b2b follow-up (2026-10-28)
+
+[IRQ-active pause validation](irq-pause-boundary.md) adds a separate worker and
+actual VBlank callback fixture without masking current IE. It reproduces and
+fixes hardware IRQ dispatch after an IOP breakpoint has already paused the VM.
+Six checks cover exact vectors, enabled IRQ activity, step/step-over and timeout
+with callback progress/recovery. The full suite passes 255 Node / 53 live and
+13 additional IOP regressions. The original S2a IRQ-isolated acceptance above
+remains historical; no arbitrary game/branch/device or GUI coverage is inferred.
