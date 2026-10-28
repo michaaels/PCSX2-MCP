@@ -99,18 +99,34 @@ export interface EvalResult {
 
 type CpuTarget = 'ee' | 'iop';
 
+interface PendingDebugReply {
+  resolve: (value: any) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+interface DebugConnection {
+  socket: net.Socket;
+  state: 'connecting' | 'connected' | 'closed';
+  buffer: string;
+  bufferBytes: number;
+  queue: Promise<void>;
+  pending?: PendingDebugReply;
+  connectTimer?: ReturnType<typeof setTimeout>;
+  rejectConnect?: (error: Error) => void;
+}
+
+interface ConnectionScope { connection: DebugConnection }
+
 export class DebugServerClient {
   private host: string;
   private port: number;
-  private socket: net.Socket | null = null;
-  private connected = false;
-  private responseBuffer = '';
-  private pendingResolve: ((data: any) => void) | null = null;
-  private pendingReject: ((err: Error) => void) | null = null;
-  private commandQueue: Promise<void> = Promise.resolve();
-  private automationBusy = false;
-  private exclusiveToken?: symbol;
-  private sessionScope = new AsyncLocalStorage<symbol>();
+  private connection?: DebugConnection;
+  private automationOwner?: ConnectionScope;
+  private exclusiveScope?: ConnectionScope;
+  private sessionScope = new AsyncLocalStorage<ConnectionScope>();
+
+  private get socket(): net.Socket | undefined { return this.connection?.socket; }
 
   constructor(host = '127.0.0.1', port = defaultPorts().debug) {
     this.host = host;
@@ -118,125 +134,144 @@ export class DebugServerClient {
   }
 
   async connect(): Promise<void> {
+    this.assertManagementScope();
+    if (this.connection) this.retireConnection(this.connection, new Error('DebugServer connection replaced'));
+    const connection: DebugConnection = { socket: new net.Socket(), state: 'connecting',
+      buffer: '', bufferBytes: 0, queue: Promise.resolve() };
+    this.connection = connection;
+    connection.socket.setEncoding('utf8');
     return new Promise((resolve, reject) => {
-      this.socket = new net.Socket();
-      this.socket.setEncoding('utf8');
-
-      const timeout = setTimeout(() => {
-        this.socket?.destroy();
-        reject(new Error(`Connection timeout to DebugServer at ${this.host}:${this.port}`));
-      }, 3000);
-
-      this.socket.connect(this.port, this.host, () => {
-        clearTimeout(timeout);
-        this.connected = true;
-        resolve();
-      });
-
-      this.socket.on('data', (data: string) => {
-        // The largest supported PNG is 6 MiB (8 MiB base64 plus JSON).
-        if (this.responseBuffer.length + data.length > 9 * 1024 * 1024) {
-          this.pendingReject?.(new Error('DebugServer response exceeds 9 MiB limit'));
-          this.pendingResolve = null;
-          this.pendingReject = null;
-          this.responseBuffer = '';
-          this.connected = false;
-          this.socket?.destroy();
+      connection.rejectConnect = reject;
+      connection.connectTimer = setTimeout(() => this.retireConnection(connection,
+        new Error(`Connection timeout to DebugServer at ${this.host}:${this.port}`)), 3000);
+      connection.socket.on('data', (data: string) => {
+        if (this.connection !== connection || connection.state === 'closed') return;
+        const bytes = Buffer.byteLength(data, 'utf8');
+        if (connection.bufferBytes + bytes > 9 * 1024 * 1024) {
+          this.retireConnection(connection, new Error('DebugServer response exceeds 9 MiB limit'));
           return;
         }
-        this.responseBuffer += data;
-        this.processBuffer();
+        connection.buffer += data; connection.bufferBytes += bytes;
+        this.processBuffer(connection);
       });
-
-      this.socket.on('error', (err) => {
-        clearTimeout(timeout);
-        this.connected = false;
-        if (this.pendingReject) {
-          this.pendingReject(err);
-          this.pendingResolve = null;
-          this.pendingReject = null;
-        } else {
-          reject(err);
-        }
-      });
-
-      this.socket.on('close', () => {
-        this.connected = false;
-        this.pendingReject?.(new Error('DebugServer connection closed'));
-        this.pendingResolve = null;
-        this.pendingReject = null;
+      connection.socket.on('error', error => this.retireConnection(connection, error));
+      connection.socket.on('close', () => this.retireConnection(connection, new Error('DebugServer connection closed')));
+      connection.socket.connect(this.port, this.host, () => {
+        if (this.connection !== connection || connection.state !== 'connecting') return;
+        clearTimeout(connection.connectTimer); connection.connectTimer = undefined;
+        connection.rejectConnect = undefined; connection.state = 'connected'; resolve();
       });
     });
   }
 
-  private processBuffer(): void {
-    const newlineIdx = this.responseBuffer.indexOf('\n');
-    if (newlineIdx < 0) return;
-
-    const line = this.responseBuffer.substring(0, newlineIdx);
-    this.responseBuffer = this.responseBuffer.substring(newlineIdx + 1);
-
-    if (this.pendingResolve) {
-      try {
-        const data = JSON.parse(line);
-        this.pendingResolve(data);
-      } catch (e) {
-        if (this.pendingReject) this.pendingReject(new Error(`Invalid JSON: ${line}`));
-      }
-      this.pendingResolve = null;
-      this.pendingReject = null;
+  private retireConnection(connection: DebugConnection, error: Error): void {
+    if (connection.state === 'closed') return;
+    connection.state = 'closed'; clearTimeout(connection.connectTimer);
+    connection.connectTimer = undefined;
+    const rejectConnect = connection.rejectConnect; connection.rejectConnect = undefined;
+    const pending = connection.pending; connection.pending = undefined;
+    connection.buffer = ''; connection.bufferBytes = 0;
+    if (this.connection === connection) {
+      this.connection = undefined;
+      if (this.exclusiveScope?.connection === connection) this.exclusiveScope = undefined;
+      if (this.automationOwner?.connection === connection) this.automationOwner = undefined;
     }
+    rejectConnect?.(error);
+    if (pending) { clearTimeout(pending.timer); pending.reject(error); }
+    connection.socket.destroy();
+  }
+
+  private processBuffer(connection: DebugConnection): void {
+    if (this.connection !== connection || connection.state !== 'connected') return;
+    if (!connection.pending) {
+      this.retireConnection(connection, new Error('Unexpected DebugServer response without a pending command'));
+      return;
+    }
+    const end = connection.buffer.indexOf('\n');
+    if (end < 0) return;
+    const line = connection.buffer.slice(0, end);
+    connection.buffer = connection.buffer.slice(end + 1);
+    connection.bufferBytes = Buffer.byteLength(connection.buffer, 'utf8');
+    let data: unknown;
+    try { data = JSON.parse(line); }
+    catch {
+      this.retireConnection(connection, new Error('Invalid JSON from DebugServer'));
+      return;
+    }
+    const pending = connection.pending; connection.pending = undefined;
+    clearTimeout(pending.timer); pending.resolve(data);
+    // The protocol has no IDs or unsolicited notifications. No second request
+    // can have been sent before this synchronous data callback returns.
+    if (connection.buffer.length)
+      this.retireConnection(connection, new Error('Unexpected trailing DebugServer response'));
+  }
+
+  private requireConnection(): DebugConnection {
+    const connection = this.connection, scope = this.sessionScope.getStore();
+    if (scope && scope.connection !== connection) throw new Error('DebugServer connection changed during operation');
+    if (!connection || connection.state !== 'connected') throw new Error('Not connected to PCSX2 Debug Server');
+    if (this.exclusiveScope && scope !== this.exclusiveScope)
+      throw new Error('A scenario owns this DebugServer connection; wait or cancel that scenario first');
+    return connection;
   }
 
   private async send(cmd: Record<string, any>): Promise<any> {
-    if (this.exclusiveToken && this.sessionScope.getStore() !== this.exclusiveToken) {
-      throw new Error('A scenario owns this DebugServer connection; wait or cancel that scenario first');
-    }
-    // The newline protocol has no request IDs, so replies must stay in order.
-    const result = this.commandQueue.then(() => this.sendCommand(cmd));
-    this.commandQueue = result.then(() => {}, () => {});
+    const connection = this.requireConnection();
+    // Bind at enqueue time: a retired command must never migrate to a new VM.
+    const result = connection.queue.then(() => this.sendCommand(connection, cmd));
+    connection.queue = result.then(() => {}, () => {});
     return result;
   }
 
-  private async sendCommand(cmd: Record<string, any>): Promise<any> {
-    if (!this.connected || !this.socket) {
-      throw new Error('Not connected to PCSX2 Debug Server');
-    }
-
+  private async sendCommand(connection: DebugConnection, cmd: Record<string, any>): Promise<any> {
+    if (this.connection !== connection || connection.state !== 'connected')
+      throw new Error('DebugServer connection changed before queued command');
+    const encoded = JSON.stringify(cmd) + '\n';
     return new Promise((resolve, reject) => {
-      const onError = (err: Error) => { clearTimeout(timeout); reject(err); };
-      const timeout = setTimeout(() => {
-        if (this.pendingReject === onError) {
-          this.pendingResolve = null;
-          this.pendingReject = null;
-          // A late reply cannot be matched safely to the next command.
-          this.connected = false;
-          this.socket?.destroy();
-          reject(new Error(`Command timeout: ${cmd.cmd}`));
-        }
-      }, 10000);
-      this.pendingResolve = (data) => { clearTimeout(timeout); resolve(data); };
-      this.pendingReject = onError;
-      this.socket!.write(JSON.stringify(cmd) + '\n');
+      const pending: PendingDebugReply = { resolve, reject, timer: setTimeout(() => {
+        if (connection.pending === pending)
+          this.retireConnection(connection, new Error(`Command timeout: ${cmd.cmd}`));
+      }, 10000) };
+      connection.pending = pending;
+      connection.socket.write(encoded, error => {
+        if (error) this.retireConnection(connection, error);
+      });
     });
   }
 
   disconnect(): void {
-    this.socket?.destroy();
-    this.socket = null;
-    this.connected = false;
+    this.assertManagementScope();
+    if (this.connection) this.retireConnection(this.connection, new Error('DebugServer disconnected'));
   }
 
-  isConnected(): boolean { return this.connected; }
+  private assertManagementScope(): void {
+    const scope = this.sessionScope.getStore();
+    if (scope && scope.connection !== this.connection) throw new Error('DebugServer connection changed during operation');
+  }
+
+  isConnected(): boolean { return this.connection?.state === 'connected'; }
+
+  private async withConnectionScope<T>(operation: () => Promise<T>): Promise<T> {
+    const connection = this.requireConnection();
+    const result = await (this.sessionScope.getStore() ? operation() : this.sessionScope.run({ connection }, operation));
+    if (this.connection !== connection || connection.state !== 'connected')
+      throw new Error('DebugServer connection changed during operation');
+    return result;
+  }
 
   async withExclusiveSession<T>(operation: () => Promise<T>): Promise<T> {
-    if (this.exclusiveToken || this.automationBusy) throw new Error('Another scenario or frame/input operation is active');
-    const token = Symbol('debug-session');
-    this.exclusiveToken = token;
+    const connection = this.requireConnection();
+    if (this.exclusiveScope || this.automationOwner) throw new Error('Another scenario or frame/input operation is active');
+    const scope = { connection }; this.exclusiveScope = scope;
     try {
-      await this.commandQueue;
-      return await this.sessionScope.run(token, operation);
-    } finally { this.exclusiveToken = undefined; }
+      await connection.queue;
+      if (this.connection !== connection || connection.state !== 'connected')
+        throw new Error('DebugServer connection changed before exclusive operation');
+      const result = await this.sessionScope.run(scope, operation);
+      if (this.connection !== connection || connection.state !== 'connected')
+        throw new Error('DebugServer connection changed during exclusive operation');
+      return result;
+    } finally { if (this.exclusiveScope === scope) this.exclusiveScope = undefined; }
   }
 
   async installSourceBreakpoints(groupId: string, addresses: string[], expected: { session: number; process_id: number; elf: string; elf_crc: string }) {
@@ -535,36 +570,38 @@ export class DebugServerClient {
   async advanceFrames(frames: number, options: { input?: InputOptions; timeoutMs?: number; signal?: AbortSignal } = {}) {
     const timeout = z.number().int().min(1).max(30000).parse(options.timeoutMs ?? 20000);
     options.signal?.throwIfAborted();
-    if (this.automationBusy) throw new Error('A frame/input operation is already pending on this connection');
-    this.automationBusy = true;
-    try {
-      const socket = this.socket;
-      let started;
-      try { started = await this.startFrameAdvance(frames, options.input); }
-      catch (error) {
-        if (!this.isConnected()) throw new Error(`Frame startup failed without an operation ID; cancellation could not be confirmed: ${error instanceof Error ? error.message : error}`);
-        throw error;
-      }
-      const deadline = performance.now() + timeout;
+    return this.withConnectionScope(async () => {
+      if (this.automationOwner) throw new Error('A frame/input operation is already pending on this connection');
+      const owner = { connection: this.requireConnection() }; this.automationOwner = owner;
       try {
-        for (;;) {
-          options.signal?.throwIfAborted();
-          if (this.socket !== socket) throw new Error('DebugServer connection changed during automation');
-          const result = await this.getAutomation(started.operation_id);
-          if (!result.active) return { ...result, completed: result.reason === 'completed' && result.frames_advanced === frames };
-          if (performance.now() >= deadline) throw new Error(`Frame operation ${started.operation_id} timed out`);
-          await delay(25, undefined, { signal: options.signal });
+        const socket = this.socket;
+        let started;
+        try { started = await this.startFrameAdvance(frames, options.input); }
+        catch (error) {
+          if (!this.isConnected()) throw new Error(`Frame startup failed without an operation ID; cancellation could not be confirmed: ${error instanceof Error ? error.message : error}`);
+          throw error;
         }
-      } catch (error) {
+        const deadline = performance.now() + timeout;
         try {
-          if (this.socket !== socket) throw new Error('Original connection is no longer available');
-          await this.cancelAutomation(started.operation_id);
-        } catch (cleanup) {
-          throw new Error(`${error instanceof Error ? error.message : error}; cancellation could not be confirmed: ${cleanup instanceof Error ? cleanup.message : cleanup}`);
+          for (;;) {
+            options.signal?.throwIfAborted();
+            if (this.socket !== socket) throw new Error('DebugServer connection changed during automation');
+            const result = await this.getAutomation(started.operation_id);
+            if (!result.active) return { ...result, completed: result.reason === 'completed' && result.frames_advanced === frames };
+            if (performance.now() >= deadline) throw new Error(`Frame operation ${started.operation_id} timed out`);
+            await delay(25, undefined, { signal: options.signal });
+          }
+        } catch (error) {
+          try {
+            if (this.socket !== socket) throw new Error('Original connection is no longer available');
+            await this.cancelAutomation(started.operation_id);
+          } catch (cleanup) {
+            throw new Error(`${error instanceof Error ? error.message : error}; cancellation could not be confirmed: ${cleanup instanceof Error ? cleanup.message : cleanup}`);
+          }
+          throw error;
         }
-        throw error;
-      }
-    } finally { this.automationBusy = false; }
+      } finally { if (this.automationOwner === owner) this.automationOwner = undefined; }
+    });
   }
 
   async readEvents(after = 0, limit = 100, waitMs = 0) {
@@ -575,21 +612,24 @@ export class DebugServerClient {
   }
 
   async waitEvent(options: { after?: number; type?: DebugEventType; timeoutMs?: number; signal?: AbortSignal } = {}) {
-    let after = options.after ?? 0;
-    const timeout = z.number().int().min(0).max(30000).parse(options.timeoutMs ?? 10000);
-    const deadline = performance.now() + timeout;
-    let dropped = false;
-    do {
-      options.signal?.throwIfAborted();
-      // Small native long-polls leave room for resume/other commands on this connection.
-      const batch = await this.readEvents(after, 200, Math.max(0, Math.min(250, Math.floor(deadline - performance.now()))));
-      options.signal?.throwIfAborted();
-      dropped ||= batch.dropped;
-      after = batch.next_cursor;
-      const matches = batch.events.filter(event => !options.type || event.type === options.type);
-      if (matches.length) return { ...batch, events: matches, dropped, timed_out: false };
-      if (performance.now() >= deadline) return { ...batch, events: [], dropped, timed_out: true };
-    } while (true);
+    options.signal?.throwIfAborted();
+    return this.withConnectionScope(async () => {
+      let after = options.after ?? 0;
+      const timeout = z.number().int().min(0).max(30000).parse(options.timeoutMs ?? 10000);
+      const deadline = performance.now() + timeout;
+      let dropped = false;
+      do {
+        options.signal?.throwIfAborted();
+        // Small native long-polls leave room for resume/other commands on this connection.
+        const batch = await this.readEvents(after, 200, Math.max(0, Math.min(250, Math.floor(deadline - performance.now()))));
+        options.signal?.throwIfAborted();
+        dropped ||= batch.dropped;
+        after = batch.next_cursor;
+        const matches = batch.events.filter(event => !options.type || event.type === options.type);
+        if (matches.length) return { ...batch, events: matches, dropped, timed_out: false };
+        if (performance.now() >= deadline) return { ...batch, events: [], dropped, timed_out: true };
+      } while (true);
+    });
   }
 
   async readLogs(after = 0, limit = 100) {

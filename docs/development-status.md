@@ -1,6 +1,6 @@
 # MCP development progress
 
-Updated: 2026-10-24. This records the debugging extensions after the original main
+Updated: 2026-10-27. This records the debugging extensions after the original main
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
 
@@ -15,6 +15,7 @@ priority. Application audio/SIF2 work remains a separate backlog.
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Connection recovery | S2b1, this delivery | Per-connection queues/buffers/callbacks and scoped continuations; actual ELF reset and PINE restore. 247 Node and 37 live checks passed. Native unchanged. [Contract](connection-recovery.md). |
 | Bounded EE/IOP instructions | S2a, this delivery | CPU selection, shared sequence budget, native identity/PC guards, partial JSON results, timeout cleanup/recovery. 231 Node, 32 live and 26-file integration passed. IOP fixture masks current IRQ enable; broader game/branch behavior remains open. [Contract](instruction-control.md). |
 | Standalone validation and step cleanup | S1, this delivery | Independent rendered and EE/IOP homebrew, repeatable runner; legacy step/step-over remove owned private points before returning. Windows/TypeScript, 223 Node, 18 live and 26-file integration passed. [Contract](standalone-validation.md). |
 | SIF/PGIF observations | 6B2b1, this delivery | Read-only paused state and last 64 actual PGIF DMA writes; high-half BCR write leaves backing word unchanged in two SMS runs. Windows build, 223 Node, 26-file integration, five live and 12 evidence checks passed. Playback still fails; ACK fix pending. [Contract](sif-diagnostics.md). |
@@ -161,11 +162,11 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay applies
 the documented reset/restore and observed module-lifetime invalidations.
 
-1. **S2b: independent reset/reconnect and broader instruction coverage.** S2a
-   accepts the documented bounded EE/IOP vectors, timeout cleanup and partial
-   sequences: 231 Node and 32 live checks. Next are reset/restore, GUI replacement,
-   reconnect generations and interrupt-active IOP; then recovery/CI.
-   Preserve unsupported branch/device limits. [Instruction contract](instruction-control.md).
+1. **S2b2: GUI ownership, restore failures and broader instruction coverage.**
+   S2b1 accepts connection-generation isolation, actual ELF reset and successful
+   PINE restore: 247 Node and 37 live checks. GUI breakpoint replacement,
+   failed/cancelled restores and interrupt-active IOP remain open, followed by
+   long-run/CI. [Recovery contract](connection-recovery.md).
 2. **Application backlog, separate chat: 6B2b2.** 6B2b1 adds
    paused SIF/PGIF state and bounded write observations; see [evidence](sif-diagnostics.md). 6B2a
    now measures a real failed attempt: known clip, zero captured PCM, stalled

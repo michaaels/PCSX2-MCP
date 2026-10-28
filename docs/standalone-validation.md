@@ -5,6 +5,13 @@ debug the application in a separate chat. SMS, Jellyfin and media playback are
 not prerequisites for this suite. Their incident recipes remain historical and
 do not determine whether these MCP checks pass.
 
+## S2b1 update
+
+The current command adds five native connection/reset/restore checks, for
+**37 live checks and 247 Node tests**. It reuses the render fixture, configures
+PINE only in its private INI and keeps generated savestates local. The Node
+connection fix needs no native rebuild. [Recovery contract](connection-recovery.md).
+
 ## S2a update
 
 The current runner also builds `build-instruction-fixture.py` and runs 14
@@ -119,8 +126,8 @@ The first transfer fixture failed to link an unavailable EE `DelayThread` API;
 the final fixture uses a bounded CP0-count observation loop. None of these
 attempts is substituted for the accepted runs.
 
-Next MCP work after S2a: reset/restore/GUI replacement and reconnect-generation
-coverage, interrupt-active IOP observations and broader branch/device cases;
+Next MCP work after S2b1: GUI replacement, failed/cancelled restore paths,
+interrupt-active IOP observations and broader branch/device cases;
 then bounded long-run/CI tests and editor integration.
 Application SIF2/audio investigation is a separate backlog; it is not the
 automatic next task when continuing MCP development.

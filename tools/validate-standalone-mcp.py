@@ -56,7 +56,8 @@ def main():
                 if file.is_file():assert sha(file)==manifest['sha256'][file.name],f'Stale fixture input {file.name}'
         scripts=[('standalone','standalone-live.mjs',render),('sif-transfer','sif-transfer-live.mjs',sif),
                  ('sif-guards','sif-live.mjs',render/'standalone.elf'),
-                 ('instructions','instruction-live.mjs',instructions)]
+                 ('instructions','instruction-live.mjs',instructions),
+                 ('reconnect','reconnect-live.mjs',render)]
         for name,script,fixture in scripts:
             target=output/name
             run(name,['node',repo/'pcsx2-mcp-server/test'/script,emulator,fixture,configured,target])

@@ -7,6 +7,14 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+S2b1 (2026-10-27): TypeScript build, 247 Node (16 new) and 37 live checks passed.
+The original ten-test fault baseline had eight failures, one timeout and one pass. Connection generations now
+isolate queued/pending work, buffers, callbacks, scoped continuations and owner
+cleanup. Five new native checks cover 20 replacements, pending waits/exclusive
+work, ELF reset, actual PINE save and restored RAM across reconnect. Native and
+its previous integration hashes remain unchanged; no native rebuild/recheck.
+[Contract and limits](connection-recovery.md).
+
 S2a (2026-10-24): Windows/TypeScript, 231 Node (eight new), 32 independent live
 checks and 26-file integration passed. EE/IOP instructions, real call step-over,
 foreign point refusal/interruption, 100 ms native timeout/recovery, stale native

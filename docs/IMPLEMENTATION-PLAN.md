@@ -1,6 +1,6 @@
 # Plan de implementación y publicación
 
-Actualizado: 2026-10-24. Autorizado por el usuario: implementar las mejoras del
+Actualizado: 2026-10-27. Autorizado por el usuario: implementar las mejoras del
 estudio de forks y después continuar el plan original de depuración PS2.
 
 ## Regla de entrega
@@ -24,8 +24,12 @@ parciales de `step`/`step_over`: 231 Node y 32 live pasaron, sin SMS/Jellyfin.
 El fixture IOP aísla IRQ; no acredita cualquier flujo de juego.
 [Contrato](instruction-control.md).
 
-Sigue S2b: ampliar reset/restore, reemplazos GUI, reconexión y casos con IRQ IOP,
-estabilidad/reconexión y CI; después DAP sobre capacidades acreditadas. La
+S2b1 separa colas/respuestas/continuaciones por conexión y prueba reset y restore
+reales: 247 Node y 37 live pasaron. Native permanece sin cambios.
+[Contrato](connection-recovery.md).
+
+Sigue S2b2: reemplazos GUI, restore fallido/cancelado y casos con IRQ IOP;
+después estabilidad/CI y DAP sobre capacidades acreditadas. La
 corrección SIF2/audio del cliente queda como backlog de aplicación, sin aceptación
 nueva ni cambio del transporte DMA. No retomarla automáticamente al continuar MCP.
 
@@ -39,6 +43,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S2b1 | Generaciones de conexión, reset y restore reales | 247 Node y 37 live probados; native sin cambios; GUI/restore fallido/IRQ IOP pendientes |
 | S2a | Avance EE/IOP con deadline, guardas nativas y resultados parciales | Windows/TypeScript, 231 Node, 32 live y 26 archivos de integración probados; IRQ IOP aislada en fixture |
 | S1 | Validación del MCP con homebrew independiente; cleanup propio de step/step-over | Windows/TypeScript, 223 Node, 18 live y 26 archivos de integración probados; sin SMS/Jellyfin |
 | F1 | Puertos por proceso, directorios de datos independientes y aislamiento de sockets/sesiones; dos instancias Windows | Implementado y probado; incluido en main con esta entrega |

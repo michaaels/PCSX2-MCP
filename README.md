@@ -47,6 +47,12 @@ debugging, source/arguments, screenshots/video and SIF observations without SMS
 or Jellyfin. See [Windows commands and evidence](docs/standalone-validation.md)
 and [context for another debugging chat](docs/MCP-HANDOFF.md).
 
+## Session recovery
+
+DebugServer connections isolate queued requests, buffers and callbacks across
+reconnects. Independent tests also cover actual ELF reset and savestate restore.
+[Contract, evidence and limits](docs/connection-recovery.md).
+
 ## Bounded EE/IOP stepping
 
 `pcsx2_step` and `pcsx2_step_over` accept `cpu: "ee" | "iop"` and

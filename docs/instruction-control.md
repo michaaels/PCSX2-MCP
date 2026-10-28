@@ -127,3 +127,11 @@ release/instruction-delivery-20261024.json
 Next S2b: reset/restore/GUI replacement and reconnect-generation coverage,
 interrupt-active IOP observations and broader branch/device cases with separate
 acceptance. CI and editor work follow supported capabilities, not assumed ones.
+
+## S2b1 follow-up (2026-10-27)
+
+The Node client now isolates sockets, queues and operation scopes across
+reconnects. Actual reset/restore rejects old instruction identities and recovers
+fresh inspection. [Recovery contract](connection-recovery.md) records 247 Node
+and 37 live checks, with the same native executable. GUI replacement and broader
+interrupt-active instruction behavior remain separate acceptance gates.

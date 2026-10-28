@@ -10,10 +10,13 @@ Local Windows components:
 - Independent test command: `tools/validate-standalone-mcp.py`
 - Test contract and remaining limits: [standalone validation](standalone-validation.md)
 - S2a contract: [bounded EE/IOP instruction control](instruction-control.md)
-- Current delivery evidence: ignored `release/instruction-delivery-20261024.json`
+- S2b1 contract: [connection/reset/restore recovery](connection-recovery.md)
+- Current delivery evidence: ignored `release/reconnect-delivery-20261027.json`
+- S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
 
-The current standalone suite passes 231 Node and 32 live checks. Step tools
+The current standalone suite passes 247 Node and 37 live checks. Connections
+isolate old callbacks/queued commands, with actual reset/restore evidence. Step tools
 accept CPU selection and bounded execution, returning structured/partial JSON.
 The IOP instruction fixture isolates IRQ; arbitrary interrupt-active stepping
 remains a separate gate. The standalone suite uses minimal homebrew programs. It covers launch, identity,
