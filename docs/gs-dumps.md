@@ -1,9 +1,14 @@
 # Owned GS dumps
 
+M2 (2026-10-28) adds a separate continuous-drawing fixture and accepts D3D11
+replay on explicitly selected Intel/NVIDIA devices: 18 live checks passed.
+The static no-transfer artifact still produces no D3D11 replay frame.
+[Controlled comparison and commands](gs-replay-validation.md).
+
 M1 (2026-10-28) validates capture/ownership/limits and replay with pinned
 PCSX2 v2.9.147. Eight live checks passed with an explicit **software renderer
 for replay**, using the optional `--replay-software` test flag. The same static
-dump did not yield a capturable D3D11 replay frame; that gate remains open.
+dump did not yield a capturable D3D11 replay frame; that static case remains limited.
 [Evidence and scope](pcsx2-2.9-migration.md). The 2.6 implementation/results
 below remain historical.
 

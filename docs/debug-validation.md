@@ -7,6 +7,12 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+M2 (2026-10-28): 18 live GS capture/replay checks passed with a new continuous
+drawing fixture and a controlled Intel/NVIDIA D3D11 matrix. The static zero-GIF
+artifact still yields no frame; the dynamic artifact renders on both devices.
+Native/Node runtime unchanged; M1 suites retained without rerunning them.
+GUI initialization failed twice without input. [Evidence](gs-replay-validation.md).
+
 M1 (2026-10-28): pinned PCSX2 v2.9.147 Windows and TypeScript builds, 255 Node,
 60 standalone live and 53 additional live regressions passed. Integration agrees
 across 27 target files; legacy upgrade is checked against its own upstream.

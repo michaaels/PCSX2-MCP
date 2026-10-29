@@ -1,5 +1,10 @@
 # PCSX2 v2.9.147 migration — M1
 
+Follow-up [M2](gs-replay-validation.md) accepts D3D11 replay for continuous
+drawing on explicitly selected Intel/NVIDIA devices, with 18 further live checks.
+The static no-transfer dump limitation and supervised GUI gate remain open.
+The results below describe M1's original acceptance.
+
 Validated on Windows on 2026-10-28. The supported target is now the exact
 [PCSX2 v2.9.147 prerelease](https://github.com/PCSX2/pcsx2/releases/tag/v2.9.147),
 commit `4c3f2eaacbd181f201c094781a79b1d0f996f954`, recorded in

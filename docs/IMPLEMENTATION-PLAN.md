@@ -23,6 +23,13 @@ Estado M1: compilado y probado en Windows. Pasaron 255 Node, 60 live autónomos,
 software; D3D11 replay y prueba GUI conservan su gate pendiente.
 [Contrato, comandos, evidencia y límites](pcsx2-2.9-migration.md).
 
+M2 (2026-10-28): replay GS D3D11 acreditado con un fixture nuevo de dibujo
+continuo y adaptadores Intel/NVIDIA explícitos. Pasaron 18 checks live; native y
+runtime Node no cambian. El dump estático sin transferencias sigue sin frame
+D3D11 y conserva la aceptación software. GUI se reintentó dos veces, con reset
+del controlador, y falló antes de cualquier interacción. Sigue S2b2c;
+estabilidad/CI/DAP permanecen después. [Evidencia y reproducción](gs-replay-validation.md).
+
 Petición del usuario (2026-10-24): probar el MCP sin depender de SMS; depurar el
 proyecto en otro chat. **S1** entrega fixtures homebrew autónomos, un comando de
 validación, 18 checks live y 223 Node, y corrige la fuga del breakpoint temporal
@@ -66,6 +73,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| M2 | Fixture de dibujo continuo y comparación GS replay con dispositivo D3D11 explícito | 18 live probados en Intel/NVIDIA; binarios sin cambios; limitación estática y gate GUI pendientes |
 | M1 | Migrar a PCSX2 v2.9.147 fijado y adaptar memoria, watchpoints, backtrace, identidad ELF y FFmpeg | Windows/TypeScript, 255 Node, 60 live, 53 regresiones y 27 archivos probados; GS replay software; GUI y replay D3D11 pendientes |
 | S2b2b | Pausa IOP con IRQ activa y reconciliación tras cancelar/perder respuesta de restore | Windows/TypeScript, 255 Node, 53 live, 13 regresiones IOP y 26 archivos probados; GUI pendiente por fallo del runtime; interrupción/rollback nativos diferidos |
 | S2b2a | Resultado real de carga de estado y último recibo consultable | Windows/TypeScript, 255 Node, 45 live y 26 archivos probados; GUI e interrupción nativa pendientes |

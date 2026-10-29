@@ -14,7 +14,9 @@ Local Windows components:
 - S2b2a contract: [actual state-load outcomes](state-load-outcomes.md)
 - S2b2b contract: [IRQ pause and dispatched restore reconciliation](irq-pause-boundary.md)
 - M1 contract: [pinned PCSX2 v2.9.147 migration](pcsx2-2.9-migration.md)
-- Current delivery evidence: ignored `release/v2.9.147-delivery-20261028.json`
+- M2 contract: [controlled D3D11 GS replay](gs-replay-validation.md)
+- Current delivery evidence: ignored `release/gs-replay-delivery-20261028.json`
+- M1 evidence: ignored `release/v2.9.147-delivery-20261028.json`
 - S2b2b evidence: ignored `release/irq-delivery-20261028.json`
 - S2b2a evidence: ignored `release/state-load-delivery-20261027.json`
 - S2b1 evidence: ignored `release/reconnect-delivery-20261027.json`
@@ -23,8 +25,10 @@ Local Windows components:
 
 The current standalone suite passes 255 Node and 60 live checks on PCSX2
 v2.9.147, plus 53 extra source-step/IOP/input/capture/GS live regressions, with a
-rebuilt native executable and 27-file integration. GS replay uses software;
-D3D11 replay remains unaccepted. `release/windows/pcsx2-qt.exe` currently holds
+rebuilt native executable and 27-file integration. M2 adds 18 live checks:
+continuous-drawing GS replay produces real PNGs on explicit Intel/NVIDIA D3D11
+devices. The static no-transfer dump still needs software for a captured frame.
+M2 leaves native and Node runtime unchanged. `release/windows/pcsx2-qt.exe` currently holds
 the user's official executable without MCP extensions; use the modified path above.
 A pending IOP hardware IRQ waits for resume after a
 debugger stop; a dedicated fixture proves IRQ-enabled stepping and timed recovery.
