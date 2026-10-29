@@ -11,10 +11,14 @@ project in another chat. The standalone suite and its own acceptance take
 priority. Application audio/SIF2 work remains a separate backlog.
 [Commands and evidence](standalone-validation.md); [handoff](MCP-HANDOFF.md).
 
+User direction on 2026-10-28: migrate native PCSX2 to pinned v2.9.147 before
+resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md).
+
 ## Delivered improvements
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| PCSX2 v2.9.147 | M1, this delivery | Native memory/stack/watchpoint adapters, full HostFs ELF guards and owned final-frame duration fix. Windows/TypeScript, 255 Node, 60 standalone live, 53 additional live and 27-file integration passed. GS replay accepted with software; D3D11 replay/GUI pending. [Contract](pcsx2-2.9-migration.md). |
 | IRQ-active pause/reconciliation | S2b2b, this delivery | Defers pending IOP hardware IRQ dispatch after a debugger stop; real post-dispatch abort/lost-reply restore checks. Windows/TypeScript, 255 Node, 53 live, 13 IOP regressions and 26-file integration passed. GUI still blocked by runtime initialization. [Contract](irq-pause-boundary.md). |
 | Savestate outcomes | S2b2a, this delivery | Actual guarded native load result and last receipt; PINE acknowledgements unconfirmed. Windows/TypeScript, 255 Node, 45 live and 26-file integration passed. GUI and native in-flight interruption remain pending. [Contract](state-load-outcomes.md). |
 | Connection recovery | S2b1, this delivery | Per-connection queues/buffers/callbacks and scoped continuations; actual ELF reset and PINE restore. 247 Node and 37 live checks passed. Native unchanged. [Contract](connection-recovery.md). |

@@ -62,7 +62,8 @@ def main():
                  ('instructions','instruction-live.mjs',instructions),
                  ('reconnect','reconnect-live.mjs',render),
                  ('state-load','state-load-live.mjs',render),
-                 ('irq','irq-live.mjs',irq)]
+                 ('irq','irq-live.mjs',irq),
+                 ('api-migration','api-migration-live.mjs',render)]
         for name,script,fixture in scripts:
             target=output/name
             run(name,['node',repo/'pcsx2-mcp-server/test'/script,emulator,fixture,configured,target])

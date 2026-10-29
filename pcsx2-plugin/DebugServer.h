@@ -54,6 +54,7 @@ namespace DebugServer
 	void OnGSDumpClosed(const std::string& path, bool complete);
 	bool CaptureVideoFrameAllowed(const std::string& path);
 	bool CapturePacketAllowed(const std::string& path, uint64_t bytes);
+	bool OwnsMediaCapture(const std::string& path);
 	void OnCaptureError(const std::string& path);
 	void OnCaptureClosed(const std::string& path, bool complete);
 	void OnEEException(uint32_t code, uint32_t pc, bool branchDelay, bool nested);

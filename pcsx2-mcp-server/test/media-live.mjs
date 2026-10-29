@@ -56,7 +56,7 @@ try {
   assert.ok(measured.metrics.frame_count > 0); assert.equal(measured.metrics.sample_rate, 48000);
   assert.equal(measured.acceptance, 'not_evaluated'); assert.equal(measured.av_sync, 'not_measured');
   assert.equal((await inspector.getStatus()).paused, false);
-  passed('fresh native SMS capture yields hash-pinned per-channel PCM metrics without pausing VM or claiming audible playback');
+  passed('fresh native capture yields hash-pinned per-channel PCM metrics without pausing VM or claiming audible playback');
   await inspector.pause();
   const b = await start({ frames: 8, audio: false, width: 320, height: 240 });
   const pending = await read(b.operation_id, 0);
@@ -85,12 +85,15 @@ try {
   assert.equal(expired.reason, 'no_video_frames'); assert.equal(expired.artifact.verified, false);
   assert.equal((await inspector.getStatus()).paused, true);
   passed('native wall limit finalizes a paused empty recording without resuming or claiming a playable file');
-  const d = await start({ frames: 300, audio: false, max_payload_bytes: 1024 });
+  const d = await start({ frames: 300, audio: false, width: 1280, height: 720, max_payload_bytes: 1024 });
   await inspector.advanceFrames(12);
+  // Buffered codecs can defer packets until EOF; check the ceiling on the
+  // explicit owned flush as well, without waiting for further guest execution.
+  await call('pcsx2_capture_stop', { operation_id: d.operation_id });
   const failed = await read(d.operation_id);
+  results.payload_limit = failed;
   assert.equal(failed.state, 'failed'); assert.equal(failed.reason, 'payload_limit');
   assert.ok(failed.payload_bytes <= 1024); assert.equal(failed.artifact.verified, false);
-  results.payload_limit = failed;
   passed('encoded payload ceiling rejects a partial capture and keeps it unverified');
   const e = await start({ frames: 120, audio: false, width: 320, height: 240 });
   await inspector.advanceFrames(10);

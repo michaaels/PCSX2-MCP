@@ -155,9 +155,16 @@ try {
   assert.equal(Number(normal.report.instruction_evidence.opcode), opcode);
   assert.equal(normal.report.instruction_evidence.branch_delay, false);
   assert.deepEqual(await inspector.listBreakpoints('iop'), before);
-  assert.equal(normal.report.context.screenshot.ok, false);
+  // Renderer startup may already have supplied a frame on a newer upstream.
+  // Verify actual availability instead of requiring a missing-frame failure.
+  assert.equal(typeof normal.report.context.screenshot.ok, 'boolean');
+  if (normal.report.context.screenshot.ok) {
+    assert.ok(normal.report.context.screenshot.width > 0 && normal.report.context.screenshot.height > 0);
+    const image = await fs.readFile(normal.artifacts.screenshot);
+    assert.equal(image.subarray(0,8).toString('hex'), '89504e470d0a1a0a');
+  } else assert.ok(normal.report.context.screenshot.error.length > 0);
   passed('automatic IOP BREAK freezes 32-bit GPR/real CP0, canonical RAM, IOP context and events before polling; reconnect preserves foreign IOP breakpoint');
-  passed('IRX instruction bytes match the actual trap; no GS frame and unknown IOP module identity remain explicit partial evidence');
+  passed('IRX instruction bytes match the actual trap; screenshot availability and unknown IOP artifact identity remain explicit evidence');
   const immutable = await inspector.exceptionWatchStatus(watch.watch_id);
   await boot('normal');
   assert.deepEqual(await inspector.exceptionWatchStatus(watch.watch_id), immutable);

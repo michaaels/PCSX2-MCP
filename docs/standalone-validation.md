@@ -5,7 +5,15 @@ debug the application in a separate chat. SMS, Jellyfin and media playback are
 not prerequisites for this suite. Their incident recipes remain historical and
 do not determine whether these MCP checks pass.
 
-## S2b2b update
+## M1: PCSX2 v2.9.147
+
+The current target is pinned v2.9.147. **255 Node / 60 standalone live checks**
+passed; seven new checks cover HostFs path identity, valid/invalid/partial
+writes and break/log/both watchpoints. The command now runs eight native suites
+using the same four fixtures. Native integration manages 27 files.
+[Migration and 53 extra regressions](pcsx2-2.9-migration.md).
+
+## S2b2b update (historical)
 
 The current command runs **53 live checks and 255 Node tests**. Six new checks
 use a fourth fixture with its own IOP thread, current IE enabled and a growing
@@ -54,7 +62,7 @@ Docker builds the four homebrew fixtures using the already pinned PS2SDK image.
 This absolute command works from another directory:
 
 ```powershell
-rtk proxy python -X utf8 "D:\dev\PCSX2-MCP\tools\validate-standalone-mcp.py" --emulator "D:\dev\PCSX2-MCP\release\windows\pcsx2-qt.exe" --data-directory "D:\dev\PCSX2-MCP\release\standalone-data" --output "D:\dev\PCSX2-MCP\release\standalone-check-new"
+rtk proxy python -X utf8 "D:\dev\PCSX2-MCP\tools\validate-standalone-mcp.py" --emulator "D:\dev\PCSX2-MCP\release\windows-mcp-2.9.147\pcsx2-qt.exe" --data-directory "D:\dev\PCSX2-MCP\release\standalone-data" --output "D:\dev\PCSX2-MCP\release\standalone-check-new"
 ```
 
 Choose a new output directory for each run. `release/standalone-data` is a local,
@@ -63,7 +71,7 @@ Elsewhere, pass your configured root. Test processes copy the INI into their
 own roots, use separate debug ports and stop only the emulators they launch.
 BIOS files, local settings and generated artifacts are not published.
 
-The command builds/tests TypeScript, builds the fixtures and runs seven native
+The command builds/tests TypeScript, builds the fixtures and runs eight native
 suites sequentially. `validation.json` and separate build/suite logs record the
 result and hashes. Reuse retained fixtures without Docker using both
 `--render-fixture <directory>` and `--sif-fixture <directory>`; their manifests

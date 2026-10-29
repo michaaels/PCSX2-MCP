@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Integrate this DebugServer into upstream PCSX2 (tested on v2.6.3)."""
+"""Integrate this DebugServer into the documented pinned PCSX2 source revisions."""
 import argparse
 from pathlib import Path
 import shutil
@@ -121,11 +121,14 @@ def main() -> None:
         '#include "R3000A.h"\n#include "DebugTools/DebugServer.h"', str(iop_source))
     iop_text = replace_once(iop_text, 'void psxReset()\n{',
         'void psxReset()\n{\n\tDebugServer::OnIOPReset();', str(iop_source))
+    # v2.9 names these unchanged interrupt-controller registers explicitly.
+    irq_registers = ('HW_ICTRL', 'HW_ISTAT', 'HW_IMASK') if 'psxHu32(HW_ICTRL)' in iop_text else ('0x1078', '0x1070', '0x1074')
+    irq_pending = f'(psxHu32({irq_registers[0]}) != 0) && ((psxHu32({irq_registers[1]}) & psxHu32({irq_registers[2]})) != 0)'
     iop_text = replace_once(iop_text,
-        '\tif ((psxHu32(0x1078) != 0) && ((psxHu32(0x1070) & psxHu32(0x1074)) != 0))',
+        '\tif (' + irq_pending + ')',
         '\t// Preserve the debugger stop; deliver pending hardware IRQs on resume.\n'
         '\tif (!DebugServer::DeferIOPInterruptDispatch() &&\n'
-        '\t\t(psxHu32(0x1078) != 0) && ((psxHu32(0x1070) & psxHu32(0x1074)) != 0))', str(iop_source))
+        '\t\t' + irq_pending + ')', str(iop_source))
     start = iop_text.index('void psxException(u32 code, u32 bd)')
     end = iop_text.index('\n}', start) + 2
     block = iop_text[start:end]
@@ -337,6 +340,13 @@ def main() -> None:
         'bool GSCapture::BeginCaptureWithMode(float fps, GSVector2i recommendedResolution, float aspect, std::string filename, bool capture_video, bool capture_audio)\n{', str(capture))
     capture_text = replace_once(capture_text, '\tpf.pts = s_next_video_pts++;',
         '\tif (!DebugServer::CaptureVideoFrameAllowed(s_filename)) return false;\n\tpf.pts = s_next_video_pts++;', str(capture))
+    capture_text = replace_once(capture_text,
+        '\t\twrap_av_packet_rescale_ts(packet, codec_context->time_base, stream->time_base);',
+        '\t\t// Fixed-rate MCP video advances PTS by one codec time-base tick per frame.\n'
+        '\t\t// Newer muxers need the final packet duration explicitly to retain that frame.\n'
+        '\t\tif (packet->duration <= 0 && codec_context->codec_type == AVMEDIA_TYPE_VIDEO &&\n'
+        '\t\t\tDebugServer::OwnsMediaCapture(s_filename)) packet->duration = 1;\n'
+        '\t\twrap_av_packet_rescale_ts(packet, codec_context->time_base, stream->time_base);', str(capture))
     capture_text = replace_once(capture_text, '\t\tres = wrap_av_interleaved_write_frame(s_format_context, packet);',
         '\t\tif (!DebugServer::CapturePacketAllowed(s_filename, static_cast<uint64_t>(packet->size)))\n'
         '\t\t{ wrap_av_packet_unref(packet); return false; }\n'
@@ -420,7 +430,7 @@ def main() -> None:
         '\t\tDebugServer::OnPgifDmaWrite(addr, val, sizeof(T) * 8, before, psxHu32(addr & ~3u));', str(iop_hw_write))
     breakpoint_files[iop_hw_write] = iop_hw_text
 
-    for name in ('DebugServer.cpp', 'DebugServer.h'):
+    for name in ('DebugServer.cpp', 'DebugServer.h', 'DebugServerCompat.h'):
         original = repo / 'pcsx2-plugin' / name
         target = source / 'pcsx2/DebugTools' / name
         if not target.exists() or target.read_bytes() != original.read_bytes():

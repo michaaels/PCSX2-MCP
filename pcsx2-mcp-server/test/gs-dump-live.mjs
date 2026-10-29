@@ -11,14 +11,21 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { DebugServerClient } from '../dist/debug-server-client.js';
 
-assert.equal(process.argv.length, 6, 'Expected PCSX2, rendering ELF, configured data root, new output');
-const [executable, elf, configured, output] = process.argv.slice(2).map(value => path.resolve(value));
+assert.ok(process.argv.length === 6 || process.argv.length === 7, 'Expected PCSX2, ELF, data root, output and optional --replay-software');
+const replaySoftware = process.argv[6] === '--replay-software';
+if (process.argv.length === 7) assert.ok(replaySoftware, 'Unknown replay option');
+const [executable, elf, configured, output] = process.argv.slice(2,6).map(value => path.resolve(value));
 await fs.mkdir(output);
 const ini = await fs.readFile(path.join(configured, 'inis', 'PCSX2.ini'));
 const root = path.join(output, 'instance'), replayRoot = path.join(output, 'replay');
 for (const directory of [root, replayRoot]) {
   await fs.mkdir(path.join(directory, 'inis'), { recursive: true });
-  await fs.writeFile(path.join(directory, 'inis', 'PCSX2.ini'), ini);
+  let replayIni = ini.toString();
+  if (directory === replayRoot && replaySoftware) {
+    if (/^Renderer\s*=/m.test(replayIni)) replayIni = replayIni.replace(/^Renderer\s*=.*$/m, 'Renderer = 13');
+    else replayIni += '\n[EmuCore/GS]\nRenderer = 13\n';
+  }
+  await fs.writeFile(path.join(directory, 'inis', 'PCSX2.ini'), replayIni);
 }
 async function freePort() {
   const server = createServer();
@@ -28,7 +35,7 @@ async function freePort() {
 const port = await freePort(), replayPort = await freePort();
 const mcp = new Client({ name: 'gs-dump-live', version: '1.0' });
 const inspector = new DebugServerClient('127.0.0.1', port);
-const results = { started_at: new Date().toISOString(), executable, elf, checks: [] };
+const results = { started_at: new Date().toISOString(), executable, elf, checks: [], replay_renderer: replaySoftware ? 'software' : 'configured' };
 let owned = false, replay, replayInspector;
 const passed = name => { results.checks.push(name); console.log('PASS ' + name); };
 async function call(name, args = {}) {

@@ -14,6 +14,15 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
 
+Cambio autorizado el 2026-10-28: adaptar el MCP a **PCSX2 v2.9.147**, revisión
+`4c3f2eaacbd181f201c094781a79b1d0f996f954`. Esta migración M1 precede a la
+prueba GUI S2b2c. Mantener checkout/build/ejecutable separados de la instalación
+oficial; validar integración, compilación y suites antes de aceptar/publicar.
+Estado M1: compilado y probado en Windows. Pasaron 255 Node, 60 live autónomos,
+53 regresiones adicionales y 27 archivos de integración. Replay GS aceptado con
+software; D3D11 replay y prueba GUI conservan su gate pendiente.
+[Contrato, comandos, evidencia y límites](pcsx2-2.9-migration.md).
+
 Petición del usuario (2026-10-24): probar el MCP sin depender de SMS; depurar el
 proyecto en otro chat. **S1** entrega fixtures homebrew autónomos, un comando de
 validación, 18 checks live y 223 Node, y corrige la fuga del breakpoint temporal
@@ -57,6 +66,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| M1 | Migrar a PCSX2 v2.9.147 fijado y adaptar memoria, watchpoints, backtrace, identidad ELF y FFmpeg | Windows/TypeScript, 255 Node, 60 live, 53 regresiones y 27 archivos probados; GS replay software; GUI y replay D3D11 pendientes |
 | S2b2b | Pausa IOP con IRQ activa y reconciliación tras cancelar/perder respuesta de restore | Windows/TypeScript, 255 Node, 53 live, 13 regresiones IOP y 26 archivos probados; GUI pendiente por fallo del runtime; interrupción/rollback nativos diferidos |
 | S2b2a | Resultado real de carga de estado y último recibo consultable | Windows/TypeScript, 255 Node, 45 live y 26 archivos probados; GUI e interrupción nativa pendientes |
 | S2b1 | Generaciones de conexión, reset y restore reales | 247 Node y 37 live probados; native sin cambios; GUI/restore fallido/IRQ IOP pendientes |
@@ -75,7 +85,8 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 La dependencia de F5 evita invalidar silenciosamente la depuración existente al
 resetear/cargar estados. No es necesario cambiar de versión PCSX2 para comenzar:
-se mantiene v2.6.3 fijado. El detalle técnico de candidatos y aceptación está en
+M1 cambia el pin a v2.9.147 por petición explícita del usuario; los resultados
+v2.6.3 se conservan como históricos. El detalle técnico de candidatos y aceptación está en
 [la revisión de forks](fork-review-2026-10-21.md); el plan original vive en
 `D:\dev\PS2\ps2_multinet\docs\DEBUG-ROADMAP.md`.
 

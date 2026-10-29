@@ -41,6 +41,11 @@
 
 ## Test the MCP without a project
 
+The current native target is **PCSX2 v2.9.147**, pinned in
+[`tools/upstream.json`](tools/upstream.json). The modified executable on this
+machine is `release/windows-mcp-2.9.147/pcsx2-qt.exe`.
+[Migration, build/runtime instructions, validation and limits](docs/pcsx2-2.9-migration.md).
+
 Run `tools/validate-standalone-mcp.py` with a rebuilt emulator, a configured data
 root and a new output folder. It builds minimal homebrew fixtures and checks
 debugging, source/arguments, screenshots/video and SIF observations without SMS
@@ -480,7 +485,7 @@ protocol tests, native/live acceptance and the remaining platform/runtime limits
 
 ```powershell
 # 1. Clone the upstream PCSX2 source (we don't include it in this repo to save space)
-git clone --depth 1 --branch v2.6.3 https://github.com/PCSX2/pcsx2.git pcsx2-src
+git clone --depth 1 --branch v2.9.147 https://github.com/PCSX2/pcsx2.git pcsx2-src
 
 # 2. Integrate the DebugServer source, CMake target and VM lifecycle hooks
 python tools/apply-debug-server.py pcsx2-src
@@ -518,7 +523,7 @@ Success response (the `data` field below is abbreviated):
 Failure responses use the existing `{"ok":false,"error":"..."}` envelope. Capture work is queued onto
 the CPU thread using `Host::RunOnCPUThread`, then synchronized with the GS through
 `MTGS::SaveMemorySnapshot`. PNG encoding uses PCSX2's `RGBA8Image::SaveToBuffer`. These APIs are present in
-[PCSX2 v2.6.3](https://github.com/PCSX2/pcsx2/tree/v2.6.3) (`pcsx2/Host.h`, `pcsx2/MTGS.h`, `common/Image.h`).
+[PCSX2 v2.9.147](https://github.com/PCSX2/pcsx2/tree/v2.9.147) (`pcsx2/Host.h`, `pcsx2/MTGS.h`, `common/Image.h`).
 The CPU/GS capture wait is limited to five seconds; callbacks that finish late retain their own storage.
 The Node client serializes requests because the TCP protocol has no request IDs, handles fragmented replies,
 and drops the connection on timeout to prevent a late image being mistaken for the next reply.

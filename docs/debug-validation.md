@@ -7,6 +7,14 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+M1 (2026-10-28): pinned PCSX2 v2.9.147 Windows and TypeScript builds, 255 Node,
+60 standalone live and 53 additional live regressions passed. Integration agrees
+across 27 target files; legacy upgrade is checked against its own upstream.
+Actual mapped HostFs identity, partial/invalid writes and watchpoint logging/hits
+are covered. The final-frame MP4 defect was corrected without weakening probe
+checks. GS replay passed with software; the D3D11 replay failure remains excluded.
+[Migration, failed baselines, runtime and limits](pcsx2-2.9-migration.md).
+
 S2b2b (2026-10-28): Windows/TypeScript, 255 Node, 53 standalone live checks,
 13 extra IOP exception/module/reset regressions and 26-file integration passed.
 A real IRQ-enabled breakpoint baseline changed paused PC to `0x80000080` after

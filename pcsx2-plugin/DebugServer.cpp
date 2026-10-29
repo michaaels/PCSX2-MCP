@@ -44,6 +44,7 @@ typedef int socket_t;
 #endif
 
 #include "DebugServer.h"
+#include "DebugServerCompat.h"
 #include "DebugInterface.h"
 #include "Breakpoints.h"
 #include "MipsStackWalk.h"
@@ -54,6 +55,7 @@ typedef int socket_t;
 #include "Common.h"
 #include "Sif.h"
 #include "IopHw.h"
+#include "IopBios.h"
 #include "ps2/pgif.h"
 #include "SymbolGuardian.h"
 #include "SymbolImporter.h"
@@ -103,6 +105,18 @@ extern dma_t dma;
 
 namespace DebugServer
 {
+	// v2.9 boots homebrew with a host: relative name. Resolve it through the
+	// same HostFs mapper used by the guest, retaining full-path ELF guards.
+	static std::string currentELF()
+	{
+		const auto& guest = VMManager::GetCurrentELF();
+		if (!R3000A::ioman::is_host(guest)) return guest;
+		const auto relative = std::string_view(guest).substr(guest.find(':') + 1);
+		if (Path::IsAbsolute(relative)) return guest;
+		const auto local = R3000A::ioman::host_path(relative, false);
+		return local.empty() ? guest : "host:" + local;
+	}
+
 	static std::atomic<bool> s_running{false};
 	static int s_debugPort = 21512; // CPU thread: set only after a successful bind.
 	static thread_local uint64_t s_requestSession = 0;
@@ -158,6 +172,7 @@ namespace DebugServer
 	struct PgifWriteObservation
 	{
 		uint64_t sequence, session, epoch, resetEpoch, lifetimeEpoch;
+		// The existing wire field exposes the low 32 bits of the IOP cycle count.
 		u32 address, value, bits, before, after, iopPC, iopCycles;
 	};
 	static std::deque<PgifWriteObservation> s_pgifWrites;
@@ -833,7 +848,7 @@ namespace DebugServer
 		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
 			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
 			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
-			getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			getStr(params, "expected_elf") != currentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 			return failure("GS dump VM identity changed");
 		const std::string directory = Path::Combine(EmuFolders::DataRoot, "mcp-gs-dumps");
 		const std::string base = Path::Combine(directory, id);
@@ -843,7 +858,7 @@ namespace DebugServer
 			if (FileSystem::FileExists((base + ".gs").c_str())) return failure("Dump file already exists");
 			if (!FileSystem::CreateDirectoryPath(directory.c_str(), false)) return failure("Cannot create GS dump output directory");
 			s_dump = {}; s_dump.id = id; s_dump.base = base; s_dump.path = base + ".gs";
-			s_dump.session = s_session.load(); s_dump.epoch = s_executionEpoch; s_dump.elf = VMManager::GetCurrentELF(); s_dump.crc = VMManager::GetCurrentCRC();
+			s_dump.session = s_session.load(); s_dump.epoch = s_executionEpoch; s_dump.elf = currentELF(); s_dump.crc = VMManager::GetCurrentCRC();
 			s_dump.frames = static_cast<u32>(frames); s_dump.maxBytes = static_cast<uint64_t>(maxBytes); s_dump.active = true; s_dump.state = "queued";
 			++s_dumpSequence; s_dumpActive.store(true); s_dumpDeadline.store(steadyMillis() + timeout);
 		}
@@ -936,6 +951,12 @@ namespace DebugServer
 		});
 	}
 
+	bool OwnsMediaCapture(const std::string& path)
+	{
+		std::lock_guard lock(s_mediaMutex);
+		return s_media.active && s_media.path == path;
+	}
+
 	static std::string mediaStatus()
 	{
 		std::lock_guard lock(s_mediaMutex);
@@ -976,7 +997,7 @@ namespace DebugServer
 		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
 			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
 			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
-			getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			getStr(params, "expected_elf") != currentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 			return failure("Media capture VM identity changed");
 		const std::string directory = Path::Combine(EmuFolders::DataRoot, "mcp-media");
 		const std::string path = Path::Combine(directory, id + ".mp4");
@@ -985,7 +1006,7 @@ namespace DebugServer
 			if (s_media.active) return failure("A media capture is active or cleanup is pending");
 			if (FileSystem::FileExists(path.c_str())) return failure("Capture file already exists");
 			if (!FileSystem::CreateDirectoryPath(directory.c_str(), false)) return failure("Cannot create capture output directory");
-			s_media = {}; s_media.id = id; s_media.path = path; s_media.elf = VMManager::GetCurrentELF(); s_media.crc = VMManager::GetCurrentCRC();
+			s_media = {}; s_media.id = id; s_media.path = path; s_media.elf = currentELF(); s_media.crc = VMManager::GetCurrentCRC();
 			s_media.session = s_session.load(); s_media.epoch = s_executionEpoch; s_media.maxFrames = frames; s_media.maxPayload = maxPayload;
 			s_media.width = static_cast<u32>(width); s_media.height = static_cast<u32>(height); s_media.audio = audio; s_media.state = "queued"; s_media.active = true;
 			++s_mediaSequence; s_mediaActive.store(true); s_mediaDeadline.store(steadyMillis() + timeout);
@@ -1062,11 +1083,11 @@ namespace DebugServer
 			if (iop && (!CHECK_EEREC || psxCpu != &psxRec)) return failure("IOP exception watch requires EE and IOP recompilers");
 			if (s_exception.state == "armed" && steadyMillis() >= s_exception.deadline) s_exception.state = "expired";
 			if (s_exception.state == "armed" || s_exception.state == "capturing") return failure("An exception watch is already active");
-			if (!VMManager::HasValidVM() || VMManager::GetCurrentELF().empty()) return failure("Boot an EE ELF before arming an exception watch");
+			if (!VMManager::HasValidVM() || currentELF().empty()) return failure("Boot an EE ELF before arming an exception watch");
 			if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
 				getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
 				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
-				getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+				getStr(params, "expected_elf") != currentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 				return failure("Exception watch VM/ELF identity changed");
 			if (iop && getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch))
 				return failure("IOP reset epoch changed before arming");
@@ -1077,7 +1098,7 @@ namespace DebugServer
 			s_exception.state = "armed"; s_exception.mask = static_cast<u32>(mask); s_exception.deadline = steadyMillis() + timeout;
 			s_exception.session = s_session.load(); s_exception.epoch = s_executionEpoch;
 			s_exception.iop = iop; s_exception.iopEpoch = s_iopResetEpoch;
-			s_exception.elf = VMManager::GetCurrentELF(); s_exception.crc = VMManager::GetCurrentCRC();
+			s_exception.elf = currentELF(); s_exception.crc = VMManager::GetCurrentCRC();
 			s_exception.screenshot = getBool(params, "screenshot", true);
 			s_exceptionWatchId.store(s_exception.sequence); s_exceptionDeadline.store(s_exception.deadline);
 		}
@@ -1113,7 +1134,7 @@ namespace DebugServer
 		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
 			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
 			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
-			getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+			getStr(params, "expected_elf") != currentELF() ||
 			getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC()) return failure("Variable inspection VM/ELF identity changed");
 		const auto revision = getNum(params, "expected_revision", -1);
 		if (revision != -1 && (revision != static_cast<int64_t>(s_inspectionRevision) || getNum(params, "expected_pc", -1) != r5900Debug.getPC()))
@@ -1132,7 +1153,7 @@ namespace DebugServer
 			bool valid = ram; std::string hex;
 			if (ram) for (int64_t i = 0; i < length; ++i)
 			{
-				bool byteValid = false; const auto byte = r5900Debug.read8(static_cast<u32>(address + i), byteValid);
+				bool byteValid = false; const auto byte = Compat::Read8(r5900Debug, static_cast<u32>(address + i), byteValid);
 				if (!byteValid) { valid = false; break; }
 				char encoded[3]; std::snprintf(encoded, sizeof(encoded), "%02x", byte); hex += encoded;
 			}
@@ -1155,7 +1176,7 @@ namespace DebugServer
 			const auto points = CBreakPoints::GetBreakpoints(BREAKPOINT_EE, true);
 			const auto count = std::count_if(points.begin(), points.end(), [](const BreakPoint& bp) { return bp.addr == s_step.target; });
 			const auto own = std::find_if(points.begin(), points.end(), [](const BreakPoint& bp) {
-				return bp.addr == s_step.target && bp.description == s_step.marker && bp.enabled && !bp.temporary && !bp.stepping && !bp.hasCond;
+				return bp.addr == s_step.target && bp.description == s_step.marker && bp.enabled && !bp.temporary && !bp.stepping && !bp.hasCond && Compat::DefaultBreakpointOptions(bp);
 			});
 			if (count == 1 && own != points.end()) CBreakPoints::RemoveBreakPoint(BREAKPOINT_EE, s_step.target);
 			else if (count) s_step.cleanup = false; // Never remove a replacement/overlap.
@@ -1193,7 +1214,7 @@ namespace DebugServer
 		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
 			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
 			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
-			getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+			getStr(params, "expected_elf") != currentELF() ||
 			getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC() ||
 			getNum(params, "expected_pc", -1) != r5900Debug.getPC()) return failure("VM/ELF/PC identity changed before guarded step");
 		const auto timeout = getNum(params, "timeout_ms", 500);
@@ -1288,13 +1309,13 @@ namespace DebugServer
 				(getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
 				 getNum(params, "expected_session", -1) != static_cast<int64_t>(session) ||
 				 getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(epoch) ||
-				 getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+				 getStr(params, "expected_elf") != currentELF() ||
 				 getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC() ||
 				 getNum(params, "expected_pc", -1) != pc ||
 				 (cpuName == "iop" && (getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(resetEpoch) ||
 				 getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(lifetimeEpoch)))))
 				return failure("VM/ELF/CPU identity changed before instruction step");
-			bool valid = true; const u32 opcode = cpu->read32(pc, valid);
+			bool valid = true; const u32 opcode = Compat::Read32(*cpu, pc, valid);
 			if (!valid || (pc & 3)) return failure("Invalid instruction PC");
 			const u32 op = opcode >> 26;
 			target = pc + (over && (op == 3 || (op == 0 && (opcode & 63) == 9)) ? 8 : 4);
@@ -1323,7 +1344,7 @@ namespace DebugServer
 			const auto points = CBreakPoints::GetBreakpoints(type, true);
 			const auto count = std::count_if(points.begin(), points.end(), [target](const BreakPoint& bp) { return bp.addr == target; });
 			const auto own = std::find_if(points.begin(), points.end(), [&](const BreakPoint& bp) {
-				return bp.addr == target && bp.description == marker && bp.enabled && !bp.temporary && !bp.stepping && !bp.hasCond;
+				return bp.addr == target && bp.description == marker && bp.enabled && !bp.temporary && !bp.stepping && !bp.hasCond && Compat::DefaultBreakpointOptions(bp);
 			});
 			if (count == 1 && own != points.end()) CBreakPoints::RemoveBreakPoint(type, target);
 			else if (count) return failure("Step breakpoint changed ownership; preserved, cleanup unconfirmed");
@@ -1341,12 +1362,12 @@ namespace DebugServer
 #endif
 			j.kv("cpu", cpuName); j.kv("session", session); j.kv("execution_epoch", epoch);
 			j.kv("iop_reset_epoch", s_iopResetEpoch); j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch);
-			j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+			j.kv("elf", currentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 			j.kv("paused", true); j.kv("cleanup_confirmed", true);
 			j.key("old_pc"); j.valHex32(pc); j.key("new_pc"); j.valHex32(next);
 			j.kv("disasm", cpu->disasm(next, true));
 			j.kv("in_bios", next < 0x00100000 || (next >= 0x80000000 && next < 0x80100000));
-			bool valid = true; j.key("opcode"); j.valHex32(cpu->read32(next, valid));
+			bool valid = true; j.key("opcode"); j.valHex32(Compat::Read32(*cpu, next, valid));
 			j.endObject(); return j.str();
 		});
 	}
@@ -1360,7 +1381,7 @@ namespace DebugServer
 #endif
 		j.kv("session", s_session.load()); j.kv("execution_epoch", s_executionEpoch);
 		j.kv("iop_reset_epoch", s_iopResetEpoch); j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch);
-		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.kv("elf", currentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 	}
 
 	static std::string refuseStateLoad(const char* error)
@@ -1390,7 +1411,7 @@ namespace DebugServer
 			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
 			getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
 			getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch) ||
-			getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+			getStr(params, "expected_elf") != currentELF() ||
 			getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 			return refuseStateLoad("VM/ELF/IOP identity changed before state load");
 		JsonBuilder before; before.startObject(); writeStateIdentity(before); before.endObject();
@@ -1418,13 +1439,13 @@ namespace DebugServer
 			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
 			getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
 			getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch) ||
-			getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+			getStr(params, "expected_elf") != currentELF() ||
 			getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 			return failure("VM/ELF/IOP identity changed before SIF snapshot");
 		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("process_id", process);
 		j.kv("session", s_session.load()); j.kv("execution_epoch", s_executionEpoch);
 		j.kv("iop_reset_epoch", s_iopResetEpoch); j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch);
-		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.kv("elf", currentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 		j.kv("paused", true);
 		auto hex = [&j](const char* key, u32 value) { j.key(key); j.valHex32(value); };
 		j.key("sample"); j.startObject(); hex("ee_pc", cpuRegs.pc); hex("ee_cycles", cpuRegs.cycle);
@@ -1434,7 +1455,7 @@ namespace DebugServer
 		hex("msflg", psHu32(SBUS_F220)); hex("smflg", psHu32(SBUS_F230)); hex("f240", psHu32(SBUS_F240));
 		hex("ee_intc_stat", psHu32(INTC_STAT)); hex("ee_intc_mask", psHu32(INTC_MASK));
 		hex("ee_dmac_stat", dmacRegs.stat._u32);
-		hex("iop_ireg", psxHu32(HW_IREG)); hex("iop_imask", psxHu32(HW_IMASK)); hex("iop_ictrl", psxHu32(HW_ICTRL)); j.endObject();
+		hex("iop_ireg", psxHu32(0x1070)); hex("iop_imask", psxHu32(HW_IMASK)); hex("iop_ictrl", psxHu32(HW_ICTRL)); j.endObject();
 		j.key("channels"); j.startArray();
 		const _sif* states[] = {&sif0, &sif1, &sif2};
 		const DMACh* channels[] = {&sif0ch, &sif1ch, &sif2dma};
@@ -1485,7 +1506,7 @@ namespace DebugServer
 			const auto found = s_sourceGroups.find(id);
 			if (found == s_sourceGroups.end()) return failure("Unknown source breakpoint group");
 			const auto& group = found->second;
-			if (group.session != s_session.load() || group.elf != VMManager::GetCurrentELF() || group.crc != VMManager::GetCurrentCRC())
+			if (group.session != s_session.load() || group.elf != currentELF() || group.crc != VMManager::GetCurrentCRC())
 				return failure("VM/ELF identity changed; source breakpoints were not removed");
 			const auto current = CBreakPoints::GetBreakpoints(BREAKPOINT_EE, true);
 			std::vector<u32> removed, preserved;
@@ -1494,7 +1515,7 @@ namespace DebugServer
 				const auto bp = std::find_if(current.begin(), current.end(), [address](const BreakPoint& value) { return value.addr == address; });
 				if (bp == current.end()) continue;
 				if (std::find(group.relinquished.begin(), group.relinquished.end(), address) != group.relinquished.end() ||
-					bp->description != marker || !bp->enabled || bp->temporary || bp->stepping || bp->hasCond)
+					bp->description != marker || !bp->enabled || bp->temporary || bp->stepping || bp->hasCond || !Compat::DefaultBreakpointOptions(*bp))
 				{ preserved.push_back(address); continue; }
 				CBreakPoints::RemoveBreakPoint(BREAKPOINT_EE, address); removed.push_back(address);
 			}
@@ -1513,7 +1534,7 @@ namespace DebugServer
 #endif
 		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
 			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
-			getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+			getStr(params, "expected_elf") != currentELF() ||
 			getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 			return failure("VM/ELF identity changed; source breakpoints were not installed");
 		if (s_sourceGroups.size() >= 256 || s_sourceGroups.contains(id)) return failure("Source breakpoint group limit reached or ID already exists");
@@ -1542,9 +1563,9 @@ namespace DebugServer
 			CBreakPoints::AddBreakPoint(BREAKPOINT_EE, address, false, true);
 			CBreakPoints::ChangeBreakPointDescription(BREAKPOINT_EE, address, marker);
 		}
-		s_sourceGroups.emplace(id, SourceBreakpointGroup{s_session.load(), VMManager::GetCurrentELF(), VMManager::GetCurrentCRC(), addresses, {}});
+		s_sourceGroups.emplace(id, SourceBreakpointGroup{s_session.load(), currentELF(), VMManager::GetCurrentCRC(), addresses, {}});
 		JsonBuilder result; result.startObject(); result.kv("ok", true); result.kv("group_id", id);
-		result.kv("session", s_session.load()); result.kv("elf", VMManager::GetCurrentELF());
+		result.kv("session", s_session.load()); result.kv("elf", currentELF());
 		result.key("elf_crc"); result.valHex32(VMManager::GetCurrentCRC()); result.key("addresses"); result.startArray();
 		for (u32 address : addresses) result.valHex32(address);
 		result.endArray(); result.endObject(); return result.str();
@@ -1565,7 +1586,7 @@ namespace DebugServer
 		if (query.size() > 256 || offset < 0 || offset > 1000000 || limit < 1 || limit > 100 ||
 			(kind != "all" && kind != "function" && kind != "global")) return failure("Invalid symbol filter or pagination");
 		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("session", s_session.load());
-		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.kv("elf", currentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 		j.key("symbols"); j.startArray();
 		uint64_t matches = 0, returned = 0;
 		cpu->GetSymbolGuardian().Read([&](const ccc::SymbolDatabase& database) {
@@ -1589,7 +1610,7 @@ namespace DebugServer
 	static std::string resolveAddress(DebugInterface* cpu, u32 address)
 	{
 		JsonBuilder j; j.startObject(); j.kv("ok", true); j.key("address"); j.valHex32(address);
-		j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
+		j.kv("session", s_session.load()); j.kv("elf", currentELF());
 		j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 		j.key("symbols"); j.startArray();
 		cpu->GetSymbolGuardian().Read([&](const ccc::SymbolDatabase& database) {
@@ -1760,7 +1781,7 @@ namespace DebugServer
 		}
 		if (s_movie.active || g_InputRecording.isActive()) return failure("An input recording/replay is already active");
 		if (s_step.active || s_operation.active) return failure("An execution operation is active");
-		if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused || VMManager::GetCurrentELF().empty())
+		if (!VMManager::HasValidVM() || VMManager::GetState() != VMState::Paused || currentELF().empty())
 			return failure("Pause a booted ELF before starting an input movie");
 		if (Achievements::IsHardcoreModeActive() || !EmuConfig.EnableRecordingTools)
 			return failure("Enable recording tools and disable hardcore mode first");
@@ -1772,7 +1793,7 @@ namespace DebugServer
 		if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
 			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
 			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
-			getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			getStr(params, "expected_elf") != currentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 			return failure("Input movie VM/ELF identity changed");
 		const auto mode = getStr(params, "mode"), elfSHA = getStr(params, "elf_sha256"), movieSHA = getStr(params, "movie_sha256");
 		const auto frames = getNum(params, "frames", 120), timeout = getNum(params, "timeout_ms", 15000);
@@ -1798,7 +1819,7 @@ namespace DebugServer
 			return failure("Expected a complete power-on p2m2 v1 with 1-600 frames; source was not opened for writing");
 		g_InputRecording.processRecordQueue(); g_InputRecording.getControls().processControlQueue();
 		s_movie = {}; s_movie.id = id; s_movie.mode = mode; s_movie.path = path; s_movie.source = mode == "replay" ? source : "";
-		s_movie.elf = VMManager::GetCurrentELF(); s_movie.crc = VMManager::GetCurrentCRC(); s_movie.elfSHA = elfSHA;
+		s_movie.elf = currentELF(); s_movie.crc = VMManager::GetCurrentCRC(); s_movie.elfSHA = elfSHA;
 		s_movie.movieSHA = mode == "replay" ? movieSHA : "";
 		s_movie.session = s_session.load(); s_movie.limit = limit; s_movie.pads = pads;
 		s_movie.active = s_movie.starting = true; s_movie.sequence = ++s_movieSequence;
@@ -1828,7 +1849,7 @@ namespace DebugServer
 
 		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("timestamp_ms", timestampMillis());
 		j.kv("session", s_session.load()); j.kv("cpu", cpuName); j.kv("was_running", wasRunning);
-		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.kv("elf", currentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 		for (const char* cmd : {"status", "read_registers", "get_backtrace"})
 		{
 			j.key(cmd);
@@ -1872,7 +1893,7 @@ namespace DebugServer
 		std::string hex;
 		if (valid) for (u32 i = 0; i < length; ++i)
 		{
-			bool readable = false; const auto value = getCpu(iop ? "iop" : "ee")->read8(address + i, readable);
+			bool readable = false; const auto value = Compat::Read8(*getCpu(iop ? "iop" : "ee"), address + i, readable);
 			if (!readable) { valid = false; break; }
 			char encoded[3]; std::snprintf(encoded, sizeof(encoded), "%02x", value); hex += encoded;
 		}
@@ -1891,7 +1912,7 @@ namespace DebugServer
 		u32 head = 0;
 		auto word = [&](u32 address, u32& value) {
 			if ((address & 3) || address > 0x00200000u - 4) return false;
-			bool valid = false; value = r3000Debug.read32(address, valid); return valid;
+			bool valid = false; value = Compat::Read32(r3000Debug, address, valid); return valid;
 		};
 		if (!root) reason = "loadcore_list_not_located_since_reset";
 		else if (!word(root, head)) reason = "list_root_unreadable_or_excluded";
@@ -1930,7 +1951,7 @@ namespace DebugServer
 						const bool rom = address <= UINT32_MAX && physical >= 0x1fc00000 && physical < 0x20000000 &&
 							(address < 0x20000000 || (address >= 0x9fc00000 && address < 0xa0000000) || (address >= 0xbfc00000 && address < 0xc0000000));
 						if (!ram && !rom) { reason = "module_name_unreadable_or_excluded"; break; }
-						bool valid = false; const auto c = r3000Debug.read8(static_cast<u32>(address), valid);
+						bool valid = false; const auto c = Compat::Read8(r3000Debug, static_cast<u32>(address), valid);
 						if (!valid) { reason = "module_name_unreadable_or_excluded"; break; }
 						if (!c) { terminated = true; break; }
 						if (c < 32 || c > 126) { reason = "module_name_encoding_unsupported"; break; }
@@ -1964,7 +1985,7 @@ namespace DebugServer
 		j.kv("session", s_session.load()); j.kv("execution_epoch", s_executionEpoch); j.kv("iop_reset_epoch", s_iopResetEpoch);
 		j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch);
 		j.kv("iop_reset_scope", "cpu_reset_only"); j.kv("revision", s_inspectionRevision);
-		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.kv("elf", currentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 		j.kv("elf_role", "ee_boot_affinity_only"); j.kv("scope", "paused_runtime_observation_only");
 		j.kv("source", "pcsx2_detected_loadcore_list"); j.kv("root_discovery_sequence", s_iopModuleDiscovery);
 		j.key("list_address"); j.valHex32(root); j.key("head_address"); j.valHex32(head);
@@ -2004,7 +2025,7 @@ namespace DebugServer
 			getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
 			getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
 			getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
-			getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+			getStr(params, "expected_elf") != currentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 			return failure("IOP module snapshot VM/ELF/reset identity changed");
 		if (getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch))
 			return failure("IOP module lifetime epoch changed");
@@ -2025,7 +2046,7 @@ namespace DebugServer
 		s_exceptionPending.store(0);
 		DebugInterface* cpu = getCpu(s_exception.iop ? "iop" : "ee");
 		bool matches = VMManager::GetState() == VMState::Paused && s_exception.session == s_session.load() &&
-			s_exception.epoch == s_executionEpoch && s_exception.elf == VMManager::GetCurrentELF() &&
+			s_exception.epoch == s_executionEpoch && s_exception.elf == currentELF() &&
 			s_exception.crc == VMManager::GetCurrentCRC() && s_exception.revision == s_inspectionRevision && s_exception.postPC == cpu->getPC() &&
 			(!s_exception.iop || s_exception.iopEpoch == s_iopResetEpoch);
 		for (int i = 0; matches && i < 32; ++i)
@@ -2139,7 +2160,7 @@ namespace DebugServer
 			(s_progress.screenshot ? "false}" : "true}")));
 		const bool matches = VMManager::GetState() == VMState::Paused && s_executionEpoch == s_progress.epoch &&
 			s_inspectionRevision == revision && cpuRegs.pc == pc && cpuRegs.cycle == cycles &&
-			VMManager::GetCurrentELF() == s_progress.elf && VMManager::GetCurrentCRC() == s_progress.crc;
+			currentELF() == s_progress.elf && VMManager::GetCurrentCRC() == s_progress.crc;
 		j.kv("context_matches_stop", matches); j.key("memory"); j.startObject();
 		if (matches)
 		{
@@ -2164,7 +2185,7 @@ namespace DebugServer
 		const auto now = steadyMillis();
 		if (now >= s_progress.deadline) { s_progress.state = "expired"; s_progressNext.store(0); return; }
 		if (!VMManager::HasValidVM() || s_progress.epoch != s_executionEpoch ||
-			s_progress.elf != VMManager::GetCurrentELF() || s_progress.crc != VMManager::GetCurrentCRC())
+			s_progress.elf != currentELF() || s_progress.crc != VMManager::GetCurrentCRC())
 		{ s_progress.state = "vm_changed"; s_progressNext.store(0); return; }
 		ProgressSample sample; sample.timestamp = timestampMillis(); sample.elapsed = now - s_progress.start;
 		sample.pc = cpuRegs.pc; sample.cycles = cpuRegs.cycle;
@@ -2172,8 +2193,8 @@ namespace DebugServer
 		else if (s_step.active || s_operation.active) sample.phase = "execution_operation";
 		else
 		{
-			sample.heartbeat = r5900Debug.read32(s_progress.address, sample.valid) & s_progress.mask;
-			if (s_progress.gated) sample.gate = r5900Debug.read32(s_progress.gateAddress, sample.gateValid) & s_progress.gateMask;
+			sample.heartbeat = Compat::Read32(r5900Debug, s_progress.address, sample.valid) & s_progress.mask;
+			if (s_progress.gated) sample.gate = Compat::Read32(r5900Debug, s_progress.gateAddress, sample.gateValid) & s_progress.gateMask;
 			if (!sample.valid || (s_progress.gated && !sample.gateValid)) sample.phase = "unreadable";
 			else if (s_progress.gated && sample.gate != s_progress.gateValue) sample.phase = "expected_wait";
 			else if (!s_progress.baseline) sample.phase = "baseline";
@@ -2215,11 +2236,11 @@ namespace DebugServer
 #else
 			const uint64_t process = getpid();
 #endif
-			if (!CHECK_EEREC || !VMManager::HasValidVM() || VMManager::GetCurrentELF().empty()) return failure("Progress watch requires a booted EE ELF and EE recompiler");
+			if (!CHECK_EEREC || !VMManager::HasValidVM() || currentELF().empty()) return failure("Progress watch requires a booted EE ELF and EE recompiler");
 			if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) ||
 				getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
 				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) ||
-				getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
+				getStr(params, "expected_elf") != currentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 				return failure("Progress watch VM/ELF identity changed");
 			const auto address = getNum(params, "heartbeat_address", -1), mask = getNum(params, "heartbeat_mask", UINT32_MAX);
 			const auto gate = getNum(params, "active_address", -1), gateMask = getNum(params, "active_mask", UINT32_MAX), gateValue = getNum(params, "active_value", 1);
@@ -2232,7 +2253,7 @@ namespace DebugServer
 				timeout < 100 || timeout > 300000 || limit < 8 || limit > 64) return failure("Invalid progress criterion or bounds");
 			s_progress = {}; s_progress.id = id; s_progress.state = "armed"; s_progress.sequence = ++s_progressSequence;
 			s_progress.session = s_session.load(); s_progress.epoch = s_executionEpoch;
-			s_progress.elf = VMManager::GetCurrentELF(); s_progress.crc = VMManager::GetCurrentCRC();
+			s_progress.elf = currentELF(); s_progress.crc = VMManager::GetCurrentCRC();
 			s_progress.address = static_cast<u32>(address); s_progress.mask = static_cast<u32>(mask);
 			s_progress.gated = gate != -1; s_progress.gateAddress = static_cast<u32>(gate); s_progress.gateMask = static_cast<u32>(gateMask); s_progress.gateValue = static_cast<u32>(gateValue);
 			s_progress.interval = interval; s_progress.threshold = threshold; s_progress.limit = static_cast<size_t>(limit);
@@ -2259,7 +2280,7 @@ namespace DebugServer
 		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("session", s_session.load());
 		j.kv("execution_epoch", s_executionEpoch); j.kv("iop_reset_epoch", s_iopResetEpoch);
 		j.kv("iop_lifetime_epoch", s_iopLifetimeEpoch); j.kv("scope", "observed_boundaries_only");
-		j.kv("elf", VMManager::GetCurrentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
+		j.kv("elf", currentELF()); j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 		j.key("list_address"); j.valHex32(s_iopModuleRoot);
 		j.kv("history_truncated", s_lifetimeTruncated);
 		j.key("events"); j.startArray();
@@ -2281,11 +2302,11 @@ namespace DebugServer
 #else
 			const uint64_t process = getpid();
 #endif
-			if (!VMManager::HasValidVM() || VMManager::GetCurrentELF().empty() || s_step.active || s_operation.active)
+			if (!VMManager::HasValidVM() || currentELF().empty() || s_step.active || s_operation.active)
 				return failure("IOP load watch requires a booted ELF without an execution operation");
 			if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) || getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
 				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) || getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch) ||
-				getStr(params, "expected_elf") != VMManager::GetCurrentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC()) return failure("IOP load watch identity changed");
+				getStr(params, "expected_elf") != currentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC()) return failure("IOP load watch identity changed");
 			if (getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch)) return failure("IOP load watch lifetime epoch changed");
 			const auto path = getStr(params, "path"), sha = getStr(params, "sha256"), prefix = getStr(params, "prefix");
 			const auto size = getNum(params, "size", -1), timeout = getNum(params, "timeout_ms", 30000);
@@ -2293,7 +2314,7 @@ namespace DebugServer
 				size < 64 || size > 1024 * 1024 || timeout < 100 || timeout > 300000) return failure("Invalid IOP load artifact/bounds");
 			s_load = {}; s_load.id = id; s_load.state = "armed"; s_load.path = Path::Canonicalize(path); s_load.sha = sha; s_load.size = static_cast<u32>(size);
 			s_load.session = s_session.load(); s_load.epoch = s_executionEpoch; s_load.iopEpoch = s_iopResetEpoch; s_load.lifetimeEpoch = s_iopLifetimeEpoch;
-			s_load.elf = VMManager::GetCurrentELF(); s_load.crc = VMManager::GetCurrentCRC(); s_load.sequence = ++s_loadSequence;
+			s_load.elf = currentELF(); s_load.crc = VMManager::GetCurrentCRC(); s_load.sequence = ++s_loadSequence;
 			for (size_t i = 0; i < 64; ++i) s_load.prefix[i] = static_cast<u8>(std::stoul(prefix.substr(i * 2, 2), nullptr, 16));
 			s_load.deadline = steadyMillis() + timeout; s_loadId.store(s_load.sequence); s_loadDeadline.store(s_load.deadline);
 		}
@@ -2340,7 +2361,7 @@ namespace DebugServer
 		{
 			if (w.state != "armed") continue;
 			if (now >= w.deadline) { w.state = "expired"; continue; }
-			if (!VMManager::HasValidVM() || w.epoch != s_executionEpoch || w.elf != VMManager::GetCurrentELF() || w.crc != VMManager::GetCurrentCRC())
+			if (!VMManager::HasValidVM() || w.epoch != s_executionEpoch || w.elf != currentELF() || w.crc != VMManager::GetCurrentCRC())
 			{ w.state = "vm_changed"; continue; }
 			if (w.iop && w.iopEpoch != s_iopResetEpoch) { w.state = "cpu_reset"; continue; }
 			if (now < w.next) continue;
@@ -2352,7 +2373,7 @@ namespace DebugServer
 			bool valid = false;
 			ChangeSample current; current.elapsed = now - w.start; current.timestamp = timestampMillis();
 			current.pc = cpu->getPC(); current.cycles = w.iop ? psxRegs.cycle : cpuRegs.cycle;
-			current.raw = w.size == 1 ? cpu->read8(w.address, valid) : w.size == 2 ? cpu->read16(w.address, valid) : cpu->read32(w.address, valid);
+			current.raw = w.size == 1 ? Compat::Read8(*cpu, w.address, valid) : w.size == 2 ? Compat::Read16(*cpu, w.address, valid) : Compat::Read32(*cpu, w.address, valid);
 			++w.samples;
 			const auto gap = current.elapsed - w.current.elapsed;
 			const bool comparable = w.baseline && w.revision == s_inspectionRevision && gap > 0 && gap <= w.interval * 4 && current.cycles != w.current.cycles;
@@ -2440,11 +2461,11 @@ namespace DebugServer
 #else
 			const uint64_t process = getpid();
 #endif
-			if (!VMManager::HasValidVM() || VMManager::GetCurrentELF().empty()) return failure("Memory watch requires a booted ELF");
+			if (!VMManager::HasValidVM() || currentELF().empty()) return failure("Memory watch requires a booted ELF");
 			const auto cpu = getStr(params, "cpu", "ee"); const bool iop = cpu == "iop";
 			if (cpu != "ee" && !iop) return failure("cpu must be ee or iop");
 			if (getNum(params, "expected_process_id", -1) != static_cast<int64_t>(process) || getNum(params, "expected_session", -1) != static_cast<int64_t>(s_session.load()) ||
-				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) || getStr(params, "expected_elf") != VMManager::GetCurrentELF() ||
+				getNum(params, "expected_execution_epoch", -1) != static_cast<int64_t>(s_executionEpoch) || getStr(params, "expected_elf") != currentELF() ||
 				getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC() || (iop && getNum(params, "expected_iop_reset_epoch", -1) != static_cast<int64_t>(s_iopResetEpoch)))
 				return failure("Memory watch VM/ELF identity changed");
 			if (iop && getNum(params, "expected_iop_lifetime_epoch", -1) != static_cast<int64_t>(s_iopLifetimeEpoch)) return failure("IOP lifetime changed before arming");
@@ -2461,7 +2482,7 @@ namespace DebugServer
 				s_changes.erase(terminal);
 			}
 			ChangeWatch w; w.id = id; w.state = "armed"; w.iop = iop; w.session = s_session.load(); w.epoch = s_executionEpoch; w.iopEpoch = s_iopResetEpoch;
-			w.elf = VMManager::GetCurrentELF(); w.crc = VMManager::GetCurrentCRC(); w.address = static_cast<u32>(address); w.size = static_cast<u32>(size); w.mask = static_cast<u32>(mask);
+			w.elf = currentELF(); w.crc = VMManager::GetCurrentCRC(); w.address = static_cast<u32>(address); w.size = static_cast<u32>(size); w.mask = static_cast<u32>(mask);
 			w.interval = interval; w.start = now; w.deadline = now + timeout; w.next = now + interval; w.pause = getBool(params, "pause_on_change", false);
 			s_changes.push_back(std::move(w)); found = std::prev(s_changes.end());
 		}
@@ -2518,14 +2539,14 @@ namespace DebugServer
 		{
 			auto* importer = cpu->GetSymbolImporter();
 			if (!importer) return failure("Explicit ELF symbol import is available for EE only");
-			if (!VMManager::HasValidVM() || VMManager::GetCurrentELF().empty()) return failure("Boot an ELF before importing symbols");
+			if (!VMManager::HasValidVM() || currentELF().empty()) return failure("Boot an ELF before importing symbols");
 			auto options = EmuConfig.DebuggerAnalysis;
 			options.ImportSymbolsFromELF = true;
 			options.FunctionScanMode = DebugFunctionScanMode::SKIP;
 			options.GenerateFunctionHashes = false;
 			importer->LoadAndAnalyseElf(std::move(options));
 			JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("requested", true);
-			j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
+			j.kv("session", s_session.load()); j.kv("elf", currentELF());
 			j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC()); j.endObject(); return j.str();
 		}
 		if (cmd == "resolve_address")
@@ -2556,7 +2577,7 @@ namespace DebugServer
 			if (!getBool(parseJsonObject(response), "ok", false)) return response;
 			JsonBuilder result; result.startObject(); result.kv("ok", true); result.kv("name", name);
 			result.key("address"); result.valHex32(address); result.kv("session", s_session.load());
-			result.kv("elf", VMManager::GetCurrentELF()); result.key("elf_crc"); result.valHex32(VMManager::GetCurrentCRC());
+			result.kv("elf", currentELF()); result.key("elf_crc"); result.valHex32(VMManager::GetCurrentCRC());
 			result.endObject(); return result.str();
 		}
 		// These commands are already marshalled by executeCommand().
@@ -2607,7 +2628,7 @@ namespace DebugServer
 #else
 				j.kv("process_id", static_cast<uint64_t>(getpid()));
 #endif
-				j.kv("session", s_session.load()); j.kv("elf", VMManager::GetCurrentELF());
+				j.kv("session", s_session.load()); j.kv("elf", currentELF());
 				j.kv("debug_port", s_debugPort); j.kv("data_directory", EmuFolders::DataRoot);
 				j.kv("execution_epoch", s_executionEpoch);
 				j.kv("iop_reset_epoch", s_iopResetEpoch);
@@ -2763,7 +2784,7 @@ namespace DebugServer
 			for (int i = 0; i < len; i++)
 			{
 				bool valid = true;
-				u32 byte = cpu->read8(addr + i, valid);
+				u32 byte = Compat::Read8(*cpu, addr + i, valid);
 				if (!valid) { byte = 0; ++invalidBytes; }
 				char hb[4];
 				snprintf(hb, sizeof(hb), "%02x", byte & 0xFF);
@@ -2783,12 +2804,14 @@ namespace DebugServer
 			for (size_t i = 0; i + 1 < hexData.size(); i += 2)
 			{
 				u8 byte = (u8)strtoul(hexData.substr(i, 2).c_str(), nullptr, 16);
-				cpu->write8(addr + written, byte);
+				if (!Compat::Write8(*cpu, addr + written, byte)) break;
 				written++;
 			}
 			j.startObject();
-			j.kv("ok", true);
+			j.kv("ok", static_cast<size_t>(written) == hexData.size() / 2);
 			j.kv("written", (int64_t)written);
+			if (static_cast<size_t>(written) != hexData.size() / 2)
+				j.kv("error", "Memory write refused after " + std::to_string(written) + " bytes");
 			j.endObject();
 		}
 		// ----- DISASSEMBLE -----
@@ -2808,7 +2831,7 @@ namespace DebugServer
 				if (!cpu->isValidAddress(pc)) break;
 
 				bool valid = true;
-				u32 opcode = cpu->read32(pc, valid);
+				u32 opcode = Compat::Read32(*cpu, pc, valid);
 
 				j.startObject();
 				j.key("address"); j.valHex32(pc);
@@ -2900,12 +2923,9 @@ namespace DebugServer
 			else if (typeStr == "readwrite" || typeStr == "access") cond = MEMCHECK_READWRITE;
 			else if (typeStr == "onchange") cond = (MemCheckCondition)(MEMCHECK_WRITE | MEMCHECK_WRITE_ONCHANGE);
 
-			MemCheckResult result = MEMCHECK_BREAK;
-			if (actionStr == "log") result = MEMCHECK_LOG;
-			else if (actionStr == "both") result = MEMCHECK_BOTH;
-
+			if (actionStr != "break" && actionStr != "log" && actionStr != "both") return failure("Unknown memcheck action");
 			auto bpCpu = getBpCpu(cpuName);
-			CBreakPoints::AddMemCheck(bpCpu, start, end, cond, result);
+			Compat::AddMemCheck(bpCpu, start, end, cond, actionStr);
 
 			if (!desc.empty())
 				CBreakPoints::ChangeMemCheckDescription(bpCpu, start, end, desc);
@@ -2972,7 +2992,7 @@ namespace DebugServer
 				j.startObject();
 				j.key("start"); j.valHex32(mc.start);
 				j.key("end"); j.valHex32(mc.end);
-				j.kv("hits", (int64_t)mc.numHits);
+				j.kv("hits", (int64_t)Compat::Hits(mc));
 				j.key("last_pc"); j.valHex32(mc.lastPC);
 				j.key("last_addr"); j.valHex32(mc.lastAddr);
 				if (!mc.description.empty())
@@ -3059,12 +3079,12 @@ namespace DebugServer
 				if (t->Status() == ThreadStatus::THS_RUN)
 				{
 					threadEntry = t->EntryPoint();
-					threadStackTop = t->StackTop();
+					threadStackTop = Compat::StackTop(*t);
 					break;
 				}
 			}
 
-			auto frames = MipsStackWalk::Walk(cpu, pc, ra, sp, threadEntry, threadStackTop);
+			auto frames = Compat::Walk(cpu, pc, ra, sp, threadEntry, threadStackTop);
 
 			j.startObject();
 			j.kv("ok", true);
@@ -3106,7 +3126,7 @@ namespace DebugServer
 			for (int i = 0; i < maxLen; i++)
 			{
 				bool valid = true;
-				u32 byte = cpu->read8(addr + i, valid);
+				u32 byte = Compat::Read8(*cpu, addr + i, valid);
 				if (!valid || byte == 0) break;
 				str += (char)byte;
 			}
@@ -3602,7 +3622,7 @@ namespace DebugServer
 		if (!s_running.load() || !VMManager::HasValidVM()) return;
 		if (s_pgifWrites.size() == 64) s_pgifWrites.pop_front();
 		s_pgifWrites.push_back({++s_pgifWriteSequence, s_session.load(), s_executionEpoch, s_iopResetEpoch,
-			s_iopLifetimeEpoch, address, value, bits, before, after, psxRegs.pc, psxRegs.cycle});
+			s_iopLifetimeEpoch, address, value, bits, before, after, psxRegs.pc, static_cast<u32>(psxRegs.cycle)});
 	}
 
 	void OnVMReset()
@@ -3637,7 +3657,7 @@ namespace DebugServer
 			if (instructionPC <= (iop ? 0x00200000u : 0x02000000u) - 4)
 			{
 				bool valid = false;
-				const auto memoryOpcode = iop ? r3000Debug.read32(instructionPC, valid) : r5900Debug.read32(instructionPC, valid);
+				const auto memoryOpcode = iop ? Compat::Read32(r3000Debug, instructionPC, valid) : Compat::Read32(r5900Debug, instructionPC, valid);
 				origin.opcodeMatchesMemory = valid && memoryOpcode == opcode;
 			}
 		}
@@ -3684,7 +3704,7 @@ namespace DebugServer
 		if (s_exception.state == "armed" && !s_exception.iop)
 		{
 			if (steadyMillis() >= s_exception.deadline) { s_exception.state = "expired"; s_exceptionDeadline.store(0); }
-			else if (s_exception.epoch != s_executionEpoch || s_exception.elf != VMManager::GetCurrentELF() || s_exception.crc != VMManager::GetCurrentCRC())
+			else if (s_exception.epoch != s_executionEpoch || s_exception.elf != currentELF() || s_exception.crc != VMManager::GetCurrentCRC())
 			{ s_exception.state = "vm_changed"; s_exceptionDeadline.store(0); }
 			else if (s_exception.mask & (1u << ((code >> 2) & 31)))
 			{
@@ -3707,7 +3727,7 @@ namespace DebugServer
 	static bool checkLoadContext()
 	{
 		if (loadActive() && steadyMillis() >= s_load.deadline) invalidateLoad("expired");
-		if (loadActive() && (s_load.epoch != s_executionEpoch || s_load.iopEpoch != s_iopResetEpoch || s_load.elf != VMManager::GetCurrentELF() || s_load.crc != VMManager::GetCurrentCRC())) invalidateLoad("vm_changed");
+		if (loadActive() && (s_load.epoch != s_executionEpoch || s_load.iopEpoch != s_iopResetEpoch || s_load.elf != currentELF() || s_load.crc != VMManager::GetCurrentCRC())) invalidateLoad("vm_changed");
 		return loadActive();
 	}
 
@@ -3769,11 +3789,11 @@ namespace DebugServer
 		for (size_t i = 0; i < 64; ++i) if (s_load.bytes[i] != s_load.prefix[i]) { invalidateLoad("source_header_changed"); return; }
 		for (u32 i = 0; i < s_load.size; ++i)
 		{
-			bool valid = false; const u8 value = r3000Debug.read8(buffer + i, valid);
+			bool valid = false; const u8 value = Compat::Read8(r3000Debug, buffer + i, valid);
 			if (!valid || value != s_load.bytes[i]) return; // A different loader call is not this file's provenance.
 		}
 		std::array<u32, 9> info{};
-		for (u32 i = 0; i < 9; ++i) { bool valid = false; info[i] = r3000Debug.read32(fileInfo + i * 4, valid); if (!valid) return; }
+		for (u32 i = 0; i < 9; ++i) { bool valid = false; info[i] = Compat::Read32(r3000Debug, fileInfo + i * 4, valid); if (!valid) return; }
 		if (info[0] != 4 || info[3] < 48 || (info[3] & 3) || static_cast<uint64_t>(info[3]) + info[7] > 0x00200000 ||
 			info[4] == 0 || static_cast<uint64_t>(info[4]) + info[5] + info[6] != info[7]) { invalidateLoad("unsupported_file_info_layout"); return; }
 		s_load.buffer = buffer; s_load.fileInfo = fileInfo; s_load.info = info; s_load.loaderPC = psxRegs.pc;
@@ -3785,9 +3805,9 @@ namespace DebugServer
 		lifetimeBoundary("register_module_call", record);
 		Registration observed; observed.sequence = ++s_registrationSequence; observed.epoch = s_iopLifetimeEpoch;
 		bool readable = record && !(record & 3) && record <= 0x00200000 - 40;
-		if (readable) { bool valid = false; observed.nameAddress = r3000Debug.read32(record + 4, valid); readable = valid; }
-		if (readable) { bool valid = false; observed.version = r3000Debug.read32(record + 8, valid) & 0xffff; readable = valid; }
-		for (u32 i = 0; readable && i < observed.metadata.size(); ++i) { bool valid = false; observed.metadata[i] = r3000Debug.read32(record + 16 + i * 4, valid); readable = valid; }
+		if (readable) { bool valid = false; observed.nameAddress = Compat::Read32(r3000Debug, record + 4, valid); readable = valid; }
+		if (readable) { bool valid = false; observed.version = Compat::Read32(r3000Debug, record + 8, valid) & 0xffff; readable = valid; }
+		for (u32 i = 0; readable && i < observed.metadata.size(); ++i) { bool valid = false; observed.metadata[i] = Compat::Read32(r3000Debug, record + 16 + i * 4, valid); readable = valid; }
 		if (readable)
 		{
 			if (s_registrations.size() >= 256) s_registrations.clear();
@@ -3795,7 +3815,7 @@ namespace DebugServer
 		}
 		if (!checkLoadContext() || s_load.state != "buffer_observed" || record != s_load.info[3] - 48) return;
 		const std::array<u32, 6> expected{s_load.info[1] + s_load.info[3], s_load.info[2] + s_load.info[3], s_load.info[3], s_load.info[4], s_load.info[5], s_load.info[6]};
-		for (u32 i = 0; i < expected.size(); ++i) { bool valid = false; const u32 value = r3000Debug.read32(record + 16 + i * 4, valid); if (!valid || value != expected[i]) { invalidateLoad("registration_metadata_mismatch"); return; } }
+		for (u32 i = 0; i < expected.size(); ++i) { bool valid = false; const u32 value = Compat::Read32(r3000Debug, record + 16 + i * 4, valid); if (!valid || value != expected[i]) { invalidateLoad("registration_metadata_mismatch"); return; } }
 		s_load.record = record; s_load.state = "registered"; s_load.binding = true; s_load.registrationTimestamp = timestampMillis();
 		s_load.lifetimeEpoch = s_iopLifetimeEpoch;
 		s_loadDeadline.store(0); s_load.covered.clear(); s_load.fd = -1;
@@ -3842,7 +3862,7 @@ namespace DebugServer
 		if (address != s_sifReset.next || !words || words > s_sifReset.remaining) { s_sifReset = {}; return; }
 		for (u32 i = 0; i < words && s_sifReset.copied < 26; ++i)
 		{
-			bool valid = false; const u32 value = r3000Debug.read32(address + i * 4, valid);
+			bool valid = false; const u32 value = Compat::Read32(r3000Debug, address + i * 4, valid);
 			if (!valid) { s_sifReset = {}; return; }
 			s_sifReset.words[s_sifReset.copied++] = value;
 		}
@@ -3898,7 +3918,7 @@ namespace DebugServer
 		if (steadyMillis() >= s_exception.deadline)
 		{ s_exception.state = "expired"; s_exceptionDeadline.store(0); return; }
 		if (s_exception.iopEpoch != s_iopResetEpoch || s_exception.epoch != s_executionEpoch ||
-			s_exception.elf != VMManager::GetCurrentELF() || s_exception.crc != VMManager::GetCurrentCRC())
+			s_exception.elf != currentELF() || s_exception.crc != VMManager::GetCurrentCRC())
 		{ s_exception.state = "vm_changed"; s_exceptionDeadline.store(0); return; }
 		if (!(s_exception.mask & (1u << ((code >> 2) & 31)))) return;
 		s_exception.state = "capturing"; s_exceptionDeadline.store(0);

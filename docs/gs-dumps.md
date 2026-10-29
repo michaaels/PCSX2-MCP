@@ -1,5 +1,12 @@
 # Owned GS dumps
 
+M1 (2026-10-28) validates capture/ownership/limits and replay with pinned
+PCSX2 v2.9.147. Eight live checks passed with an explicit **software renderer
+for replay**, using the optional `--replay-software` test flag. The same static
+dump did not yield a capturable D3D11 replay frame; that gate remains open.
+[Evidence and scope](pcsx2-2.9-migration.md). The 2.6 implementation/results
+below remain historical.
+
 Implemented for the pinned Windows PCSX2 v2.6.3 integration. Rebuild the native
 emulator and TypeScript server, then restart/reconnect the MCP to discover:
 

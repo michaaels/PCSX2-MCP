@@ -1,5 +1,12 @@
 # Owned video/audio capture
 
+Current runtime update M1 (2026-10-28): target PCSX2 v2.9.147 is built with
+FFmpeg 9.0.1. Use the exact build dependency prefix and the ABI-verified
+`--from-build-deps` installer mode described in the
+[migration](pcsx2-2.9-migration.md). Ten capture/audio regressions passed;
+owned zero-duration video packets now receive their actual fixed-rate tick.
+The FFmpeg 8 setup and F3 results below describe the historical 2.6 build.
+
 F3 delivery, 2026-10-22. Requires the current TypeScript server and native PCSX2
 v2.6.3 integration; restart/reconnect the MCP after rebuilding.
 
