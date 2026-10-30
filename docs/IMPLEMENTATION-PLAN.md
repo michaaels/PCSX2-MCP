@@ -45,6 +45,12 @@ propia se cerró. Solo se acepta el grupo de fuente pausado; reemplazo durante
 step y otras opciones GUI siguen pendientes. Nueva prioridad del usuario:
 añadir captura de la ventana de la aplicación/depurador al MCP.
 
+S3 (2026-10-29), petición explícita del usuario: `pcsx2_application_screenshot`
+captura ventana Qt principal/depurador del mismo proceso. Compilado en Windows,
+260 Node, siete checks live nuevos, 60 regresiones autónomas y 29 archivos de
+integración pasaron. PNG reales revisados; no depende del controlador externo
+de ventanas ni modifica pausa/foco. [Contrato y límites](application-screenshots.md).
+
 Petición del usuario (2026-10-24): probar el MCP sin depender de SMS; depurar el
 proyecto en otro chat. **S1** entrega fixtures homebrew autónomos, un comando de
 validación, 18 checks live y 223 Node, y corrige la fuga del breakpoint temporal
@@ -88,6 +94,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S3 | Captura de ventana principal/depurador con widgets Qt | Windows/TypeScript, 260 Node, siete checks live, 60 regresiones y 29 archivos probados |
 | S2b2c1 | Edición GUI real de grupo de fuente pausado | Cinco checks guiados pasaron con confirmación del usuario; reemplazo durante step y otras opciones GUI pendientes |
 | S2b2c-prep | Harness guiado para preservar un grupo modificado manualmente en Qt | Cinco checks de preparación/negativos probados; edición GUI y reemplazo durante step pendientes |
 | M2 | Fixture de dibujo continuo y comparación GS replay con dispositivo D3D11 explícito | 18 live probados en Intel/NVIDIA; binarios sin cambios; limitación estática y gate GUI pendientes |

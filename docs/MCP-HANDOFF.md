@@ -16,7 +16,9 @@ Local Windows components:
 - M1 contract: [pinned PCSX2 v2.9.147 migration](pcsx2-2.9-migration.md)
 - M2 contract: [controlled D3D11 GS replay](gs-replay-validation.md)
 - Guided GUI preparation: [operator steps and receipt semantics](gui-ownership-test.md)
-- Current delivery evidence: ignored `release/guided-gui-delivery-20261029.json`
+- Application/debugger capture: [targets, rebuild/restart and limits](application-screenshots.md)
+- Current delivery evidence: ignored `release/application-capture-delivery-20261029.json`
+- Guided preparation evidence: ignored `release/guided-gui-delivery-20261029.json`
 - M2 evidence: ignored `release/gs-replay-delivery-20261028.json`
 - M1 evidence: ignored `release/v2.9.147-delivery-20261028.json`
 - S2b2b evidence: ignored `release/irq-delivery-20261028.json`
@@ -25,7 +27,14 @@ Local Windows components:
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
 
-The current standalone suite passes 255 Node and 60 live checks on PCSX2
+S3 passes 260 Node, the same 60 standalone checks and seven
+new application-window live checks; native integration now manages 29 files.
+Use `pcsx2_application_screenshot` with `target: "debugger"` or `"main"` for
+Qt application widgets, and `pcsx2_screenshot` for the rendered PS2 frame.
+Restart the MCP Node server after updating and launch the rebuilt executable.
+The following M1/M2 history records earlier scope:
+
+The M1 standalone suite passed 255 Node and 60 live checks on PCSX2
 v2.9.147, plus 53 extra source-step/IOP/input/capture/GS live regressions, with a
 rebuilt native executable and 27-file integration. M2 adds 18 live checks:
 continuous-drawing GS replay produces real PNGs on explicit Intel/NVIDIA D3D11

@@ -17,6 +17,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { DebugServerClient } from './debug-server-client.js';
+import { applicationScreenshotOptions } from './application-screenshot.js';
 import { PineClient, EmuStatus } from './pine-client.js';
 import { registerSessionTools } from './session-tools.js';
 import { registerAutomationTools } from './automation-tools.js';
@@ -188,6 +189,21 @@ server.tool('pcsx2_screenshot',
         { type: 'text' as const, text: `PS2 screenshot (${screenshot.width} x ${screenshot.height})` },
       ] };
     } catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
+  }
+);
+
+server.tool('pcsx2_application_screenshot',
+  'Capture the client area of an existing visible PCSX2 main/debugger Qt window as PNG. Includes menus and debugger widgets; excludes OS title bar, other apps and desktop. Does not create/show/focus windows or pause/resume the VM. GPU-rendered game content may be absent: use pcsx2_screenshot for the PS2 frame. Requires the rebuilt Qt frontend integration.',
+  applicationScreenshotOptions.shape,
+  async options => {
+    if (!hasDebug()) return { content: [{ type: 'text' as const, text: 'Error: Connect to the rebuilt Qt DebugServer first.' }], isError: true };
+    try {
+      const image = await debugServer!.captureApplicationScreenshot(options);
+      return { content: [
+        { type: 'image' as const, mimeType: 'image/png', data: image.data },
+        { type: 'text' as const, text: JSON.stringify({ target: image.target, source: image.source, window_title: image.window_title, width: image.width, height: image.height }) },
+      ] };
+    } catch (error) { return { content: [{ type: 'text' as const, text: 'Error: ' + (error instanceof Error ? error.message : String(error)) }], isError: true }; }
   }
 );
 

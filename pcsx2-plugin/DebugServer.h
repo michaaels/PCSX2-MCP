@@ -22,9 +22,20 @@
 #include <atomic>
 #include <functional>
 #include <cstdint>
+#include <vector>
 
 namespace DebugServer
 {
+	struct ApplicationScreenshot
+	{
+		uint32_t width = 0, height = 0;
+		std::vector<uint8_t> png;
+		std::string title, error;
+	};
+	using ApplicationScreenshotCompletion = std::function<void(ApplicationScreenshot)>;
+	using ApplicationScreenshotHandler = std::function<void(std::string, uint32_t, uint32_t, ApplicationScreenshotCompletion)>;
+	// Frontend registers an asynchronous UI-thread handler; other hosts remain unsupported.
+	void SetApplicationScreenshotHandler(ApplicationScreenshotHandler handler);
 	// CPU thread only. PCSX2_DEBUG_PORT overrides the default per process.
 	// A failed bind does not start a session. Stop before starting another VM.
 	void Start(int port = 21512);

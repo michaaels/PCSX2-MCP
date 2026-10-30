@@ -430,6 +430,17 @@ def main() -> None:
         '\t\tDebugServer::OnPgifDmaWrite(addr, val, sizeof(T) * 8, before, psxHu32(addr & ~3u));', str(iop_hw_write))
     breakpoint_files[iop_hw_write] = iop_hw_text
 
+    qt_host = source / 'pcsx2-qt/QtHost.cpp'
+    qt_text = replace_once(qt_host.read_text(encoding='utf-8'), '#include "QtHost.h"',
+        '#include "QtHost.h"\n#include "MCPApplicationCapture.h"', str(qt_host))
+    qt_text = replace_once(qt_text, 'void EmuThread::run()\n{',
+        'void EmuThread::run()\n{\n\tMCPApplicationCapture::Register();', str(qt_host))
+    breakpoint_files[qt_host] = qt_text
+
+    qt_header = source / 'pcsx2-qt/MCPApplicationCapture.h'
+    original = repo / 'pcsx2-plugin/QtApplicationCapture.h'
+    if not qt_header.exists() or qt_header.read_bytes() != original.read_bytes():
+        shutil.copy2(original, qt_header)
     for name in ('DebugServer.cpp', 'DebugServer.h', 'DebugServerCompat.h'):
         original = repo / 'pcsx2-plugin' / name
         target = source / 'pcsx2/DebugTools' / name

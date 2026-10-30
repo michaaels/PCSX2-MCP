@@ -105,6 +105,13 @@ extern dma_t dma;
 
 namespace DebugServer
 {
+	static std::mutex s_applicationCaptureMutex;
+	static ApplicationScreenshotHandler s_applicationCapture;
+	void SetApplicationScreenshotHandler(ApplicationScreenshotHandler handler)
+	{
+		std::lock_guard lock(s_applicationCaptureMutex);
+		s_applicationCapture = std::move(handler);
+	}
 	// v2.9 boots homebrew with a host: relative name. Resolve it through the
 	// same HostFs mapper used by the guest, retaining full-path ELF guards.
 	static std::string currentELF()
@@ -616,6 +623,32 @@ namespace DebugServer
 			result += (i + 2 < bytes.size()) ? alphabet[value & 63] : '=';
 		}
 		return result;
+	}
+
+	static std::string failure(const std::string& error);
+	static std::string captureApplicationWindow(const std::string& target, u32 width, u32 height)
+	{
+		ApplicationScreenshotHandler handler;
+		{ std::lock_guard lock(s_applicationCaptureMutex); handler = s_applicationCapture; }
+		if (!handler) return failure("Application window capture requires the Qt frontend integration");
+		const uint64_t session = s_requestSession;
+		struct Capture { std::mutex mutex; std::condition_variable ready; bool done = false; ApplicationScreenshot image; };
+		auto capture = std::make_shared<Capture>();
+		handler(target, width, height, [capture](ApplicationScreenshot image) {
+			std::lock_guard lock(capture->mutex);
+			capture->image = std::move(image); capture->done = true; capture->ready.notify_one();
+		});
+		std::unique_lock lock(capture->mutex);
+		if (!capture->ready.wait_for(lock, std::chrono::seconds(5), [&]() { return capture->done; }))
+			return failure("Application screenshot timed out waiting for the UI thread");
+		const auto& image = capture->image;
+		if (session && (!s_running.load() || s_session.load() != session)) return failure("Application screenshot server session changed");
+		if (!image.error.empty()) return failure(image.error.c_str());
+		if (!image.width || !image.height || image.width > width || image.height > height || image.png.empty() || image.png.size() > 6 * 1024 * 1024)
+			return failure("Invalid application screenshot from frontend");
+		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("target", target); j.kv("source", "qt_widget");
+		j.kv("window_title", image.title); j.kv("width", static_cast<int64_t>(image.width)); j.kv("height", static_cast<int64_t>(image.height));
+		j.kv("mime_type", "image/png"); j.kv("data", encodeBase64(image.png)); j.endObject(); return j.str();
 	}
 
 	static std::string captureScreenshot(u32 requestedWidth, u32 requestedHeight)
@@ -2636,6 +2669,7 @@ namespace DebugServer
 				j.kv("iop_reset_scope", "cpu_reset_only");
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
+				{ std::lock_guard lock(s_applicationCaptureMutex); if (s_applicationCapture) j.valStr("application_screenshot"); }
 				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies", "sif_snapshot", "bounded_instruction_step", "guarded_state_load"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
@@ -2663,6 +2697,14 @@ namespace DebugServer
 
 		JsonBuilder j;
 
+		if (cmd == "application_screenshot")
+		{
+			const auto target = getStr(params, "target", "debugger");
+			const auto width = getNum(params, "width", 1920), height = getNum(params, "height", 1440);
+			if ((target != "main" && target != "debugger") || width < 1 || width > 2560 || height < 1 || height > 1600)
+				return failure("Application screenshot requires target main/debugger, width 1-2560 and height 1-1600");
+			return captureApplicationWindow(target, static_cast<u32>(width), static_cast<u32>(height));
+		}
 		if (cmd == "screenshot")
 		{
 			const int64_t width = getNum(params, "width", 640);
@@ -3159,7 +3201,7 @@ namespace DebugServer
 				"frame_advance", "input_frames", "automation_status", "automation_cancel", "controller_state",
 				"lookup_symbols", "resolve_address", "breakpoint_symbol", "import_symbols",
 				"install_source_breakpoints", "remove_source_breakpoints",
-				"screenshot", "read_registers", "write_register", "set_pc",
+				"screenshot", "application_screenshot", "read_registers", "write_register", "set_pc",
 				"read_memory", "write_memory", "read_string",
 				"disassemble", "evaluate",
 				"set_breakpoint", "remove_breakpoint", "list_breakpoints",
@@ -3210,7 +3252,7 @@ namespace DebugServer
 		if (cmd == "read_events" || cmd == "read_logs") return handleCommand(line);
 		std::lock_guard lock(s_commandMutex);
 		if (!s_running.load() || s_session.load() != s_requestSession) return failure("DebugServer session ended");
-		if (cmd == "screenshot" || cmd == "capture_context" || cmd == "capabilities" ||
+		if (cmd == "application_screenshot" || cmd == "screenshot" || cmd == "capture_context" || cmd == "capabilities" ||
 			cmd == "load_elf" || cmd == "pause" || cmd == "resume" || cmd == "step" || cmd == "step_over")
 			return handleCommand(line);
 		// Register/memory/breakpoint operations share the CPU thread with snapshots.

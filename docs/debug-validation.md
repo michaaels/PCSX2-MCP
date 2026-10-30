@@ -7,6 +7,11 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+S3 (2026-10-29): application/debugger screenshots built and tested with 260 Node,
+seven new MCP live checks, 60 standalone live regressions and 29 native files.
+Actual PNGs reviewed; process isolation and unchanged paused state verified.
+[Contract, failed checker baseline and overwritten historical build-log caveat](application-screenshots.md).
+
 S2b2c1 (2026-10-29): the operator performed and confirmed the actual Qt edit.
 Five guided checks passed: the source group preserves `GUI-OWNED`, reports
 incomplete cleanup and refuses repeat removal without changing paused CPU/VM

@@ -18,6 +18,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Application/debugger PNG | S3, this delivery | New `pcsx2_application_screenshot` for existing visible main/debugger Qt widgets. Windows/TypeScript, 260 Node, seven new live checks, 60 standalone regressions and 29-file integration passed. No focus/resume/desktop fallback. [Contract](application-screenshots.md). |
 | Manual Qt source-group ownership | S2b2c1 | Operator-confirmed `GUI-OWNED` edit at `0x00100220`; five guided checks passed, incomplete cleanup and repeat refusal preserve the point and paused CPU/identity. Owned instance stopped. In-flight step replacement remains pending. [Guide](gui-ownership-test.md). |
 | Guided GUI preparation | S2b2c-prep, this delivery | Private debugger launch, stable source-group edit instructions, explicit operator control and fail-closed receipts. Five preparation/negative checks passed; actual GUI acceptance and in-flight step replacement remain pending. Native/Node unchanged. [Guide](gui-ownership-test.md). |
 | Controlled D3D11 GS replay | M2, this delivery | Continuous-drawing fixture, verified static/dynamic packet traffic and explicit Intel/NVIDIA replay; 18 live checks passed. Native/Node runtime unchanged. Static no-transfer D3D11 replay still lacks a frame; GUI still pending after two initialization failures. [Contract](gs-replay-validation.md). |

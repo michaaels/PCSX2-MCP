@@ -276,9 +276,16 @@ custom/direct loader tracking remains partial.
 | Tool | Description |
 |---|---|
 | `pcsx2_screenshot` | Return the current rendered PS2 frame as a PNG image (updated DebugServer required) |
+| `pcsx2_application_screenshot` | Capture the existing PCSX2 main window or Qt debugger client area, including its widgets and menus |
 | `pcsx2_compare_screenshots` | Offline hash-pinned pixel comparison with channel/fraction tolerances, named regions, ignored rectangles and saved diff/report |
 
-The tool returns MCP `image` content (`image/png`, base64) and a text description of the actual dimensions.
+For the application/debugger, call `pcsx2_application_screenshot` with
+`{"target":"debugger"}` or `{"target":"main"}`. It returns MCP PNG image content
+and window metadata. It requires the rebuilt Qt integration and an already
+visible window; it never opens, focuses or resumes one. Restart the MCP server
+to load this new tool after rebuilding. [Usage and limits](docs/application-screenshots.md).
+
+`pcsx2_screenshot` returns MCP `image` content (`image/png`, base64) and a text description of the actual dimensions.
 It captures the GS output without desktop windows, PCSX2 menus, or the OSD. Nothing is written to disk.
 The VM can be running or paused, provided the renderer still has a frame available.
 

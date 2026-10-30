@@ -38,8 +38,9 @@ def main():
              'pcsx2/GS/GSDump.cpp', 'pcsx2/GS/GSCapture.h', 'pcsx2/GS/GSCapture.cpp', 'pcsx2/Sif1.cpp',
              'pcsx2/Recording/InputRecording.cpp', 'pcsx2/Recording/InputRecordingFile.cpp',
              'pcsx2/Recording/InputRecording.h', 'pcsx2/Recording/InputRecordingFile.h',
-             'pcsx2/ps2/Iop/IopHwWrite.cpp']
-    generated = ['pcsx2/DebugTools/DebugServer.cpp', 'pcsx2/DebugTools/DebugServer.h', 'pcsx2/DebugTools/DebugServerCompat.h']
+             'pcsx2/ps2/Iop/IopHwWrite.cpp', 'pcsx2-qt/QtHost.cpp']
+    generated = ['pcsx2/DebugTools/DebugServer.cpp', 'pcsx2/DebugTools/DebugServer.h', 'pcsx2/DebugTools/DebugServerCompat.h',
+                 'pcsx2-qt/MCPApplicationCapture.h']
 
     def git(root, revision, filename):
         return subprocess.check_output(['git', '-C', str(root), 'show', f'{revision}:{filename}'])
@@ -66,7 +67,9 @@ def main():
     apply(script, clean)
     assert hashes(clean) == expected, 'Reapplication changed integrated files'
     old_repo = output / 'previous-mcp'
-    for name in ['tools/apply-debug-server.py', 'pcsx2-plugin/DebugServer.cpp', 'pcsx2-plugin/DebugServer.h']:
+    previous_plugin_files = subprocess.check_output(
+        ['git', '-C', str(repo), 'ls-tree', '-r', '--name-only', args.previous, 'pcsx2-plugin'], text=True).splitlines()
+    for name in ['tools/apply-debug-server.py'] + previous_plugin_files:
         target = old_repo / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(git(repo, args.previous, name))

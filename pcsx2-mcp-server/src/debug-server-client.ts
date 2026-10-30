@@ -19,6 +19,7 @@
 
 import * as net from 'node:net';
 import { parseScreenshot, type Screenshot } from './screenshot.js';
+import { applicationScreenshotOptions, parseApplicationScreenshot } from './application-screenshot.js';
 import { capabilitiesResponse, eventsResponse, logsResponse, parseContext, type DebugEventType } from './debug-session.js';
 import { z } from 'zod';
 import { parseSifSnapshot, type SifIdentity } from './sif-state.js';
@@ -683,6 +684,15 @@ export class DebugServerClient {
   }
 
   // ===== Screenshots =====
+
+  /** Capture Qt widgets from this native process, independently of the GS frame. */
+  async captureApplicationScreenshot(input: unknown = {}) {
+    const options = applicationScreenshotOptions.parse(input);
+    const response = await this.send({ cmd: 'application_screenshot', ...options });
+    if (!response.ok) throw new Error('Application screenshot failed: ' + (response.error ?? 'Unknown error') +
+      (/Unknown command/.test(response.error ?? '') ? '. Rebuild PCSX2 with Qt application capture support.' : ''));
+    return parseApplicationScreenshot(response, options);
+  }
 
   /** Capture the current GS frame. Requires a rebuilt DebugServer with screenshot support. */
   async captureScreenshot(width = 640, height = 480): Promise<Screenshot> {
