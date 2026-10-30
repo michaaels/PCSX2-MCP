@@ -1,6 +1,6 @@
 # MCP development progress
 
-Updated: 2026-10-28. This records the debugging extensions after the original main
+Updated: 2026-10-29. This records the debugging extensions after the original main
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
 
@@ -18,6 +18,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Guided GUI preparation | S2b2c-prep, this delivery | Private debugger launch, stable source-group edit instructions, explicit operator control and fail-closed receipts. Five preparation/negative checks passed; actual GUI acceptance and in-flight step replacement remain pending. Native/Node unchanged. [Guide](gui-ownership-test.md). |
 | Controlled D3D11 GS replay | M2, this delivery | Continuous-drawing fixture, verified static/dynamic packet traffic and explicit Intel/NVIDIA replay; 18 live checks passed. Native/Node runtime unchanged. Static no-transfer D3D11 replay still lacks a frame; GUI still pending after two initialization failures. [Contract](gs-replay-validation.md). |
 | PCSX2 v2.9.147 | M1, this delivery | Native memory/stack/watchpoint adapters, full HostFs ELF guards and owned final-frame duration fix. Windows/TypeScript, 255 Node, 60 standalone live, 53 additional live and 27-file integration passed. GS replay accepted with software; D3D11 replay/GUI pending. [Contract](pcsx2-2.9-migration.md). |
 | IRQ-active pause/reconciliation | S2b2b, this delivery | Defers pending IOP hardware IRQ dispatch after a debugger stop; real post-dispatch abort/lost-reply restore checks. Windows/TypeScript, 255 Node, 53 live, 13 IOP regressions and 26-file integration passed. GUI still blocked by runtime initialization. [Contract](irq-pause-boundary.md). |

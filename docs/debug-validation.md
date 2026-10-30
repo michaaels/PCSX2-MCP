@@ -7,6 +7,12 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+S2b2c-prep (2026-10-29): five live preparation/negative-control checks passed
+for the guided source-breakpoint GUI harness. Both processes stopped; native
+and Node runtime unchanged. Preflight success is explicitly not GUI acceptance.
+Window control still fails at native-pipe connection after reset (error 2).
+Actual GUI edits/replacement during step remain pending. [Guide](gui-ownership-test.md).
+
 M2 (2026-10-28): 18 live GS capture/replay checks passed with a new continuous
 drawing fixture and a controlled Intel/NVIDIA D3D11 matrix. The static zero-GIF
 artifact still yields no frame; the dynamic artifact renders on both devices.

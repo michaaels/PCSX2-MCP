@@ -1,6 +1,6 @@
 # Plan de implementación y publicación
 
-Actualizado: 2026-10-28. Autorizado por el usuario: implementar las mejoras del
+Actualizado: 2026-10-29. Autorizado por el usuario: implementar las mejoras del
 estudio de forks y después continuar el plan original de depuración PS2.
 
 ## Regla de entrega
@@ -29,6 +29,14 @@ runtime Node no cambian. El dump estático sin transferencias sigue sin frame
 D3D11 y conserva la aceptación software. GUI se reintentó dos veces, con reset
 del controlador, y falló antes de cualquier interacción. Sigue S2b2c;
 estabilidad/CI/DAP permanecen después. [Evidencia y reproducción](gs-replay-validation.md).
+
+S2b2c-prep (2026-10-29): prueba guiada estable por grupo de breakpoints de
+fuente, con instancia privada `-debugger`, control explícito del operador y
+resultado GUI separado del preflight. Pasaron cinco checks de preparación y
+rechazo de confirmación sin cambio observado; **GUI no aceptada**. El módulo
+de control ya importa, pero el pipe nativo no conecta (error 2), también tras
+reset/reinicio. La edición manual puede seguir la [guía](gui-ownership-test.md).
+No se ha probado el reemplazo GUI durante el paso acotado ni cerrado S2b2c.
 
 Petición del usuario (2026-10-24): probar el MCP sin depender de SMS; depurar el
 proyecto en otro chat. **S1** entrega fixtures homebrew autónomos, un comando de
@@ -73,6 +81,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S2b2c-prep | Harness guiado para preservar un grupo modificado manualmente en Qt | Cinco checks de preparación/negativos probados; edición GUI y reemplazo durante step pendientes |
 | M2 | Fixture de dibujo continuo y comparación GS replay con dispositivo D3D11 explícito | 18 live probados en Intel/NVIDIA; binarios sin cambios; limitación estática y gate GUI pendientes |
 | M1 | Migrar a PCSX2 v2.9.147 fijado y adaptar memoria, watchpoints, backtrace, identidad ELF y FFmpeg | Windows/TypeScript, 255 Node, 60 live, 53 regresiones y 27 archivos probados; GS replay software; GUI y replay D3D11 pendientes |
 | S2b2b | Pausa IOP con IRQ activa y reconciliación tras cancelar/perder respuesta de restore | Windows/TypeScript, 255 Node, 53 live, 13 regresiones IOP y 26 archivos probados; GUI pendiente por fallo del runtime; interrupción/rollback nativos diferidos |

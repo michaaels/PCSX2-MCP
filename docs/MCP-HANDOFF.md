@@ -15,7 +15,9 @@ Local Windows components:
 - S2b2b contract: [IRQ pause and dispatched restore reconciliation](irq-pause-boundary.md)
 - M1 contract: [pinned PCSX2 v2.9.147 migration](pcsx2-2.9-migration.md)
 - M2 contract: [controlled D3D11 GS replay](gs-replay-validation.md)
-- Current delivery evidence: ignored `release/gs-replay-delivery-20261028.json`
+- Guided GUI preparation: [operator steps and receipt semantics](gui-ownership-test.md)
+- Current delivery evidence: ignored `release/guided-gui-delivery-20261029.json`
+- M2 evidence: ignored `release/gs-replay-delivery-20261028.json`
 - M1 evidence: ignored `release/v2.9.147-delivery-20261028.json`
 - S2b2b evidence: ignored `release/irq-delivery-20261028.json`
 - S2b2a evidence: ignored `release/state-load-delivery-20261027.json`
@@ -37,7 +39,10 @@ Guarded native state loads report the
 actual result and retain the last receipt for status queries. PINE save/load
 acknowledges only submission. Pre-dispatch cancellation sends no load; a native
 load already dispatched cannot be cancelled. GUI coverage remains pending due
-to computer-use initialization failure. Connections
+to computer-use native-pipe connection failure (error 2, including after reset).
+The guided harness has five verified preparation/negative checks; it does not
+claim an actual GUI edit. See the guide above for a stable paused manual test.
+Connections
 isolate old callbacks/queued commands, with actual reset/restore evidence. Step tools
 accept CPU selection and bounded execution, returning structured/partial JSON.
 The original instruction fixture isolates IRQ; the separate IRQ fixture exercises
