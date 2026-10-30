@@ -18,7 +18,9 @@ Local Windows components:
 - Guided GUI preparation: [operator steps and receipt semantics](gui-ownership-test.md)
 - Application/debugger capture: [targets, rebuild/restart and limits](application-screenshots.md)
 - In-flight EE GUI ownership: [supervised case and limits](inflight-gui-ownership.md)
-- Current delivery evidence: ignored `release/inflight-gui-delivery-20261030.json`
+- Bounded repetition/source CI: [commands, evidence and T2 limits](stability-ci.md)
+- Current delivery evidence: ignored `release/stability-ci-delivery-20261030.json`
+- In-flight GUI evidence: ignored `release/inflight-gui-delivery-20261030.json`
 - S3 evidence: ignored `release/application-capture-delivery-20261029.json`
 - Guided preparation evidence: ignored `release/guided-gui-delivery-20261029.json`
 - M2 evidence: ignored `release/gs-replay-delivery-20261028.json`
@@ -28,6 +30,14 @@ Local Windows components:
 - S2b1 evidence: ignored `release/reconnect-delivery-20261027.json`
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
+
+T1 passed 100+500 repeated EE cycles, 600 native reconnects and 60 rounds of
+timeout/foreign-breakpoint/stdio restart/actual MCP PNG capture. Both emulators
+and all 62 stdio children stopped. The new local TypeScript/260 Node run passed;
+native/dist/runtime hashes retain S3. Hosted CI tests Node 22 on Windows/Ubuntu,
+without BIOS/native execution. These are 13.117/71.345-second repetition loops,
+not prolonged soak/resource-leak acceptance. Next: duration/progress/resource
+sampling (T2) before broader sustained reset/restore and editor integration.
 
 S3 passes 260 Node, the same 60 standalone checks and seven
 new application-window live checks; native integration now manages 29 files.

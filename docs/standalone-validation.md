@@ -14,6 +14,11 @@ remain historical, without a new build or full rerun for this test-only step.
 
 ## M1: PCSX2 v2.9.147
 
+T1 adds a separate [bounded repetition harness and source CI](stability-ci.md).
+100+500 repeated EE cycles and a fresh 260-test Node run passed; native runtime
+is unchanged. The existing command below still runs its original suite set.
+Hosted Windows/Ubuntu Node CI does not run a BIOS/native emulator.
+
 The current target is pinned v2.9.147. **255 Node / 60 standalone live checks**
 passed; seven new checks cover HostFs path identity, valid/invalid/partial
 writes and break/log/both watchpoints. The command now runs eight native suites

@@ -14,6 +14,17 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
 
+T1 (2026-10-30): repetición acotada y CI de fuentes. Pasaron 100 y 500 ciclos
+en instancias nuevas: 600 reemplazos de socket, 60 rondas de timeout/punto
+ajeno/reinicio stdio/captura PNG, 62 servidores stdio y dos emuladores cerrados.
+Build TypeScript y 260 Node pasaron; fixture alterado rechazado antes de lanzar.
+Workflow Node 22 Windows/Ubuntu con `npm ci`/`npm test`, permisos de lectura y
+acciones fijadas por SHA. Runtime sin cambios; CI nativa/BIOS no incluida.
+Los bucles midieron 13.117 y 71.345 s, sin aceptación de soak prolongado ni
+ausencia de fugas. [Comandos, evidencia y siguiente T2](stability-ci.md).
+Sigue T2: duración sostenida, progreso renderizado, recursos y límites de
+fallo/artefactos; después reset/restore bajo carga y DAP sobre lo acreditado.
+
 S2b2c2 (2026-10-30): repetida y aceptada la sustitución real desde Qt del
 breakpoint privado durante `step_over` EE. Tres checks guiados pasaron:
 control sin edición, preservación con error de ownership y confirmación del
@@ -104,6 +115,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| T1 | Repetición acotada y CI de fuentes | 100+500 ciclos live, 60 rondas de recuperación/captura y 260 Node; runtime intacto. Workflow Windows/Ubuntu; estado remoto por SHA. Sigue T2 de duración/recursos |
 | S2b2c2 | Reemplazo Qt durante `step_over` EE en fixture autónomo | Tres checks guiados y captura real verificados; sesión/pausa preservadas; runtime sin cambios. Otras opciones/IOP/source-step pendientes; sigue estabilidad/CI acotada |
 | S3 | Captura de ventana principal/depurador con widgets Qt | Windows/TypeScript, 260 Node, siete checks live, 60 regresiones y 29 archivos probados |
 | S2b2c1 | Edición GUI real de grupo de fuente pausado | Cinco checks guiados pasaron con confirmación del usuario; caso EE durante step aceptado después en S2b2c2; otras opciones pendientes |

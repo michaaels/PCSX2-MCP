@@ -18,6 +18,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Bounded repetition/source CI | T1 | 100+500 cycles in two owned instances, 600 native reconnects, 60 timeout/foreign-point/stdio-restart/PNG rounds; all 62 stdio children and both emulators stopped. TypeScript/260 Node passed. Windows/Ubuntu Node 22 workflow added; native runtime unchanged. No prolonged soak/leak claim. [Contract and remote-status distinction](stability-ci.md). |
 | In-flight Qt EE step ownership | S2b2c2 | Real Qt dialog replaced the private return target during EE `step_over`; three supervised checks passed, ownership error preserved `GUI-OWNED` and the same paused VM. Native debugger PNG reviewed with unchanged capture state; owned process stopped. Runtime unchanged. [Evidence and limits](inflight-gui-ownership.md). |
 | Application/debugger PNG | S3, this delivery | New `pcsx2_application_screenshot` for existing visible main/debugger Qt widgets. Windows/TypeScript, 260 Node, seven new live checks, 60 standalone regressions and 29-file integration passed. No focus/resume/desktop fallback. [Contract](application-screenshots.md). |
 | Manual Qt source-group ownership | S2b2c1 | Operator-confirmed `GUI-OWNED` edit at `0x00100220`; five guided checks passed, incomplete cleanup and repeat refusal preserve the point and paused CPU/identity. Owned instance stopped. In-flight EE step case subsequently accepted in S2b2c2. [Guide](gui-ownership-test.md). |

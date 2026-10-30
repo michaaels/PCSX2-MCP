@@ -13,6 +13,9 @@ Latest standalone acceptance: [real Qt breakpoint replacement during EE
 step-over](docs/inflight-gui-ownership.md), with preserved ownership and a
 [debugger application screenshot](docs/application-screenshots.md).
 
+[Bounded repetition and CI](docs/stability-ci.md): 100+500 repeated EE cycles
+validated locally; [Node tests on Windows/Ubuntu](../../actions/workflows/mcp-tests.yml).
+
 ```
 ┌─────────────┐    stdio (MCP)    ┌─────────────────────┐    TCP:21512    ┌─────────────────┐
 │ AI Assistant │ ◄──────────────► │  pcsx2-mcp-server   │ ◄────────────► │  PCSX2 Emulator │
