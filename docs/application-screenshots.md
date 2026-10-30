@@ -81,8 +81,9 @@ acceptance is claimed. Widget capture supplies images, not GUI input control.
 The earlier manual GUI source-group test also passed: the operator changed
 `0x00100220` to `GUI-OWNED`, native cleanup preserved it and repeat removal
 refused with the same paused CPU/identity. [Scope](gui-ownership-test.md).
-Replacement during an in-flight step and other GUI breakpoint options remain
-separate pending work.
+Replacement during an in-flight EE instruction `step_over` subsequently passed
+in [S2b2c2](inflight-gui-ownership.md), including another native debugger PNG.
+Other GUI breakpoint options retain separate pending coverage.
 
 Evidence and exclusions:
 

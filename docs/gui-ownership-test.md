@@ -13,6 +13,12 @@ All five checks in the guided run passed and its owned instance stopped.
 Receipt: `release/gui-ownership-manual-20261029/validation.json`.
 The prior five preparation/negative-control checks remain separate evidence.
 
+The separate in-flight EE instruction `step_over` case subsequently passed on
+2026-10-30 using real Qt input through Windows Computer Use. It preserves the
+changed private target with an explicit ownership error. See
+[S2b2c2 reproduction, evidence and exclusions](inflight-gui-ownership.md).
+The controller failures below describe the earlier preparation, not the new run.
+
 ## Run the preparation check
 
 These absolute commands work from another directory. Use your own configured

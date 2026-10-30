@@ -17,7 +17,9 @@ Local Windows components:
 - M2 contract: [controlled D3D11 GS replay](gs-replay-validation.md)
 - Guided GUI preparation: [operator steps and receipt semantics](gui-ownership-test.md)
 - Application/debugger capture: [targets, rebuild/restart and limits](application-screenshots.md)
-- Current delivery evidence: ignored `release/application-capture-delivery-20261029.json`
+- In-flight EE GUI ownership: [supervised case and limits](inflight-gui-ownership.md)
+- Current delivery evidence: ignored `release/inflight-gui-delivery-20261030.json`
+- S3 evidence: ignored `release/application-capture-delivery-20261029.json`
 - Guided preparation evidence: ignored `release/guided-gui-delivery-20261029.json`
 - M2 evidence: ignored `release/gs-replay-delivery-20261028.json`
 - M1 evidence: ignored `release/v2.9.147-delivery-20261028.json`
@@ -47,13 +49,17 @@ Actual restore abort/lost-reply tests retain or reconcile completion without ret
 Guarded native state loads report the
 actual result and retain the last receipt for status queries. PINE save/load
 acknowledges only submission. Pre-dispatch cancellation sends no load; a native
-load already dispatched cannot be cancelled. GUI coverage remains pending due
+load already dispatched cannot be cancelled. Earlier GUI attempts failed due
 to computer-use native-pipe connection failure (error 2, including after reset).
 The guided harness has five verified preparation/negative checks; it does not
 claim an actual GUI edit. The subsequent S2b2c1 guided run did exercise the
 operator-confirmed Qt description edit: five checks passed and its instance
 stopped. Source-group cleanup preserves the changed point and refuses repeat
-removal. In-flight step replacement and other GUI options remain pending.
+removal. S2b2c2 subsequently passed real Qt replacement during an EE `step_over`:
+three checks, same paused VM and preserved `GUI-OWNED`; its owned process
+stopped. A native application screenshot captured the visible point without
+changing state. Native/Node runtime retains S3 hashes. Other GUI options,
+IOP and source-step ownership remain outside those accepted cases.
 See the guide above for scope and commands.
 Connections
 isolate old callbacks/queued commands, with actual reset/restore evidence. Step tools

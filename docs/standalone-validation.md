@@ -5,6 +5,13 @@ debug the application in a separate chat. SMS, Jellyfin and media playback are
 not prerequisites for this suite. Their incident recipes remain historical and
 do not determine whether these MCP checks pass.
 
+S2b2c2 (2026-10-30) separately passed real Qt replacement of the private target
+during EE instruction `step_over`: three supervised checks, preserved point
+and paused identity, reviewed native debugger PNG, owned process stopped.
+[Reproduction and limits](inflight-gui-ownership.md). Native and Node runtime
+retain S3 hashes; its 260 Node / 60 standalone / seven application checks
+remain historical, without a new build or full rerun for this test-only step.
+
 ## M1: PCSX2 v2.9.147
 
 The current target is pinned v2.9.147. **255 Node / 60 standalone live checks**
@@ -155,8 +162,10 @@ The first transfer fixture failed to link an unavailable EE `DelayThread` API;
 the final fixture uses a bounded CP0-count observation loop. None of these
 attempts is substituted for the accepted runs.
 
-Next MCP work after S2b2b: GUI replacement and broader branch/device cases;
-native synchronous-load interruption/rollback remains deferred;
-then bounded long-run/CI tests and editor integration.
+Next MCP work after S2b2c2: bounded long-run/CI tests on accepted capabilities,
+then editor integration. The paused source-group and in-flight EE step GUI
+cases are accepted separately. Broader GUI/IOP/source-step/branch/device cases
+retain pending coverage; native synchronous-load interruption/rollback remains
+deferred.
 Application SIF2/audio investigation is a separate backlog; it is not the
 automatic next task when continuing MCP development.

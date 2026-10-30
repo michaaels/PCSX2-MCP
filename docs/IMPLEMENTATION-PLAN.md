@@ -1,6 +1,6 @@
 # Plan de implementación y publicación
 
-Actualizado: 2026-10-29. Autorizado por el usuario: implementar las mejoras del
+Actualizado: 2026-10-30. Autorizado por el usuario: implementar las mejoras del
 estudio de forks y después continuar el plan original de depuración PS2.
 
 ## Regla de entrega
@@ -13,6 +13,16 @@ incluir BIOS, credenciales, contenido privado o artefactos locales de ejecución
 Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
+
+S2b2c2 (2026-10-30): repetida y aceptada la sustitución real desde Qt del
+breakpoint privado durante `step_over` EE. Tres checks guiados pasaron:
+control sin edición, preservación con error de ownership y confirmación del
+actor Computer Use. Misma sesión/epoch/CPU pausada, captura del depurador
+revisada y proceso propio cerrado. Native/Node no cambian. Se aceptan este
+caso y el grupo de fuente pausado S2b2c1; opciones GUI/IOP/source-step más
+amplias conservan cobertura pendiente. Sigue estabilidad/CI sobre capacidades
+acreditadas, antes de DAP. [Reproducción y límites](inflight-gui-ownership.md).
+Los apartados anteriores por entrega conservan su estado histórico.
 
 Cambio autorizado el 2026-10-28: adaptar el MCP a **PCSX2 v2.9.147**, revisión
 `4c3f2eaacbd181f201c094781a79b1d0f996f954`. Esta migración M1 precede a la
@@ -75,8 +85,8 @@ cancelación tras envío real/recuperación de una respuesta de restore perdida.
 Windows/TypeScript, 255 Node, 53 live, 13 regresiones IOP adicionales y
 26 archivos de integración pasaron. [Contrato](irq-pause-boundary.md).
 
-Sigue S2b2c: reemplazos GUI. Se volvió a intentar, pero el runtime de control
-falló al inicializar también tras reiniciarlo; no hubo acciones GUI. La
+El gate GUI tiene ahora dos casos aceptados: grupo de fuente pausado y
+reemplazo durante `step_over` EE, descritos arriba. La
 cancelación después de enviar ya tiene prueba real de resultado/consulta,
 pero no interrumpe ni revierte el cargador nativo síncrono: esa capacidad se
 mantiene diferida y requiere un límite de cancelación soportado por el core.
@@ -94,8 +104,9 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S2b2c2 | Reemplazo Qt durante `step_over` EE en fixture autónomo | Tres checks guiados y captura real verificados; sesión/pausa preservadas; runtime sin cambios. Otras opciones/IOP/source-step pendientes; sigue estabilidad/CI acotada |
 | S3 | Captura de ventana principal/depurador con widgets Qt | Windows/TypeScript, 260 Node, siete checks live, 60 regresiones y 29 archivos probados |
-| S2b2c1 | Edición GUI real de grupo de fuente pausado | Cinco checks guiados pasaron con confirmación del usuario; reemplazo durante step y otras opciones GUI pendientes |
+| S2b2c1 | Edición GUI real de grupo de fuente pausado | Cinco checks guiados pasaron con confirmación del usuario; caso EE durante step aceptado después en S2b2c2; otras opciones pendientes |
 | S2b2c-prep | Harness guiado para preservar un grupo modificado manualmente en Qt | Cinco checks de preparación/negativos probados; edición GUI y reemplazo durante step pendientes |
 | M2 | Fixture de dibujo continuo y comparación GS replay con dispositivo D3D11 explícito | 18 live probados en Intel/NVIDIA; binarios sin cambios; limitación estática y gate GUI pendientes |
 | M1 | Migrar a PCSX2 v2.9.147 fijado y adaptar memoria, watchpoints, backtrace, identidad ELF y FFmpeg | Windows/TypeScript, 255 Node, 60 live, 53 regresiones y 27 archivos probados; GS replay software; GUI y replay D3D11 pendientes |

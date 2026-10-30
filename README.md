@@ -9,6 +9,10 @@
 > **Control a PS2 emulator from your AI coding assistant.**
 > Set breakpoints, read registers, disassemble MIPS, inspect memory — all via MCP tools.
 
+Latest standalone acceptance: [real Qt breakpoint replacement during EE
+step-over](docs/inflight-gui-ownership.md), with preserved ownership and a
+[debugger application screenshot](docs/application-screenshots.md).
+
 ```
 ┌─────────────┐    stdio (MCP)    ┌─────────────────────┐    TCP:21512    ┌─────────────────┐
 │ AI Assistant │ ◄──────────────► │  pcsx2-mcp-server   │ ◄────────────► │  PCSX2 Emulator │
