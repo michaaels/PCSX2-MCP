@@ -7,6 +7,12 @@ the documentation or that a binary release was created.
 
 ## Latest acceptance
 
+S2b2c1 (2026-10-29): the operator performed and confirmed the actual Qt edit.
+Five guided checks passed: the source group preserves `GUI-OWNED`, reports
+incomplete cleanup and refuses repeat removal without changing paused CPU/VM
+identity. Owned instance stopped. Only the stable source-group case is accepted;
+in-flight step replacement remains pending. [Evidence](gui-ownership-test.md).
+
 S2b2c-prep (2026-10-29): five live preparation/negative-control checks passed
 for the guided source-breakpoint GUI harness. Both processes stopped; native
 and Node runtime unchanged. Preflight success is explicitly not GUI acceptance.

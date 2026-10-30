@@ -41,7 +41,11 @@ acknowledges only submission. Pre-dispatch cancellation sends no load; a native
 load already dispatched cannot be cancelled. GUI coverage remains pending due
 to computer-use native-pipe connection failure (error 2, including after reset).
 The guided harness has five verified preparation/negative checks; it does not
-claim an actual GUI edit. See the guide above for a stable paused manual test.
+claim an actual GUI edit. The subsequent S2b2c1 guided run did exercise the
+operator-confirmed Qt description edit: five checks passed and its instance
+stopped. Source-group cleanup preserves the changed point and refuses repeat
+removal. In-flight step replacement and other GUI options remain pending.
+See the guide above for scope and commands.
 Connections
 isolate old callbacks/queued commands, with actual reset/restore evidence. Step tools
 accept CPU selection and bounded execution, returning structured/partial JSON.

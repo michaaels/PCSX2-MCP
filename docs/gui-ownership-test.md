@@ -5,9 +5,13 @@ launches a private instance with `-debugger`, verifies PID/port/data root/ELF,
 and pauses actual homebrew at its source breakpoint. It uses the existing MCP
 and native protocol. It does not automate Qt or change an existing user instance.
 
-**GUI acceptance is still pending.** Five live preparation/negative-control
-checks passed. Launching with `-debugger` does not prove the visible debugger
-was inspected or edited. The successful manual-edit branch is not yet accepted.
+**Stable source-group GUI acceptance passed on 2026-10-29.** The operator opened
+the EE debugger, changed the description at `0x00100220` to `GUI-OWNED` and
+explicitly confirmed the edit. Native cleanup preserved that exact point,
+reported incomplete cleanup and refused a second removal without CPU movement.
+All five checks in the guided run passed and its owned instance stopped.
+Receipt: `release/gui-ownership-manual-20261029/validation.json`.
+The prior five preparation/negative-control checks remain separate evidence.
 
 ## Run the preparation check
 

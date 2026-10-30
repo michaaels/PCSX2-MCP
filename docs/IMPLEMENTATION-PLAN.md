@@ -38,6 +38,13 @@ de control ya importa, pero el pipe nativo no conecta (error 2), también tras
 reset/reinicio. La edición manual puede seguir la [guía](gui-ownership-test.md).
 No se ha probado el reemplazo GUI durante el paso acotado ni cerrado S2b2c.
 
+S2b2c1 (2026-10-29): el usuario hizo la edición Qt real. Pasaron los cinco
+checks guiados: se conservó `GUI-OWNED` en `0x00100220`, cleanup incompleto
+explícito y segundo borrado rechazado con la CPU/identidad intactas. La instancia
+propia se cerró. Solo se acepta el grupo de fuente pausado; reemplazo durante
+step y otras opciones GUI siguen pendientes. Nueva prioridad del usuario:
+añadir captura de la ventana de la aplicación/depurador al MCP.
+
 Petición del usuario (2026-10-24): probar el MCP sin depender de SMS; depurar el
 proyecto en otro chat. **S1** entrega fixtures homebrew autónomos, un comando de
 validación, 18 checks live y 223 Node, y corrige la fuga del breakpoint temporal
@@ -81,6 +88,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S2b2c1 | Edición GUI real de grupo de fuente pausado | Cinco checks guiados pasaron con confirmación del usuario; reemplazo durante step y otras opciones GUI pendientes |
 | S2b2c-prep | Harness guiado para preservar un grupo modificado manualmente en Qt | Cinco checks de preparación/negativos probados; edición GUI y reemplazo durante step pendientes |
 | M2 | Fixture de dibujo continuo y comparación GS replay con dispositivo D3D11 explícito | 18 live probados en Intel/NVIDIA; binarios sin cambios; limitación estática y gate GUI pendientes |
 | M1 | Migrar a PCSX2 v2.9.147 fijado y adaptar memoria, watchpoints, backtrace, identidad ELF y FFmpeg | Windows/TypeScript, 255 Node, 60 live, 53 regresiones y 27 archivos probados; GS replay software; GUI y replay D3D11 pendientes |
