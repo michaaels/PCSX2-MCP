@@ -39,7 +39,11 @@ D1 adds `node pcsx2-mcp-server/dist/dap.js` / `pcsx2-dap` as a separate stdio
 protocol. 272 Node and six actual DAP/native/MCP groups passed, including source
 next/out/into and frame-0 data cross-checks. It attaches to an existing VM,
 preserves changed source-point owners and never kills that attached emulator.
-Native and previous MCP runtime files retain T2 hashes. Two DAP processes/MCP/
+Native and previous executable MCP JavaScript retain T2 hashes. A generated
+`project-diagnostics.d.ts` has property-order-only emission changes; the
+2026-11-02 audit reproduces its T2 hash when compiling without DAP and retains
+both hashes/diff. See the DAP contract for this explicit declaration exception.
+Two DAP processes/MCP/
 native test process stopped. Actual editor acceptance remains D2: add reusable
 VS Code integration and run a real editor session, not only protocol mocks.
 

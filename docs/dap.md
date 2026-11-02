@@ -128,8 +128,14 @@ The accepted native run passed all six groups, stopped both DAP processes and
 its MCP/native processes, and records hashes of the exact adapter sources,
 compiled entry points and harness. Package dry-run includes the DAP and backend
 files plus Python/requirements, without a venv, secrets or private states.
-Native/previous MCP dist files retain their T2 hashes; only the new adapter
-compiled files are added. No native build or T2 rerun is claimed.
+Native and previous executable MCP JavaScript retain their T2 hashes. The new
+adapter adds compiled files; one existing declaration, `project-diagnostics.d.ts`,
+has reordered object properties when TypeScript includes the new modules.
+The 2026-11-02 hash audit rebuilt without DAP and reproduced the exact T2
+declaration hash, then verified that the changed declaration contains the same
+lines with only property order differences. Its old/new hashes and full diff
+are retained in `release/dap-declaration-reorder-20261102.json`/`.patch`.
+No native build, executable MCP change or T2 rerun is claimed.
 
 Exploratory runs remain excluded: one mixed up entry/breakpoint events in the
 test client, one encountered an intermediate empty ELF identity during reset,
