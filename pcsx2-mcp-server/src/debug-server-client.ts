@@ -58,7 +58,14 @@ export interface DisasmInstruction {
   disasm: string;
 }
 
-export interface BreakpointInfo {
+export interface PointOptions {
+  options_available?: boolean;
+  max_hits?: number;
+  instrumentation_enabled?: boolean;
+  log_format?: string;
+  continue_on_hit?: boolean;
+}
+export interface BreakpointInfo extends PointOptions {
   address: string;
   enabled: boolean;
   temporary: boolean;
@@ -68,12 +75,16 @@ export interface BreakpointInfo {
   description?: string;
 }
 
-export interface MemcheckInfo {
+export interface MemcheckInfo extends PointOptions {
   start: string;
   end: string;
   hits: number;
   last_pc: string;
   last_addr: string;
+  has_condition?: boolean;
+  condition?: string;
+  memory_condition?: number;
+  result?: number;
   description?: string;
 }
 

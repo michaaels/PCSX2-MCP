@@ -244,13 +244,18 @@ sampling, identity guards and validation. Requires the updated native build.
 ### Breakpoints & Watchpoints
 | Tool | Description |
 |---|---|
-| `pcsx2_set_breakpoint` | Set BP with optional condition + description |
-| `pcsx2_remove_breakpoint` | Remove by address |
-| `pcsx2_list_breakpoints` | List all with condition/status |
-| `pcsx2_set_watchpoint` | Watch read/write/access/onChange |
-| `pcsx2_remove_watchpoint` | Remove watchpoint |
-| `pcsx2_list_watchpoints` | List with hit counts |
+| `pcsx2_set_breakpoint` | Set EE/IOP BP with validated optional condition + description |
+| `pcsx2_remove_breakpoint` | Remove by CPU/address |
+| `pcsx2_list_breakpoints` | List CPU's points with condition/status/options |
+| `pcsx2_set_watchpoint` | Watch EE/IOP read/write/access/onChange with optional condition |
+| `pcsx2_remove_watchpoint` | Remove exact CPU/range |
+| `pcsx2_list_watchpoints` | List CPU's watchpoints with conditions, hit counts and options |
 | `pcsx2_clear_all_breakpoints` | Remove ALL breakpoints + watchpoints |
+
+The six basic point tools accept `cpu: "ee" | "iop"` (default EE). Conditional
+setters require updated native `atomic_point_conditions`; parse failures reject
+before changing points or ownership. See [the contract/evidence](docs/conditional-points.md).
+These API checks do not replace real Qt ownership validation.
 
 ### Execution Control
 | Tool | Description |

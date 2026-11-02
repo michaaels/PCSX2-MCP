@@ -14,6 +14,17 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
 
+S4a (2026-11-02): condiciones de puntos validadas antes de mutar; corregido un
+falso éxito reproducido que creaba/alteraba puntos con expresiones inválidas.
+Las seis herramientas básicas seleccionan EE/IOP y muestran condiciones/opciones
+nativas. Pasaron 295 Node, 13 grupos nuevos, cuatro de compatibilidad con el
+build F5b y 74 de regresión nativa (60 autónomos/seis DAP/ocho savestate).
+Tres grupos negativos reprodujeron el fallo anterior; no cuentan como aceptación.
+Integración consistente en 29 archivos. [Contrato](conditional-points.md).
+**Sigue S4b GUI real**: Computer Use no conecta su pipe nativo (error 2 también
+tras reset); el usuario eligió restablecerlo. No hubo nuevas ediciones Qt ni se
+aceptan sus condiciones/logging/max-hits/IOP a partir de estas pruebas API.
+
 F5b (2026-11-02): grabación/replay desde savestate implementados en el pin
 2.9.147. Guardado asíncrono confirmado tras cierre ZIP, espera pausada hasta
 verificación, copias exclusivas con SHA nativo antes de cargar y outcome real.
@@ -166,6 +177,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S4a | Condiciones atómicas y selección EE/IOP en puntos MCP | 295 Node; 13 grupos nuevos, cuatro de compatibilidad y 74 regresiones; fallo previo reproducido. Sigue S4b con ediciones Qt reales, controlador sin conexión |
 | F5b | Guardado confirmado y películas desde savestate | 289 Node/ocho grupos nativos/MCP y once power-on pasaron; SHA antes de cargar, RAM/outcomes/EOF y fallos reales. Sin rollback, determinismo ni asociación ELF embebida |
 | F5a | Verificación offline de compañero savestate | 283 Node/cinco checks MCP con estado real; ZIP/payloads/SHA verificados. No habilita inicio desde estado; sigue F5b nativo |
 | D2 | Integración reutilizable y sesión real VS Code | Cuatro grupos editor/MCP, 278 Node, seis regresiones nativas DAP y VSIX instalado. Etapa 7 aceptada solo en Windows/EE; sigue savestate-start input movies |

@@ -26,6 +26,8 @@ Local Windows components:
 - Savestate companion preflight: [F5a offline inspector](input-state-inspection.md)
 - Actual state-start movies: [F5b save receipts/private copies/native outcomes](input-state-movies.md)
 - F5b evidence: ignored `release/input-state-movies-delivery-20261102.json`
+- Atomic conditions / CPU-selectable points: [S4a / pending S4b real Qt](conditional-points.md)
+- S4a evidence: ignored `release/conditional-points-delivery-20261102.json`
 - F5a evidence: ignored `release/input-state-delivery-20261102.json`
 - D1 evidence: ignored `release/dap-delivery-20261101.json`
 - Current delivery evidence: ignored `release/stability-ci-final-delivery-20261101.json`
@@ -40,6 +42,14 @@ Local Windows components:
 - S2b1 evidence: ignored `release/reconnect-delivery-20261027.json`
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
+
+S4a rebuilds native/Node: six basic point tools now accept cpu=ee/iop; invalid
+conditions fail before changing points/ownership. Native conditions require
+`atomic_point_conditions`, with old-build refusal proved. 295 Node and 91 native
+acceptance/compatibility groups passed; three old-bug groups stay separate.
+Point lists expose supported condition/logging/max-hit metadata. Real Qt matrix
+S4b still needs an available Computer Use connection (native pipe error 2 even
+after reset); user chose reconnection. No new GUI action/acceptance occurred.
 
 F5b enables `pcsx2_input_record` with `start:savestate` and replay with explicit
 `state_path/state_sha256`. 289 Node/eight new native/MCP groups and eleven

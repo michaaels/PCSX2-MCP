@@ -17,6 +17,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { DebugServerClient } from './debug-server-client.js';
+import { registerBreakpointTools } from './breakpoint-tools.js';
 import { applicationScreenshotOptions } from './application-screenshot.js';
 import { PineClient, EmuStatus } from './pine-client.js';
 import { registerSessionTools } from './session-tools.js';
@@ -88,6 +89,7 @@ async function writeMem(addr: number, data: Buffer): Promise<void> {
 // ===== MCP Server =====
 const server = new McpServer({ name: 'pcsx2-ultimate-debugger', version: '2.0.0' }, { capabilities: { tools: {}, resources: {} } });
 registerSessionTools(server, () => debugServer);
+registerBreakpointTools(server, () => debugServer);
 registerWorkflowTools(server, () => debugServer);
 registerSourceTools(server, () => debugServer);
 registerExceptionTools(server, () => debugServer);
@@ -335,90 +337,6 @@ server.tool('pcsx2_evaluate', 'Evaluate a MIPS expression with full symbol suppo
       const r = await debugServer!.evaluate(expression, cpu);
       if (r.ok) return { content: [{ type: 'text' as const, text: `"${expression}" = ${r.hex} (${r.result})` }] };
       else return { content: [{ type: 'text' as const, text: `Eval error: ${r.error}` }], isError: true };
-    } catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
-  }
-);
-
-// ==========================================================
-//  TOOL: pcsx2_set_breakpoint (with CONDITIONAL!)
-// ==========================================================
-server.tool('pcsx2_set_breakpoint', 'Set a breakpoint at an address. Supports conditional expressions! Requires DebugServer.',
-  { address: z.string(), condition: z.string().optional().describe('Break only when expression is true, e.g. "v0 == 0x42"'), description: z.string().optional(), temporary: z.boolean().default(false) },
-  async ({ address, condition, description, temporary }) => {
-    if (!hasDebug()) return { content: [{ type: 'text' as const, text: 'Error: DebugServer not connected.' }], isError: true };
-    try {
-      await debugServer!.setBreakpoint(address, { condition, description, temporary });
-      let msg = `Breakpoint set at ${address}`;
-      if (condition) msg += ` [condition: ${condition}]`;
-      return { content: [{ type: 'text' as const, text: msg }] };
-    } catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
-  }
-);
-
-server.tool('pcsx2_remove_breakpoint', 'Remove a breakpoint.',
-  { address: z.string() },
-  async ({ address }) => {
-    if (!hasDebug()) return { content: [{ type: 'text' as const, text: 'Error: DebugServer not connected.' }], isError: true };
-    try { await debugServer!.removeBreakpoint(address); return { content: [{ type: 'text' as const, text: `Breakpoint removed at ${address}` }] }; }
-    catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
-  }
-);
-
-server.tool('pcsx2_list_breakpoints', 'List all breakpoints with their conditions and hit status.',
-  {},
-  async () => {
-    if (!hasDebug()) return { content: [{ type: 'text' as const, text: 'Error: DebugServer not connected.' }], isError: true };
-    try {
-      const bps = await debugServer!.listBreakpoints();
-      if (bps.length === 0) return { content: [{ type: 'text' as const, text: 'No breakpoints set.' }] };
-      const lines = bps.map(bp => {
-        let s = `${bp.address} ${bp.enabled ? '✅' : '❌'}`;
-        if (bp.has_condition) s += ` [cond: ${bp.condition}]`;
-        if (bp.description) s += ` — ${bp.description}`;
-        if (bp.temporary) s += ' (temp)';
-        return s;
-      });
-      return { content: [{ type: 'text' as const, text: `${bps.length} breakpoint(s):\n${lines.join('\n')}` }] };
-    } catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
-  }
-);
-
-// ==========================================================
-//  TOOL: pcsx2_set_watchpoint (with onChange!)
-// ==========================================================
-server.tool('pcsx2_set_watchpoint', 'Set a memory watchpoint. Supports read/write/access/onchange + optional condition expression!',
-  { address: z.string(), end: z.string().optional().describe('End address (default: address+4)'), type: z.enum(['read', 'write', 'readwrite', 'onchange']).default('write'), action: z.enum(['break', 'log', 'both']).default('break'), condition: z.string().optional(), description: z.string().optional() },
-  async ({ address, end, type, action, condition, description }) => {
-    if (!hasDebug()) return { content: [{ type: 'text' as const, text: 'Error: DebugServer not connected.' }], isError: true };
-    try {
-      const endAddr = end || '0x' + (parseAddr(address) + 4).toString(16);
-      await debugServer!.setMemcheck(address, endAddr, { type, action, condition, description });
-      return { content: [{ type: 'text' as const, text: `Watchpoint (${type}/${action}) set at ${address}-${endAddr}${condition ? ` [cond: ${condition}]` : ''}` }] };
-    } catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
-  }
-);
-
-server.tool('pcsx2_remove_watchpoint', 'Remove a memory watchpoint.',
-  { address: z.string(), end: z.string().optional() },
-  async ({ address, end }) => {
-    if (!hasDebug()) return { content: [{ type: 'text' as const, text: 'Error: DebugServer not connected.' }], isError: true };
-    try {
-      const endAddr = end || '0x' + (parseAddr(address) + 4).toString(16);
-      await debugServer!.removeMemcheck(address, endAddr);
-      return { content: [{ type: 'text' as const, text: `Watchpoint removed at ${address}-${endAddr}` }] };
-    } catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
-  }
-);
-
-server.tool('pcsx2_list_watchpoints', 'List all memory watchpoints with hit counts.',
-  {},
-  async () => {
-    if (!hasDebug()) return { content: [{ type: 'text' as const, text: 'Error: DebugServer not connected.' }], isError: true };
-    try {
-      const mcs = await debugServer!.listMemchecks();
-      if (mcs.length === 0) return { content: [{ type: 'text' as const, text: 'No watchpoints set.' }] };
-      const lines = mcs.map(mc => `${mc.start}-${mc.end} | ${mc.hits} hits | last_PC=${mc.last_pc}${mc.description ? ` — ${mc.description}` : ''}`);
-      return { content: [{ type: 'text' as const, text: `${mcs.length} watchpoint(s):\n${lines.join('\n')}` }] };
     } catch (e: any) { return { content: [{ type: 'text' as const, text: `Error: ${e.message}` }], isError: true }; }
   }
 );

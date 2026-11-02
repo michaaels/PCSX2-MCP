@@ -2793,7 +2793,7 @@ namespace DebugServer
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
 				{ std::lock_guard lock(s_applicationCaptureMutex); if (s_applicationCapture) j.valStr("application_screenshot"); }
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies", "input_movie_states", "sif_snapshot", "bounded_instruction_step", "guarded_state_load"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "atomic_point_conditions", "input_movies", "input_movie_states", "sif_snapshot", "bounded_instruction_step", "guarded_state_load"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -3039,7 +3039,19 @@ namespace DebugServer
 			std::string condExpr = getStr(params, "condition", "");
 			std::string desc = getStr(params, "description", "");
 			auto bpCpu = getBpCpu(cpuName);
+			BreakPointCond condition;
+			if (const auto expression = params.find("condition"); expression != params.end() && expression->second.type != JsonValue::STRING)
+				return failure("Breakpoint condition must be a string");
+			if (!condExpr.empty())
+			{
+				if (condExpr.size() > 4096) return failure("Breakpoint condition exceeds 4096 bytes");
+				condition.debug = cpu; condition.expressionString = condExpr;
+				std::string error;
+				if (!cpu->initExpression(condExpr.c_str(), condition.expression, error))
+					return failure("Invalid breakpoint condition: " + error);
+			}
 
+			// Validate before relinquishing ownership, inserting, enabling or editing.
 			relinquishSourceBreakpoint(bpCpu, addr);
 			CBreakPoints::AddBreakPoint(bpCpu, addr, temp, enabled);
 
@@ -3047,16 +3059,7 @@ namespace DebugServer
 				CBreakPoints::ChangeBreakPointDescription(bpCpu, addr, desc);
 
 			if (!condExpr.empty())
-			{
-				BreakPointCond cond;
-				cond.debug = cpu;
-				cond.expressionString = condExpr;
-				std::string error;
-				if (cpu->initExpression(condExpr.c_str(), cond.expression, error))
-				{
-					CBreakPoints::ChangeBreakPointAddCond(bpCpu, addr, cond);
-				}
-			}
+				CBreakPoints::ChangeBreakPointAddCond(bpCpu, addr, condition);
 
 			j.startObject();
 			j.kv("ok", true);
@@ -3089,6 +3092,17 @@ namespace DebugServer
 			else if (typeStr == "onchange") cond = (MemCheckCondition)(MEMCHECK_WRITE | MEMCHECK_WRITE_ONCHANGE);
 
 			if (actionStr != "break" && actionStr != "log" && actionStr != "both") return failure("Unknown memcheck action");
+			BreakPointCond condition;
+			if (const auto expression = params.find("condition"); expression != params.end() && expression->second.type != JsonValue::STRING)
+				return failure("Watchpoint condition must be a string");
+			if (!condExpr.empty())
+			{
+				if (condExpr.size() > 4096) return failure("Watchpoint condition exceeds 4096 bytes");
+				condition.debug = cpu; condition.expressionString = condExpr;
+				std::string error;
+				if (!cpu->initExpression(condExpr.c_str(), condition.expression, error))
+					return failure("Invalid watchpoint condition: " + error);
+			}
 			auto bpCpu = getBpCpu(cpuName);
 			Compat::AddMemCheck(bpCpu, start, end, cond, actionStr);
 
@@ -3096,14 +3110,7 @@ namespace DebugServer
 				CBreakPoints::ChangeMemCheckDescription(bpCpu, start, end, desc);
 
 			if (!condExpr.empty())
-			{
-				BreakPointCond bpCond;
-				bpCond.debug = cpu;
-				bpCond.expressionString = condExpr;
-				std::string error;
-				if (cpu->initExpression(condExpr.c_str(), bpCond.expression, error))
-					CBreakPoints::ChangeMemCheckAddCond(bpCpu, start, end, bpCond);
-			}
+				CBreakPoints::ChangeMemCheckAddCond(bpCpu, start, end, condition);
 
 			j.startObject();
 			j.kv("ok", true);
@@ -3135,6 +3142,7 @@ namespace DebugServer
 				j.kv("enabled", bp.enabled);
 				j.kv("temporary", bp.temporary);
 				j.kv("stepping", bp.stepping);
+				Compat::WritePointOptions(j, bp);
 				j.kv("has_condition", bp.hasCond);
 				if (bp.hasCond)
 					j.kv("condition", bp.cond.expressionString);
@@ -3160,6 +3168,11 @@ namespace DebugServer
 				j.kv("hits", (int64_t)Compat::Hits(mc));
 				j.key("last_pc"); j.valHex32(mc.lastPC);
 				j.key("last_addr"); j.valHex32(mc.lastAddr);
+				j.kv("has_condition", mc.hasCond);
+				if (mc.hasCond) j.kv("condition", mc.cond.expressionString);
+				j.kv("memory_condition", static_cast<uint64_t>(mc.memCond));
+				j.kv("result", static_cast<uint64_t>(mc.result));
+				Compat::WritePointOptions(j, mc);
 				if (!mc.description.empty())
 					j.kv("description", mc.description);
 				j.endObject();

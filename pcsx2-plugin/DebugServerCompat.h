@@ -45,6 +45,20 @@ namespace DebugServer::Compat
 			return point.maxHits == 0 && !point.instrumentationEnabled && point.logFormat.empty() && !point.continueOnHit;
 		else return true;
 	}
+	// Expose configuration, excluding volatile hit counters so ownership snapshots
+	// can compare a preserved point before/after an actual hit.
+	template <typename Builder, typename Point> void WritePointOptions(Builder& json, const Point& point)
+	{
+		if constexpr (requires { point.maxHits; point.instrumentationEnabled; point.logFormat; point.continueOnHit; })
+		{
+			json.kv("options_available", true);
+			json.kv("max_hits", static_cast<uint64_t>(point.maxHits));
+			json.kv("instrumentation_enabled", point.instrumentationEnabled);
+			json.kv("log_format", point.logFormat);
+			json.kv("continue_on_hit", point.continueOnHit);
+		}
+		else json.kv("options_available", false);
+	}
 	template <typename Manager = CBreakPoints>
 	void AddMemCheck(BreakPointCpu cpu, u32 start, u32 end, MemCheckCondition condition, const std::string& action)
 	{

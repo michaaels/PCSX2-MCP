@@ -18,6 +18,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Atomic point conditions / CPU selection | S4a | Native parser failures refuse before changing a breakpoint/watchpoint or source-group ownership. Six public point tools select EE/IOP; native condition/options metadata is visible. 295 Node, 13 new native/MCP groups, four old-build compatibility and 74 regression groups passed; old bug reproduced separately. Real Qt matrix remains S4b, blocked by the disconnected Computer Use pipe. [Contract](conditional-points.md). |
 | State-start input movies | F5b | Native finalized-save receipts, paused archive acceptance, exclusive private copies/SHA before actual restore and explicit load outcome. 289 Node/eight new native/MCP groups and eleven power-on regressions passed. Exact RAM recovery, both pads/EOF/one frame, invalidations, save/load failures and cancellation/late completions tested. Fixed playback's null-Error crash on failed internal load. [Contract](input-state-movies.md). |
 | Savestate companion inspection | F5a | Offline MCP tool verifies finalized ZIP32, pinned version/required sizes, decoded component CRC/length and SHA. 283 Node/five actual MCP file checks passed, including real v2.9.147 RAM archive and corruption controls. Native unchanged; movie startup from state remains F5b. [Contract](input-state-inspection.md). |
 | Actual editor integration | D2 | Reusable GPL VSIX installed into an isolated VS Code 1.144.0 profile. Named launch.json/variable/source mapping, Continue, frame-0/GPR/RAM cross-checks with MCP, Step Over and detach passed four actual editor groups. Adapter/editor exit 0; native unchanged. 278 Node/six native DAP regressions passed. Original stage 7 accepted in Windows/EE scope. [Contract](editor-integration.md). |
@@ -190,6 +191,10 @@ the documented reset/restore and observed module-lifetime invalidations.
    have their later scoped acceptances above; broader GUI options/IOP/source
    stepping retain distinct coverage gaps. Native synchronous-load interruption
    and rollback remain deferred rather than implied by timeout/reconciliation.
+   S4a now fixes atomic condition validation and exposes EE/IOP basic point
+   tools/inspection. S4b must exercise actual Qt condition/logging/max-hit edits,
+   IOP ownership and source-step replacement after Computer Use reconnects;
+   no new GUI acceptance is claimed by its API checks.
 2. **Physical PS2 (stage 8).** Needs actual console/transport evidence. Native
    PCSX2 APIs and emulation cannot establish hardware debugger acceptance.
 

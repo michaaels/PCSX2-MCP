@@ -8,6 +8,11 @@ It preserved the enabled `GUI-OWNED` breakpoint at `0x00100364`, with the same
 process, session and execution epoch, and left the VM paused at `0x00100370`.
 No runtime change was required.
 
+The later [S4a API delivery](conditional-points.md) adds atomic condition guards,
+CPU-selectable basic point tools and inspectable options. Its API/IOP checks
+do not extend this Qt acceptance. S4b still requires real GUI edits; Computer
+Use's native pipe was unavailable during S4a.
+
 ## Reproduce the supervised test
 
 Build the Node server and the standalone instruction fixture first; use a
