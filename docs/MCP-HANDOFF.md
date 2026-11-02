@@ -20,6 +20,8 @@ Local Windows components:
 - In-flight EE GUI ownership: [supervised case and limits](inflight-gui-ownership.md)
 - Bounded repetition/source CI: [commands, evidence and T2 limits](stability-ci.md)
 - Sustained rendered progress/resources/recovery: [T2 contract](sustained-validation.md)
+- DAP protocol/native backend: [D1 contract and pending D2 editor gate](dap.md)
+- D1 evidence: ignored `release/dap-delivery-20261101.json`
 - Current delivery evidence: ignored `release/stability-ci-final-delivery-20261101.json`
 - T2 duration/resources evidence: ignored `release/soak-delivery-20261101.json`
 - In-flight GUI evidence: ignored `release/inflight-gui-delivery-20261030.json`
@@ -32,6 +34,14 @@ Local Windows components:
 - S2b1 evidence: ignored `release/reconnect-delivery-20261027.json`
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
+
+D1 adds `node pcsx2-mcp-server/dist/dap.js` / `pcsx2-dap` as a separate stdio
+protocol. 272 Node and six actual DAP/native/MCP groups passed, including source
+next/out/into and frame-0 data cross-checks. It attaches to an existing VM,
+preserves changed source-point owners and never kills that attached emulator.
+Native and previous MCP runtime files retain T2 hashes. Two DAP processes/MCP/
+native test process stopped. Actual editor acceptance remains D2: add reusable
+VS Code integration and run a real editor session, not only protocol mocks.
 
 T2 passed a 604.884-second duration run with 104 RAM/rendered-pixel probes,
 521.908 seconds in running windows, ten restore/ten reset and twenty native

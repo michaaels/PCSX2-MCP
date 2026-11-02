@@ -5,7 +5,8 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "pcsx2-mcp": "dist/index.js"
+    "pcsx2-mcp": "dist/index.js",
+    "pcsx2-dap": "dist/dap.js"
   },
   "scripts": {
     "build": "tsc",

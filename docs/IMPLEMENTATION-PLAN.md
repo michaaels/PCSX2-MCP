@@ -14,6 +14,14 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
 
+D1 (2026-11-01): adaptador DAP stdio añadido sobre los backends existentes.
+TypeScript/272 Node y seis grupos nativos pasaron: breakpoint/fuente, GPR/RAM/
+argumento contrastados con MCP, stepping de instrucción/fuente, invalidación
+por reset y preservación de ownership al desconectar. Dos adaptadores, MCP y
+emulador propios cerrados. Native/MCP existentes no cambian. Sigue **D2**:
+configuración reutilizable y sesión real desde VS Code; etapa 7 aún abierta.
+[Contrato y evidencia](dap.md).
+
 T2 (2026-11-01): pasaron 604.884 s con 104 sondeos de contador RAM/píxeles GS,
 521.908 s en ventanas de ejecución y 20 recuperaciones: diez restore y diez
 reset, con reconexión nativa/reinicio stdio mientras el guest seguía ejecutando.
@@ -129,6 +137,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| D1 | Adaptador DAP sobre capacidades acreditadas | 272 Node, seis grupos con DAP/MCP/PCSX2 reales y empaquetado comprobados. Falta D2 editor real; etapa 7 no cerrada |
 | T2 | Duración, progreso renderizado, recursos y recuperación bajo carga | 604.884 s, 104 sondeos, diez restore/diez reset y 21 stdio cerrados; 262 Node y control de stall. Sin aceptación multi-hora/fugas. Sigue DAP/editor |
 | T1 | Repetición acotada y CI de fuentes | 100+500 ciclos live, 60 rondas de recuperación/captura y 260 Node; runtime intacto. Workflow Windows/Ubuntu; estado remoto por SHA. Sigue T2 de duración/recursos |
 | S2b2c2 | Reemplazo Qt durante `step_over` EE en fixture autónomo | Tres checks guiados y captura real verificados; sesión/pausa preservadas; runtime sin cambios. Otras opciones/IOP/source-step pendientes; sigue estabilidad/CI acotada |

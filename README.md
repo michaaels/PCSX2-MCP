@@ -19,6 +19,10 @@ validated locally; [Node tests on Windows/Ubuntu](../../actions/workflows/mcp-te
 rendered homebrew, 104 RAM/pixel probes and twenty reset/restore rounds;
 262 local Node tests. No game, multi-hour or leak-freedom acceptance.
 
+[DAP backend](docs/dap.md): separate `pcsx2-dap` stdio entry, 272 Node tests
+and native breakpoint/source/register/memory cross-checks. Actual VS Code
+integration remains the next D2 acceptance gate.
+
 ```
 ┌─────────────┐    stdio (MCP)    ┌─────────────────────┐    TCP:21512    ┌─────────────────┐
 │ AI Assistant │ ◄──────────────► │  pcsx2-mcp-server   │ ◄────────────► │  PCSX2 Emulator │

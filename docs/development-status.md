@@ -18,6 +18,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| DAP protocol/native backend | D1 | New stdio adapter reuses guarded MCP backends. 272 Node and six real native cross-check groups passed; exact source/argument/GPR/RAM, instruction/source steps, reset reference invalidation and ownership-preserving detach. Native/existing MCP runtime unchanged. Actual VS Code integration remains D2. [Contract](dap.md). |
 | Duration/rendered progress/resources | T2 | 604.884 s, 104 RAM/pixel probes, 521.908 s in running windows, ten restore/ten reset and running reconnect/stdio replacement. Resource budgets held; all 21 children/native stopped. 262 Node and real stalled-guest rejection passed. Runtime unchanged. [Contract and limits](sustained-validation.md). |
 | Bounded repetition/source CI | T1 | 100+500 cycles in two owned instances, 600 native reconnects, 60 timeout/foreign-point/stdio-restart/PNG rounds; all 62 stdio children and both emulators stopped. TypeScript/260 Node passed. Windows/Ubuntu Node 22 workflow added; native runtime unchanged. No prolonged soak/leak claim. [Contract and remote-status distinction](stability-ci.md). |
 | In-flight Qt EE step ownership | S2b2c2 | Real Qt dialog replaced the private return target during EE `step_over`; three supervised checks passed, ownership error preserved `GUI-OWNED` and the same paused VM. Native debugger PNG reviewed with unchanged capture state; owned process stopped. Runtime unchanged. [Evidence and limits](inflight-gui-ownership.md). |
@@ -175,10 +176,9 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay applies
 the documented reset/restore and observed module-lifetime invalidations.
 
-1. **Editor integration (original roadmap stage 7).** Build a DAP adapter over
-   supported connection, pause/continue, source breakpoints, registers, memory
-   and stack. Expose source stepping/current-frame variables only within their
-   supported subset. Add explicit project/source mapping configuration. Require
+1. **D2 editor integration (original roadmap stage 7).** D1 now provides the
+   adapter and native cross-checks above. Add reusable VS Code configuration and
+   retain explicit project/source mappings and supported EE frame-0 scope. Require
    an actual editor session with breakpoint/source/data checked against MCP;
    protocol mocks alone cannot close this acceptance.
 2. **Extend scoped coverage with separate acceptance.** Savestate-start movies
