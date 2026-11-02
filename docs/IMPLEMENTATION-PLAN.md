@@ -14,6 +14,14 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
 
+F5a (2026-11-02): verificador offline `pcsx2_input_state_inspect` añadido como
+requisito de películas desde savestate. TypeScript/283 Node y cinco checks MCP
+con un estado real 2.9.147 pasaron: SHA, ZIP finalizado, componentes, payloads
+CRC/longitud y rechazo de corrupción. No carga VM ni modifica native.
+**Sigue F5b**: confirmar guardado asíncrono y conectar inicio/replay con copias
+privadas, outcomes e invalidaciones reales. El modo desde estado aún se rechaza.
+[Contrato y evidencia](input-state-inspection.md).
+
 D2 (2026-11-02): etapa 7 aceptada en Windows/EE con VS Code 1.144.0. VSIX
 instalado en perfil nuevo; `launch.json` con variables/mapeos y ajustes locales
 del adaptador. Cuatro grupos reales de editor/MCP pasaron, 278 Node y seis
@@ -146,6 +154,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| F5a | Verificación offline de compañero savestate | 283 Node/cinco checks MCP con estado real; ZIP/payloads/SHA verificados. No habilita inicio desde estado; sigue F5b nativo |
 | D2 | Integración reutilizable y sesión real VS Code | Cuatro grupos editor/MCP, 278 Node, seis regresiones nativas DAP y VSIX instalado. Etapa 7 aceptada solo en Windows/EE; sigue savestate-start input movies |
 | D1 | Adaptador DAP sobre capacidades acreditadas | 272 Node, seis grupos con DAP/MCP/PCSX2 reales y empaquetado comprobados. Falta D2 editor real; etapa 7 no cerrada |
 | T2 | Duración, progreso renderizado, recursos y recuperación bajo carga | 604.884 s, 104 sondeos, diez restore/diez reset y 21 stdio cerrados; 262 Node y control de stall. Sin aceptación multi-hora/fugas. Sigue DAP/editor |

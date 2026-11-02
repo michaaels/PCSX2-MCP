@@ -1,5 +1,11 @@
 # Bounded native input movies
 
+F5a (2026-11-02) adds the separate
+[offline savestate companion inspector](input-state-inspection.md): decoded
+ZIP/component CRC and SHA checks on a genuine v2.9.147 state. It does not enable
+savestate-start recording/replay; F5b native completion/copy/start work remains
+pending. The older power-on acceptance below retains its historical scope.
+
 Implemented and tested on Windows/PCSX2 v2.6.3 on 2026-10-23. Both components
 must be rebuilt; native capability `input_movies` is required. These tools use
 PCSX2's `.p2m2` v1 pad format and `InputRecording`, with an owned CPU-thread loop.

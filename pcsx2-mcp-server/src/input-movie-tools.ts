@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { inputStateOptions, inspectInputState } from './input-state.js';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DebugServerClient } from './debug-server-client.js';
@@ -94,4 +95,6 @@ export function registerInputMovieTools(server: McpServer, getClient: () => Debu
     { operation_id: watchId }, ({ operation_id }) => run(() => client().inputMovieStatus(operation_id, true)));
   server.tool('pcsx2_input_movie_inspect', 'Inspect a bounded local p2m2 v1 header, complete two-port frame records and SHA256 without a connection. Does not prove the original ELF or deterministic execution. Savestate companions are not verified.',
     { path: z.string().min(1).max(4096) }, ({ path }, extra) => run(() => inspectMovie(path, extra.signal)));
+  server.tool('pcsx2_input_state_inspect', 'Inspect a local pinned-v2.9.147 savestate companion without connecting or loading it. Verifies finalized bounded ZIP32 structure, required entries/sizes, decoded payload lengths/CRC32 and full-file SHA256 (optionally caller-pinned). Supports stored/Deflate/Zstandard data; Node 22.15+ required. No RAM/BIOS payload is returned. Does not prove native load success, ELF association, determinism or enable savestate movie startup.',
+    inputStateOptions.shape, (input, extra) => run(() => inspectInputState(input, extra.signal)));
 }

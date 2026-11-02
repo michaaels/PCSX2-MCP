@@ -23,6 +23,8 @@ Local Windows components:
 - DAP protocol/native backend: [D1 contract](dap.md)
 - Actual VS Code integration: [D2 acceptance and install/configuration](editor-integration.md)
 - D2 evidence: ignored `release/editor-delivery-20261102.json`
+- Savestate companion preflight: [F5a inspector / pending F5b native startup](input-state-inspection.md)
+- F5a evidence: ignored `release/input-state-delivery-20261102.json`
 - D1 evidence: ignored `release/dap-delivery-20261101.json`
 - Current delivery evidence: ignored `release/stability-ci-final-delivery-20261101.json`
 - T2 duration/resources evidence: ignored `release/soak-delivery-20261101.json`
@@ -36,6 +38,13 @@ Local Windows components:
 - S2b1 evidence: ignored `release/reconnect-delivery-20261027.json`
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
+
+F5a adds offline `pcsx2_input_state_inspect` with SHA/pinned ZIP/payload CRC checks;
+283 Node and five actual MCP checks on a genuine historical v2.9.147 state passed.
+Native remains unchanged; no new emulator/state-load run is claimed. Restart
+the Node MCP server to discover the new tool. Savestate movie starts remain
+rejected. Next F5b must integrate asynchronous save outcome/private copies and
+actual state-start record/replay, preserving ownership and lifecycle guards.
 
 D2 accepts original stage 7 for the trusted Windows/EE fixture: installed VSIX,
 actual VS Code 1.144.0 project config/mappings, source Continue/Step Over,

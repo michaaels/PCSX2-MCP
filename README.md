@@ -24,6 +24,10 @@ reusable local VSIX, actual editor/source/data checked against MCP, graceful
 detach, 278 Node tests and native DAP regression. Windows/EE scope; hardware
 and broader backend limits remain separate.
 
+[Savestate companion inspector](docs/input-state-inspection.md): offline
+SHA/ZIP/payload CRC verification, 283 Node tests and genuine-state MCP checks.
+Savestate-start movies remain the following native integration step.
+
 ```
 ┌─────────────┐    stdio (MCP)    ┌─────────────────────┐    TCP:21512    ┌─────────────────┐
 │ AI Assistant │ ◄──────────────► │  pcsx2-mcp-server   │ ◄────────────► │  PCSX2 Emulator │
