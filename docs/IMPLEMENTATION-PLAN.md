@@ -14,6 +14,14 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
 
+T2R (2026-11-02): repetida la aceptación sostenida con el binario actual S4a,
+después de los cambios nativos F5b/S4a: 604.097 s, 96 sondeos RAM/píxeles,
+481.732 s en ventanas de ejecución, diez restore/diez reset y 21 stdio cerrados.
+Picos nativos 1035.06 MiB privados/594 handles, crecimiento final 102.43 MiB
+dentro de límites. Control de guest pausado rechazado y cerrado. Sin cambios
+de runtime/harness ni repetición local de los 295 Node de S4a. [Evidencia](sustained-validation.md).
+Sigue S4b Qt real cuando se restablezca Computer Use; no retomar SMS ni hardware.
+
 S4a (2026-11-02): condiciones de puntos validadas antes de mutar; corregido un
 falso éxito reproducido que creaba/alteraba puntos con expresiones inválidas.
 Las seis herramientas básicas seleccionan EE/IOP y muestran condiciones/opciones
@@ -177,6 +185,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| T2R | Revalidar duración/recuperación con native F5b/S4a | 604.097 s/96 sondeos/20 recuperaciones, recursos en límites y 21 stdio cerrados; runtime idéntico a S4a. GUI sigue S4b |
 | S4a | Condiciones atómicas y selección EE/IOP en puntos MCP | 295 Node; 13 grupos nuevos, cuatro de compatibilidad y 74 regresiones; fallo previo reproducido. Sigue S4b con ediciones Qt reales, controlador sin conexión |
 | F5b | Guardado confirmado y películas desde savestate | 289 Node/ocho grupos nativos/MCP y once power-on pasaron; SHA antes de cargar, RAM/outcomes/EOF y fallos reales. Sin rollback, determinismo ni asociación ELF embebida |
 | F5a | Verificación offline de compañero savestate | 283 Node/cinco checks MCP con estado real; ZIP/payloads/SHA verificados. No habilita inicio desde estado; sigue F5b nativo |

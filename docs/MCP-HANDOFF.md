@@ -28,6 +28,7 @@ Local Windows components:
 - F5b evidence: ignored `release/input-state-movies-delivery-20261102.json`
 - Atomic conditions / CPU-selectable points: [S4a / pending S4b real Qt](conditional-points.md)
 - S4a evidence: ignored `release/conditional-points-delivery-20261102.json`
+- Current-binary T2R evidence: ignored `release/soak-current-delivery-20261102.json`
 - F5a evidence: ignored `release/input-state-delivery-20261102.json`
 - D1 evidence: ignored `release/dap-delivery-20261101.json`
 - Current delivery evidence: ignored `release/stability-ci-final-delivery-20261101.json`
@@ -42,6 +43,13 @@ Local Windows components:
 - S2b1 evidence: ignored `release/reconnect-delivery-20261027.json`
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
+
+T2R revalidated this S4a executable for 604.097 seconds after the native changes:
+96 RAM/pixel probes, ten restore/ten reset, 481.732 seconds in execution windows
+and 21 stdio/native processes closed. Resources stayed within budgets; an actual
+paused guest failed its negative control and closed. No runtime/harness change
+or additional local 295-test run was needed. See the current receipt above.
+S4b still requires real Qt edits after the Computer Use pipe reconnects.
 
 S4a rebuilds native/Node: six basic point tools now accept cpu=ee/iop; invalid
 conditions fail before changing points/ownership. Native conditions require

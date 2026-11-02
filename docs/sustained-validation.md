@@ -3,7 +3,50 @@
 This Windows-only live harness drives its own PS2 homebrew, emulator, data root,
 PINE port and stdio MCP children. It does not use SMS, Jellyfin or a game.
 PCSX2 remains pinned to v2.9.147. Native and production Node sources do not
-change in this delivery; the new code is test infrastructure.
+change in the original T2 delivery; its new code is test infrastructure.
+
+## Current-binary revalidation — 2026-11-02
+
+Repeated after the native F5b/S4a changes, using S4a source commit `1b4f557`
+and executable SHA256
+`9243a1a396919d6240fc00ad1949f076d9ccfe98c112ce96688dd0487e4e7d3c`.
+No harness, production source, fixture, native binary or configuration change
+was needed for this follow-up. The unchanged harness/support and current S4a
+runtime hashes are bound separately from the original T2 acceptance below.
+
+The normal run passed **604.097 s**, with **481.732 s** in measured execution
+windows, **96** RAM/decoded-pixel progress probes and **20** recoveries: ten
+actual guarded restores and ten ELF resets. Each recovery also replaced the
+native socket and stdio server while the guest was running. All **21** owned
+stdio processes and the emulator closed. Twenty stdio children were resource
+sampled; the last replacement was created after the final progress probe.
+
+Observed native peaks: **1035.06 MiB private**, **776.89 MiB working set** and
+**594 handles**. Final private memory was **102.43 MiB above** the 60-second
+baseline, within the existing 256 MiB growth limit; sampled CPU advanced
+112.844 s. Sampled MCP peaks were **55.47 MiB private** and **186 handles**.
+The pre-final-report artifact scan counted 36 files/18,008,906 bytes. All
+resource/log/artifact gates held. First/last rendered counter PNGs were visually
+reviewed. These bounded observations do not prove leak freedom or multi-hour
+stability.
+
+The real paused-guest negative control again failed on its first unchanged RAM
+counter probe, exited 1 and closed its own native/stdio processes. Source tests
+are the unchanged **295-test S4a** suite; no redundant local source run or new
+editor/GUI action is claimed. The publication receipt also verifies hosted CI
+for this documentation-only follow-up.
+
+```text
+release/soak-current-600-20261102/validation.json
+release/soak-current-stall-20261102/validation.json
+release/soak-current-ci-20261102.json
+release/soak-current-delivery-20261102.json
+```
+
+Next remains real Qt ownership coverage after Computer Use reconnects. The
+native-pipe error is not treated as a GUI pass; SMS/Jellyfin and physical PS2
+remain separate. The following reproduction and older measurements retain
+their original scope.
 
 ## Reproduce
 
