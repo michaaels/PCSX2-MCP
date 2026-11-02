@@ -19,7 +19,7 @@ Local Windows components:
 - Application/debugger capture: [targets, rebuild/restart and limits](application-screenshots.md)
 - In-flight EE GUI ownership: [supervised case and limits](inflight-gui-ownership.md)
 - Bounded repetition/source CI: [commands, evidence and T2 limits](stability-ci.md)
-- Current delivery evidence: ignored `release/stability-ci-delivery-20261030.json`
+- Current delivery evidence: ignored `release/stability-ci-final-delivery-20261101.json`
 - In-flight GUI evidence: ignored `release/inflight-gui-delivery-20261030.json`
 - S3 evidence: ignored `release/application-capture-delivery-20261029.json`
 - Guided preparation evidence: ignored `release/guided-gui-delivery-20261029.json`

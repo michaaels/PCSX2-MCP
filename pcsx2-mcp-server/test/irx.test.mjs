@@ -11,7 +11,8 @@ import { workflowFixture } from './workflow-fixtures.mjs';
 import { irxFixture, runtime, caps } from './irx-fixtures.mjs';
 
 async function local(t, debug = true) {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'irx-test-'));
+  // Windows TEMP may contain an 8.3 alias; production resolves canonical paths.
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'irx-test-')));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const fixture = irxFixture(debug), irx = path.join(directory, 'fixture.irx'); await fs.writeFile(irx, fixture.bytes);
   return { ...fixture, ...runtime(fixture.bytes), irx };

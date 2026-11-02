@@ -7,7 +7,8 @@ import { SourceResolver, inspectSourceElf, parseSourceOutput, runSourceTool } fr
 
 // Structural ELF fixture only. Genuine compiler-generated DWARF is exercised in source-live.mjs.
 async function fixture(t, debug = true) {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'pcsx2 source á-'));
+  // Match the resolver's canonical path even when Windows TEMP uses an 8.3 alias.
+  const directory = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'pcsx2 source á-')));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const filename = path.join(directory, 'test.elf');
   const bytes = Buffer.alloc(512);

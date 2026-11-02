@@ -1,6 +1,6 @@
 # Plan de implementación y publicación
 
-Actualizado: 2026-10-30. Autorizado por el usuario: implementar las mejoras del
+Actualizado: 2026-11-01. Autorizado por el usuario: implementar las mejoras del
 estudio de forks y después continuar el plan original de depuración PS2.
 
 ## Regla de entrega
@@ -22,6 +22,11 @@ Workflow Node 22 Windows/Ubuntu con `npm ci`/`npm test`, permisos de lectura y
 acciones fijadas por SHA. Runtime sin cambios; CI nativa/BIOS no incluida.
 Los bucles midieron 13.117 y 71.345 s, sin aceptación de soak prolongado ni
 ausencia de fugas. [Comandos, evidencia y siguiente T2](stability-ci.md).
+La primera CI pasó Ubuntu y detectó dos expectativas de ruta temporal 8.3 en
+Windows; se canonicalizan los directorios de esos fixtures sin relajar asserts.
+Acciones v6 fijadas por SHA usan Node 24; el proyecto se prueba con Node 22.
+El cierre CI del 2026-11-01 conserva la validación local de 260 pruebas y
+registra los resultados remotos del commit final en el recibo de entrega.
 Sigue T2: duración sostenida, progreso renderizado, recursos y límites de
 fallo/artefactos; después reset/restore bajo carga y DAP sobre lo acreditado.
 

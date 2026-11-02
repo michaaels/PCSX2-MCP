@@ -71,7 +71,7 @@ release/stability-live-20261030/validation.json           # excluded startup fai
 release/stability-live-20261030-02/validation.json        # accepted 100
 release/stability-live-20261030-500/validation.json       # accepted 500
 release/stability-stale-rejected-20261030/validation.json # expected refusal
-release/stability-ci-delivery-20261030.json
+release/stability-ci-final-delivery-20261101.json
 ```
 
 Executable, integrated native sources, dist and runtime DLL hashes are compared
@@ -86,6 +86,16 @@ checks this live harness and runs `npm test` (including TypeScript compilation)
 on Windows and Ubuntu. Checkout/setup-node actions are pinned to commit SHAs;
 repository permissions are read-only and checkout does not persist credentials.
 Each job has a ten-minute timeout. New runs cancel older runs for the same ref.
+
+The first pushed run passed Ubuntu but failed two Windows test assertions:
+the runner's TEMP used the `RUNNER~1` short alias while the existing production
+resolvers correctly returned `runneradmin` canonical paths. The two fixture
+helpers now canonicalize their new temporary directories with `fs.realpath`;
+strict resolver/path/hash assertions remain intact. No runtime behavior was
+changed. The first run also reported deprecated Node 20 action runtimes;
+checkout/setup-node now use SHA-pinned v6 actions on Node 24, while the tested
+project Node version stays 22. That failed CI run remains excluded:
+`https://github.com/michaaels/PCSX2-MCP/actions/runs/41017450651`.
 
 Hosted CI validates the bridge's source tests, not the native emulator. It does
 not install BIOS, build/launch PCSX2, run this native repetition, exercise the
