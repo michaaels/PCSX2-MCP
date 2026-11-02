@@ -533,7 +533,7 @@ export class DebugServerClient {
   }
 
   async startInputMovie(id: string, expected: { process_id: number; session: number; execution_epoch: number; elf: string; elf_crc: string },
-    input: (MovieOptions | ReplayOptions) & { mode: 'record' | 'replay'; elf_sha256: string }) {
+    input: (MovieOptions | ReplayOptions) & { mode: 'record' | 'replay'; elf_sha256: string; start?: 'power_on' | 'savestate' }) {
     watchId.parse(id);
     const response = await this.send({ cmd: 'input_movie_start', operation_id: id, ...input,
       expected_process_id: expected.process_id, expected_session: expected.session, expected_execution_epoch: expected.execution_epoch,
@@ -541,10 +541,23 @@ export class DebugServerClient {
     if (!response.ok) throw Object.assign(new Error(response.error ?? 'Input movie rejected'), { native_rejected: true });
     const result = parseMovie(response, id);
     if (!result.active || !result.paused || result.frames !== 0 || result.mode !== input.mode || result.session !== expected.session ||
-        result.execution_epoch !== expected.execution_epoch + 1 || result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc) ||
+        (input.start === 'savestate' && input.mode === 'record' ? !['preparing', 'prepared'].includes(result.state) : result.state !== 'active') ||
+        result.execution_epoch !== expected.execution_epoch + (input.start === 'savestate' && input.mode === 'record' ? 0 : 1) ||
+        result.start !== (input.start ?? 'power_on') || result.elf !== expected.elf || Number(result.elf_crc) !== Number(expected.elf_crc) ||
         result.elf_sha256 !== input.elf_sha256 || (input.mode === 'record' && result.max_frames !== movieOptions.parse(input).frames) ||
         result.source !== ('path' in input ? input.path : '') || result.input_sha256 !== ('movie_sha256' in input ? input.movie_sha256 : ''))
       throw new Error('Input movie startup identity/state/bounds mismatch');
+    if (input.start === 'savestate' && input.mode === 'replay' &&
+        (result.state_source !== ('state_path' in input ? input.state_path : '') || result.state_sha256 !== ('state_sha256' in input ? input.state_sha256 : '')))
+      throw new Error('Input movie companion startup identity mismatch');
+    return result;
+  }
+
+  async acceptInputMovieState(id: string, stateSHA256: string) {
+    watchId.parse(id);
+    const result = parseMovie(await this.sessionCommand({ cmd: 'input_movie_accept', operation_id: id, state_sha256: stateSHA256 }), id);
+    if (!result.active || result.state !== 'active' || !result.paused || result.frames !== 0 || result.state_sha256 !== stateSHA256)
+      throw new Error('Native companion acceptance failed');
     return result;
   }
 

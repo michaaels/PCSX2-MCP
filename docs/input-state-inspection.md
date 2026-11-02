@@ -2,9 +2,10 @@
 
 This is the verified prerequisite for savestate-start input movies. The new
 offline MCP tool, `pcsx2_input_state_inspect`, checks a companion archive before
-future native startup/replay integration. **Recording/replaying movies from a
-savestate remains pending F5b**; existing movie starts still explicitly reject
-that mode. No native binary changes or emulator launch occur in F5a.
+native startup/replay integration. The subsequent
+[F5b delivery](input-state-movies.md) enables state-start recording/replay with
+actual native outcomes. No native binary changes or emulator launch occurred
+in F5a itself; its historical evidence below remains separate.
 
 ```json
 {"path":"D:/artifacts/movie.p2m2_SaveState.p2s","expected_sha256":"<64 hexadecimal characters>"}

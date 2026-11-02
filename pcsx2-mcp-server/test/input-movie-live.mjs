@@ -10,6 +10,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { DebugServerClient } from '../dist/debug-server-client.js';
 import { PineClient } from '../dist/pine-client.js';
 import { inspectMovie } from '../dist/input-movie.js';
+import { createHash } from 'node:crypto';
 
 assert.equal(process.argv.length, 6, 'Expected PCSX2, ELF, configured data root and a new output');
 const [executable, elf, configured, output] = process.argv.slice(2).map(p => path.resolve(p));
@@ -35,6 +36,11 @@ const mcp = new Client({ name: 'input-movie-live', version: '1.0' });
 const inspector = new DebugServerClient('127.0.0.1', port);
 const pine = new PineClient('127.0.0.1', pinePort);
 const results = { executable, elf, started_at: new Date().toISOString(), checks: [] };
+results.native_sha256 = createHash('sha256').update(await fs.readFile(executable)).digest('hex');
+const transport = new StdioClientTransport({ command: process.execPath,
+  args: [fileURLToPath(new URL('../dist/index.js', import.meta.url))],
+  env: { ...process.env, PCSX2_DEBUG_PORT: String(port) }, stderr: 'pipe' });
+transport.stderr?.resume();
 let owned = false;
 async function call(name, args = {}) {
   const response = await mcp.callTool({ name, arguments: args });
@@ -53,9 +59,7 @@ async function ready() {
   await inspector.pause();
 }
 try {
-  await mcp.connect(new StdioClientTransport({ command: process.execPath,
-    args: [fileURLToPath(new URL('../dist/index.js', import.meta.url))],
-    env: { ...process.env, PCSX2_DEBUG_PORT: String(port) }, stderr: 'pipe' }));
+  await mcp.connect(transport); results.mcp_pid = transport.pid;
   results.launch = await call('pcsx2_launch', { executable, elf, data_directory: root }); owned = true;
   await inspector.connect(); await ready();
   const first = await record({ frames: 60 });
@@ -195,7 +199,18 @@ try {
   results.passed = true;
 } finally {
   inspector.disconnect(); pine.disconnect();
-  if (owned) await mcp.callTool({ name: 'pcsx2_stop', arguments: {} }).catch(() => {});
-  await mcp.close(); results.finished_at = new Date().toISOString();
+  if (owned) {
+    try { const stopped = await mcp.callTool({ name: 'pcsx2_stop', arguments: {} }); results.stop_acknowledged = !stopped.isError; }
+    catch (e) { results.cleanup_error = String(e); }
+  }
+  await mcp.close();
+  for (let i = 0; owned && i < 100; i++) {
+    try { process.kill(results.launch.pid, 0); await delay(25); } catch (e) { if (e.code === 'ESRCH') break; throw e; }
+  }
+  try { if (owned) process.kill(results.launch.pid, 0); results.native_stopped = false; }
+  catch (e) { if (e.code !== 'ESRCH') throw e; results.native_stopped = true; }
+  results.mcp_stopped = transport.pid === null;
+  if (!results.native_stopped || !results.mcp_stopped || !results.stop_acknowledged) { results.passed = false; process.exitCode = 1; }
+  results.finished_at = new Date().toISOString();
   await fs.writeFile(path.join(output, 'validation.json'), JSON.stringify(results, null, 2));
 }

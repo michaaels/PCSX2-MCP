@@ -8,6 +8,7 @@ import { DebugServerClient } from '../dist/debug-server-client.js';
 import { parseP2m2, inspectMovie, parseMovie, movieOptions, hashLocalFile } from '../dist/input-movie.js';
 import { startInputMovie, readInputMovie } from '../dist/input-movie-tools.js';
 import { debugServer } from './fixtures.mjs';
+import { stateZip } from './input-state-fixtures.mjs';
 
 const id = 'a'.repeat(32);
 export function movie(frames = 2) {
@@ -99,7 +100,7 @@ test('native refusal never cleans up a foreign recording, while uncertain starts
   assert.equal(c.mock.requests.at(-1).cmd, 'input_movie_stop'); assert.equal(c.mock.requests.at(-1).operation_id, start.operation_id);
 });
 
-test('replay validates supplied movie/ELF hashes and rejects savestate mode before any reset', async t => {
+test('replay validates supplied movie/ELF hashes and requires a savestate companion before any reset', async t => {
   const f = await fixture(t), source = await inspectMovie(f.filename);
   const c = await client(t, req => req.cmd === 'capabilities' ? f.caps : { ok: false, error: 'unexpected reset' });
   const options = { path: f.filename, movie_sha256: source.sha256, elf_sha256: f.hash };
@@ -107,6 +108,105 @@ test('replay validates supplied movie/ELF hashes and rejects savestate mode befo
   const bytes = movie(); bytes[569] = 1; await fs.writeFile(f.filename, bytes);
   await assert.rejects(startInputMovie(c.value, options, 'replay'), /Savestate/);
   assert.equal(c.mock.requests.some(req => req.cmd === 'input_movie_start'), false);
+});
+
+let archive;
+const stateBytes = () => archive ??= stateZip(); // Structural fixture, never passed to a real native loader here.
+const digest = b => createHash('sha256').update(b).digest('hex');
+function fromState(f, change = {}) {
+  return f.state({ start: 'savestate', execution_epoch: 3, state: 'prepared', state_outcome: 'saved',
+    state_path: f.filename + '_SaveState.p2s', state_source: '', state_sha256: '', ...change });
+}
+
+test('savestate response invariants bind companion path, saved outcome, paused preparation and accepted hash', async t => {
+  const f = await fixture(t), prepared = fromState(f);
+  assert.equal(parseMovie(prepared, id).state, 'prepared');
+  for (const change of [{ state_path: f.filename }, { state_source: f.filename }, { paused: false }, { frames: 1 },
+    { state_outcome: 'pending' }, { state_sha256: '0'.repeat(64) }, { state: 'active' }])
+    assert.throws(() => parseMovie({ ...prepared, ...change }, id));
+  assert.equal(parseMovie({ ...prepared, state: 'active', state_sha256: '0'.repeat(64) }, id).active, true);
+  assert.throws(() => parseMovie(f.state({ state_path: prepared.state_path }), id));
+});
+
+test('record from state waits for finalization, verifies payloads and accepts the exact hash without resuming', async t => {
+  const f = await fixture(t); let current;
+  const c = await client(t, async req => {
+    if (req.cmd === 'capabilities') return { ...f.caps, features: ['input_movies', 'input_movie_states'] };
+    if (req.cmd === 'input_movie_start') {
+      const filename = path.join(f.dir, `${req.operation_id}.p2m2`);
+      await fs.writeFile(filename + '_SaveState.p2s', stateBytes());
+      current = fromState(f, { operation_id: req.operation_id, path: filename, state_path: filename + '_SaveState.p2s' });
+      return { ...current, state: 'preparing', state_outcome: 'pending' };
+    }
+    if (req.cmd === 'input_movie_accept') {
+      assert.equal(req.state_sha256, digest(stateBytes())); current = { ...current, state: 'active', state_sha256: req.state_sha256 };
+    }
+    return current;
+  });
+  const result = await startInputMovie(c.value, { start: 'savestate', frames: 2 }, 'record');
+  assert.equal(result.state, 'active'); assert.equal(result.companion.archive_and_payloads_verified, true);
+  assert.equal(result.elf_association, 'caller_supplied_not_embedded'); assert.equal(result.determinism, 'not_established');
+  assert.equal(c.mock.requests.some(r => r.cmd === 'resume'), false);
+  assert.equal(c.mock.requests.filter(r => r.cmd === 'input_movie_accept').length, 1);
+});
+
+test('aborting a pending save closes only its operation and never accepts the companion', async t => {
+  const f = await fixture(t), abort = new AbortController(); let current;
+  const c = await client(t, req => {
+    if (req.cmd === 'capabilities') return { ...f.caps, features: ['input_movies', 'input_movie_states'] };
+    const filename = path.join(f.dir, `${req.operation_id}.p2m2`);
+    current = fromState(f, { operation_id: req.operation_id, path: filename, state_path: filename + '_SaveState.p2s', state: 'preparing', state_outcome: 'pending' });
+    if (req.cmd === 'input_movie_start') { abort.abort(); return current; }
+    return { ...current, state: 'closed', active: false, reason: 'stopped' };
+  });
+  await assert.rejects(startInputMovie(c.value, { start: 'savestate', frames: 2 }, 'record', abort.signal), /abort/i);
+  assert.equal(c.mock.requests.at(-1).cmd, 'input_movie_stop');
+  assert.equal(c.mock.requests.at(-1).operation_id, c.mock.requests.find(r => r.cmd === 'input_movie_start').operation_id);
+  assert.equal(c.mock.requests.some(r => r.cmd === 'input_movie_accept'), false);
+});
+
+test('save failure and corrupted finalized state cannot become an accepted record', async t => {
+  const f = await fixture(t); let fail = true, current;
+  const c = await client(t, async req => {
+    if (req.cmd === 'capabilities') return { ...f.caps, features: ['input_movies', 'input_movie_states'] };
+    const filename = path.join(f.dir, `${req.operation_id}.p2m2`);
+    if (req.cmd === 'input_movie_start') {
+      await fs.writeFile(filename + '_SaveState.p2s', stateBytes().subarray(0, -1));
+      current = fromState(f, { operation_id: req.operation_id, path: filename, state_path: filename + '_SaveState.p2s',
+        ...(fail ? { state: 'failed', state_outcome: 'failed', active: false, reason: 'state_save_failed' } : {}) });
+      return current;
+    }
+    return { ...current, state: 'closed', active: false, reason: 'stopped' };
+  });
+  await assert.rejects(startInputMovie(c.value, { start: 'savestate', frames: 2 }, 'record'), /identity|state/i);
+  fail = false;
+  await assert.rejects(startInputMovie(c.value, { start: 'savestate', frames: 2 }, 'record'), /ZIP|savestate/i);
+  assert.equal(c.mock.requests.some(r => r.cmd === 'input_movie_accept'), false);
+});
+
+test('state replay preflight rejects missing/hash/corruption/capability before native dispatch', async t => {
+  const f = await fixture(t), b = movie(); b[569] = 1; await fs.writeFile(f.filename, b);
+  const companion = f.filename + '_SaveState.p2s'; await fs.writeFile(companion, stateBytes());
+  const c = await client(t, () => f.caps);
+  const options = { path: f.filename, movie_sha256: digest(b), elf_sha256: f.hash, state_path: companion, state_sha256: digest(stateBytes()) };
+  await assert.rejects(startInputMovie(c.value, { ...options, state_sha256: '0'.repeat(64) }, 'replay'), /SHA256/);
+  await assert.rejects(startInputMovie(c.value, { ...options, state_path: path.join(f.dir, 'absent') }, 'replay'), /ENOENT/);
+  await assert.rejects(startInputMovie(c.value, options, 'replay'), /input_movie_states/);
+  await fs.writeFile(companion, stateBytes().subarray(0, -1));
+  await assert.rejects(startInputMovie(c.value, { ...options, state_sha256: digest(stateBytes().subarray(0, -1)) }, 'replay'), /ZIP|savestate/i);
+  assert.equal(c.mock.requests.some(r => r.cmd === 'input_movie_start'), false);
+});
+
+test('closed state replay verifies both immutable companions and rejects a changed source afterward', async t => {
+  const f = await fixture(t), b = movie(); b[569] = 1;
+  const source = path.join(f.dir, 'original.p2m2'), stateSource = source + '_SaveState.p2s';
+  await fs.writeFile(f.filename, b); await fs.writeFile(source, b);
+  await fs.writeFile(stateSource, stateBytes()); await fs.writeFile(f.filename + '_SaveState.p2s', stateBytes());
+  const c = await client(t, () => fromState(f, { mode: 'replay', source, state_source: stateSource,
+    state: 'closed', active: false, reason: 'eof', frames: 2, input_sha256: digest(b), state_sha256: digest(stateBytes()), state_outcome: 'loaded' }));
+  const result = await readInputMovie(c.value, id); assert.equal(result.completed, true); assert.equal(result.state_source_preserved, true);
+  await fs.writeFile(stateSource, Buffer.from('changed source state'));
+  await assert.rejects(readInputMovie(c.value, id), /SHA256/);
 });
 
 test('old native capability and mismatched loaded ELF CRC reject before any movie reset', async t => {

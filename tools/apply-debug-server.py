@@ -41,6 +41,16 @@ def main() -> None:
         'void VMManager::Shutdown(bool save_resume_state)\n{\n\tDebugServer::Stop();', str(vm))
     vm_text = replace_once(vm_text, 'void VMManager::Reset()\n{',
         'void VMManager::Reset()\n{\n\tDebugServer::OnVMReset();', str(vm))
+    vm_text = replace_once(vm_text, 'void VMManager::SetState(VMState state)\n{',
+        'void VMManager::SetState(VMState state)\n{\n'
+        '\tif (state == VMState::Running && !DebugServer::AllowInputMovieResume()) return;', str(vm))
+    # Writer completion, after zip_close succeeded, rather than the queued host
+    # notification. Failure before/inside the worker is caught by recording's
+    # error callback. The hook only publishes an exact-path mutex-protected ticket.
+    vm_text = replace_once(vm_text,
+        '\tDevCon.WriteLn("Zipping save state to \'%s\' took %.2f ms", filename, timer.GetTimeMilliseconds());',
+        '\tDebugServer::OnInputMovieStateSaved(filename, true);\n'
+        '\tDevCon.WriteLn("Zipping save state to \'%s\' took %.2f ms", filename, timer.GetTimeMilliseconds());', str(vm))
     vm_text = replace_once(vm_text, 'void VMManager::Internal::VSyncOnCPUThread()\n{',
         'void VMManager::Internal::VSyncOnCPUThread()\n{\n\tDebugServer::OnVSync();', str(vm))
     vm_text = replace_once(vm_text,
@@ -377,6 +387,17 @@ def main() -> None:
     recording = source / 'pcsx2/Recording/InputRecording.cpp'
     recording_text = replace_once(recording.read_text(encoding='utf-8'), '#include "InputRecording.h"',
         '#include "InputRecording.h"\n#include "DebugTools/DebugServer.h"', str(recording))
+    recording_text = replace_once(recording_text, '#include "DebugTools/DebugServer.h"',
+        '#include "DebugTools/DebugServer.h"\n#include "common/Error.h"', str(recording))
+    # The pinned deserializer dereferences its Error* when internal structures
+    # fail. Passing the default nullptr from input playback crashes that path.
+    recording_text = replace_once(recording_text,
+        '\t\tconst auto loaded = VMManager::LoadState(savestatePath.c_str());',
+        '\t\tError loadError;\n\t\tconst auto loaded = VMManager::LoadState(savestatePath.c_str(), &loadError);', str(recording))
+    recording_text = replace_once(recording_text,
+        'VMManager::SaveState(savestatePath.c_str(), true, false, [](const std::string& error) {',
+        'VMManager::SaveState(savestatePath.c_str(), true, false, [savestatePath](const std::string& error) {\n'
+        '\t\t\tDebugServer::OnInputMovieStateSaved(savestatePath, false);', str(recording))
     play_signature = 'bool InputRecording::play(const std::string& filename' + (', bool readOnly)' if 'bool readOnly)' in recording_text else ')')
     for signature in ('bool InputRecording::create(const std::string& fileName, const bool fromSaveState, const std::string& authorName)',
                       play_signature):

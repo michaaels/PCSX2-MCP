@@ -5,6 +5,7 @@ pcsx2-src/
 release/
 
 # Node
+.codebase-memory/
 pcsx2-mcp-server/node_modules/
 pcsx2-mcp-server/dist/
 pcsx2-mcp-server/.venv-dwarf/

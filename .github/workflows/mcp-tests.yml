@@ -40,4 +40,6 @@ jobs:
       - run: node --check test/dap-live.mjs
       - run: node --check test/vscode-live.mjs
       - run: node --check test/input-state-live.mjs
+      - run: node --check test/input-state-movie-live.mjs
+      - run: node --check test/input-movie-live.mjs
       - run: npm test

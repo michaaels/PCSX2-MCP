@@ -23,7 +23,9 @@ Local Windows components:
 - DAP protocol/native backend: [D1 contract](dap.md)
 - Actual VS Code integration: [D2 acceptance and install/configuration](editor-integration.md)
 - D2 evidence: ignored `release/editor-delivery-20261102.json`
-- Savestate companion preflight: [F5a inspector / pending F5b native startup](input-state-inspection.md)
+- Savestate companion preflight: [F5a offline inspector](input-state-inspection.md)
+- Actual state-start movies: [F5b save receipts/private copies/native outcomes](input-state-movies.md)
+- F5b evidence: ignored `release/input-state-movies-delivery-20261102.json`
 - F5a evidence: ignored `release/input-state-delivery-20261102.json`
 - D1 evidence: ignored `release/dap-delivery-20261101.json`
 - Current delivery evidence: ignored `release/stability-ci-final-delivery-20261101.json`
@@ -39,12 +41,20 @@ Local Windows components:
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
 
-F5a adds offline `pcsx2_input_state_inspect` with SHA/pinned ZIP/payload CRC checks;
+F5b enables `pcsx2_input_record` with `start:savestate` and replay with explicit
+`state_path/state_sha256`. 289 Node/eight new native/MCP groups and eleven
+power-on regressions passed, plus 60 standalone and six native DAP regressions
+(85 native checks total). Native is rebuilt: restart the Node server and use
+the modified pinned executable. Saves stay paused until finalized and verified;
+replay hashes private copies before actual load. RAM/EOF/pads/invalidation and
+save/load failures are tested; rollback and deterministic execution are not.
+Next audit/extend remaining local GUI/IOP and loader/reset/BIOS coverage; physical
+PS2 still requires its separate console/transport gate. Keep SMS separate.
+
+F5a added offline `pcsx2_input_state_inspect` with SHA/pinned ZIP/payload CRC checks;
 283 Node and five actual MCP checks on a genuine historical v2.9.147 state passed.
-Native remains unchanged; no new emulator/state-load run is claimed. Restart
-the Node MCP server to discover the new tool. Savestate movie starts remain
-rejected. Next F5b must integrate asynchronous save outcome/private copies and
-actual state-start record/replay, preserving ownership and lifecycle guards.
+Native remained unchanged in F5a; no new emulator/state-load run was claimed by
+that prerequisite. Its later F5b implementation/evidence is described above.
 
 D2 accepts original stage 7 for the trusted Windows/EE fixture: installed VSIX,
 actual VS Code 1.144.0 project config/mappings, source Continue/Step Over,

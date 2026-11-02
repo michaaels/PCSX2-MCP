@@ -14,6 +14,18 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
 
+F5b (2026-11-02): grabación/replay desde savestate implementados en el pin
+2.9.147. Guardado asíncrono confirmado tras cierre ZIP, espera pausada hasta
+verificación, copias exclusivas con SHA nativo antes de cargar y outcome real.
+Pasaron 289 Node y ocho grupos nuevos nativos/MCP: RAM restaurada, observadores,
+dos mandos/EOF/un frame, errores de guardado/carga, cancelación y completion
+tardía. Corregido el puntero Error nulo del reproductor en el camino fallido.
+Once regresiones power-on, 60 autónomas y seis DAP pasaron en el build final
+(85 checks nativos en total). Procesos propios cerrados;
+publicación/CI por SHA en el recibo. [Contrato](input-state-movies.md).
+Sigue auditar/ampliar las coberturas locales pendientes GUI/IOP y límites de
+loader/reset/BIOS; la validación física conserva su gate de hardware separado.
+
 F5a (2026-11-02): verificador offline `pcsx2_input_state_inspect` añadido como
 requisito de películas desde savestate. TypeScript/283 Node y cinco checks MCP
 con un estado real 2.9.147 pasaron: SHA, ZIP finalizado, componentes, payloads
@@ -154,6 +166,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| F5b | Guardado confirmado y películas desde savestate | 289 Node/ocho grupos nativos/MCP y once power-on pasaron; SHA antes de cargar, RAM/outcomes/EOF y fallos reales. Sin rollback, determinismo ni asociación ELF embebida |
 | F5a | Verificación offline de compañero savestate | 283 Node/cinco checks MCP con estado real; ZIP/payloads/SHA verificados. No habilita inicio desde estado; sigue F5b nativo |
 | D2 | Integración reutilizable y sesión real VS Code | Cuatro grupos editor/MCP, 278 Node, seis regresiones nativas DAP y VSIX instalado. Etapa 7 aceptada solo en Windows/EE; sigue savestate-start input movies |
 | D1 | Adaptador DAP sobre capacidades acreditadas | 272 Node, seis grupos con DAP/MCP/PCSX2 reales y empaquetado comprobados. Falta D2 editor real; etapa 7 no cerrada |
@@ -177,7 +190,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 | 5A2a | Asociar candidato IRX/fuentes por imagen relocada inmutable en pausa | Implementado y probado en 0xff80; no prueba archivo original completo ni generación |
 | 5A2b | Procedencia del archivo realmente cargado y cobertura adicional IRX/imports/exports | Implementado y probado para HostFs/0xff80 y exports acotados; otros dispositivos/dialectos pendientes |
 | 5A3 | Vida de módulos e invalidación ante recarga, SifIopReset y savestates | 5A3a/5A3b implementados y probados en caminos observados; generaciones acotadas, revalidación y corte de watches IOP; cobertura directa/custom pendiente |
-| F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Implementado y probado desde power-on; inicio desde savestate pendiente |
+| F5 | Grabar/reproducir `.p2m2`, exclusión de entradas y parada al final | Power-on y, mediante F5a/F5b, inicio desde savestate probados en Windows/2.9.147; otros formatos/multitap/determinismo no aceptados |
 | 5B | Correlación del proyecto | 5B1, 5B2a y 5B2b probados: transporte real y contexto CPU/fuentes del error del actualizador en HostFs; E11/audio pendientes |
 | 6–8 | Regresión, DAP y validación física | 6A/6B1 probadas; 6B2a reproduce silencio/bloqueo y localiza espera SIF2. 6B2b1 observa SIF/PGIF y la escritura BCR sin efecto; sigue 6B2b2: investigar/corregir ACK y aceptar reproducción; después estabilidad/CI/DAP/hardware |
 

@@ -1,10 +1,10 @@
 # Bounded native input movies
 
-F5a (2026-11-02) adds the separate
-[offline savestate companion inspector](input-state-inspection.md): decoded
-ZIP/component CRC and SHA checks on a genuine v2.9.147 state. It does not enable
-savestate-start recording/replay; F5b native completion/copy/start work remains
-pending. The older power-on acceptance below retains its historical scope.
+F5b (2026-11-02) adds [savestate-start recording and replay](input-state-movies.md)
+on pinned v2.9.147: finalized async save receipts, verified private copies before
+load, actual outcomes and lifecycle guards. F5a supplies the separate
+[offline companion inspector](input-state-inspection.md). The older power-on
+acceptance below retains its historical scope; current F5b evidence is separate.
 
 Implemented and tested on Windows/PCSX2 v2.6.3 on 2026-10-23. Both components
 must be rebuilt; native capability `input_movies` is required. These tools use
@@ -51,7 +51,7 @@ interval is not evidence of completed execution. Counts describe input polling,
 not unique rendered images or decoded media frames.
 
 The source replay is opened read-only for copying. The private copy under
-`<data-root>/mcp-input/<operation_id>.p2m2` also opens read-only; Windows denies
+`<data-root>/mcp-input/<operation_id>/<operation_id>.p2m2` also opens read-only; Windows denies
 writes while allowing verification reads. The Node start checks the copied
 SHA before returning, and closed status compares original SHA, source and copy.
 The existing one-argument GUI playback APIs retain their behavior and ABI.
@@ -91,8 +91,8 @@ an active MCP movie. A GUI stop/mode or controller change can interrupt it;
 cleanup checks the filename and never closes an unrelated GUI recording.
 Manual pause leaves the movie active, bounded by its wall deadline.
 
-**Starting from a savestate is pending and explicitly rejected.** The offline
-inspector identifies its flag but does not validate the companion state.
+Starting from a savestate is covered by the separate F5b contract linked above.
+Replay requires an explicit companion path/hash; the movie alone is insufficient.
 Support for longer files, multitap, other format versions and archived native
 operation history is also pending. The tools use the local emulator host's
 filesystem; this is not a remote file-transfer or authentication protocol.

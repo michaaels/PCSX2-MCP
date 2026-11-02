@@ -73,6 +73,7 @@ typedef int socket_t;
 #include "common/FileSystem.h"
 #include "common/Path.h"
 #include "common/Error.h"
+#include "common/DynamicLibrary.h"
 #include "GS/Renderers/Common/GSRenderer.h"
 #include "GS/GSCapture.h"
 
@@ -95,6 +96,12 @@ typedef int socket_t;
 #include <array>
 #include <charconv>
 #include <sys/stat.h>
+#include <filesystem>
+extern "C" {
+#include <libavutil/sha.h>
+#include <libavutil/mem.h>
+#include <libavutil/version.h>
+}
 
 // Forward declarations — these are PCSX2 globals
 extern R5900DebugInterface r5900Debug;
@@ -163,11 +170,19 @@ namespace DebugServer
 	struct InputMovie
 	{
 		std::string id, mode, state, reason, path, source, elf, elfSHA, movieSHA;
+		std::string statePath, stateSource, stateSHA, stateOutcome = "none";
+		bool fromState = false;
+		FileSystem::ManagedCFilePtr stateLock, movieLock;
 		uint64_t session = 0, epoch = 0, sequence = 0;
 		u32 crc = 0, frame = 0, limit = 0;
 		bool active = false, starting = false, ioError = false, pendingInput = false;
 		std::array<FrameOperation, 2> pads;
 	};
+	// Workers never touch s_movie. UUID output files are never overwritten/reused;
+	// a late completion only matches the ticket for its original private path.
+	static std::mutex s_movieSaveMutex;
+	static std::string s_movieSavePath;
+	static int s_movieSaveResult = 0;
 	static InputMovie s_movie;
 	static std::atomic<int64_t> s_movieDeadline{0};
 	static std::atomic<uint64_t> s_movieSequence{0};
@@ -1746,6 +1761,10 @@ namespace DebugServer
 	static void finishMovie(const char* reason)
 	{
 		if (!s_movie.active) return;
+		{
+			std::lock_guard lock(s_movieSaveMutex);
+			s_movieSavePath.clear(); s_movieSaveResult = 0;
+		}
 		s_movie.reason = reason; s_movie.active = false; s_movieDeadline.store(0);
 		// An unrelated GUI recording must survive even if ownership was lost.
 		if (movieOwned())
@@ -1771,10 +1790,26 @@ namespace DebugServer
 				pad->SetRawPressureButton(button, {!(saved.savedButtons & (1u << s_buttonBits[button])), saved.savedPressures[button]});
 			pad->SetRawAnalogs(saved.savedLeft, saved.savedRight);
 		}
+		s_movie.stateLock.reset(); s_movie.movieLock.reset();
+	}
+
+	static void updateMovieSave()
+	{
+		if (!s_movie.active || s_movie.state != "preparing") return;
+		int result;
+		{
+			std::lock_guard lock(s_movieSaveMutex);
+			result = s_movieSavePath == s_movie.statePath ? s_movieSaveResult : 0;
+		}
+		if (!result) return;
+		s_movie.stateOutcome = result > 0 ? "saved" : "failed";
+		if (result < 0) { finishMovie("state_save_failed"); s_movie.state = "failed"; }
+		else s_movie.state = "prepared"; // Still cannot resume: Node must verify the archive.
 	}
 
 	static std::string movieStatus()
 	{
+		updateMovieSave();
 		if (s_movie.active && s_movieDeadline.load() && steadyMillis() >= s_movieDeadline.load()) finishMovie("time_limit");
 		if (s_movie.active && !movieOwned()) finishMovie("ownership_lost");
 		JsonBuilder j; j.startObject(); j.kv("ok", true); j.kv("operation_id", s_movie.id);
@@ -1782,19 +1817,56 @@ namespace DebugServer
 		j.kv("path", s_movie.path); j.kv("source", s_movie.source); j.kv("session", s_movie.session); j.kv("execution_epoch", s_movie.epoch);
 		j.kv("elf", s_movie.elf); j.key("elf_crc"); j.valHex32(s_movie.crc); j.kv("elf_sha256", s_movie.elfSHA);
 		j.kv("input_sha256", s_movie.movieSHA);
-		j.kv("frames", s_movie.frame); j.kv("max_frames", s_movie.limit); j.kv("start", "power_on");
+		j.kv("frames", s_movie.frame); j.kv("max_frames", s_movie.limit); j.kv("start", s_movie.fromState ? "savestate" : "power_on");
+		j.kv("state_path", s_movie.statePath); j.kv("state_source", s_movie.stateSource);
+		j.kv("state_sha256", s_movie.stateSHA); j.kv("state_outcome", s_movie.stateOutcome);
 		j.kv("paused", VMManager::GetState() == VMState::Paused); j.endObject(); return j.str();
 	}
 
 	// v2.6.3 p2m2 v1: 561-byte strings/version, u32 frames, u32 undos,
 	// one byte savestate flag, then two 18-byte pads per frame. Read-only source.
-	static bool copyReplay(const std::string& source, const std::string& target, u32& frames)
+	static std::string movieSHA256(FILE* input, uint64_t bound, FILE* output = nullptr)
 	{
-		const auto input = FileSystem::OpenManagedCFile(source.c_str(), "rb");
+		// Respect the emulator's runtime-loaded FFmpeg distribution. Requiring
+		// linked FFmpeg here would silently change the existing build contract.
+		DynamicLibrary library;
+		decltype(&av_sha_alloc) alloc; decltype(&av_sha_init) init;
+		decltype(&av_sha_update) update; decltype(&av_sha_final) final; decltype(&av_free) free;
+		if (!library.Open(DynamicLibrary::GetVersionedFilename("avutil", LIBAVUTIL_VERSION_MAJOR).c_str(), nullptr) ||
+			!library.GetSymbol("av_sha_alloc", &alloc) || !library.GetSymbol("av_sha_init", &init) ||
+			!library.GetSymbol("av_sha_update", &update) || !library.GetSymbol("av_sha_final", &final) || !library.GetSymbol("av_free", &free)) return {};
+		std::unique_ptr<AVSHA, decltype(free)> sha(alloc(), free);
+		if (!sha || init(sha.get(), 256) || std::fseek(input, 0, SEEK_SET)) return {};
+		std::array<u8, 65536> buffer; uint64_t total = 0;
+		for (;;)
+		{
+			const auto n = std::fread(buffer.data(), 1, buffer.size(), input);
+			if (!n) break;
+			total += n; if (total > bound) return {};
+			if (output && std::fwrite(buffer.data(), 1, n, output) != n) return {};
+			update(sha.get(), buffer.data(), n);
+		}
+		if (!total || std::ferror(input) || (output && std::fflush(output))) return {};
+		std::array<u8, 32> digest; final(sha.get(), digest.data());
+		std::string result; for (const auto byte : digest) { result += "0123456789abcdef"[byte >> 4]; result += "0123456789abcdef"[byte & 15]; }
+		return result;
+	}
+
+	static FileSystem::ManagedCFilePtr pinMovieFile(const std::string& path, const std::string& expected, uint64_t bound)
+	{
+		auto file = FileSystem::OpenManagedSharedCFile(path.c_str(), "rb", FileSystem::FileShareMode::DenyWrite);
+		if (!file || movieSHA256(file.get(), bound) != expected) return {};
+		return file;
+	}
+
+	static bool copyReplay(const std::string& source, const std::string& target, u32& frames, bool fromState, const std::string& expected)
+	{
+		const auto input = FileSystem::OpenManagedSharedCFile(source.c_str(), "rb", FileSystem::FileShareMode::DenyWrite);
 		if (!input) return false;
+		if (movieSHA256(input.get(), 570 + 36 * 600) != expected || std::fseek(input.get(), 0, SEEK_SET)) return false;
 		std::vector<u8> bytes(570 + 36 * 600 + 1);
 		const auto size = std::fread(bytes.data(), 1, bytes.size(), input.get());
-		if (std::ferror(input.get()) || size < 570 || size == bytes.size() || bytes[0] != 1 || bytes[569] != 0 ||
+		if (std::ferror(input.get()) || size < 570 || size == bytes.size() || bytes[0] != 1 || bytes[569] != (fromState ? 1 : 0) ||
 			!std::memchr(bytes.data() + 1, 0, 50) || !std::memchr(bytes.data() + 51, 0, 255) || !std::memchr(bytes.data() + 306, 0, 255)) return false;
 		frames = bytes[561] | (u32{bytes[562]} << 8) | (u32{bytes[563]} << 16) | (u32{bytes[564]} << 24);
 		if (!frames || frames > 600 || size != 570 + 36 * frames) return false;
@@ -1810,6 +1882,19 @@ namespace DebugServer
 		{
 			if (s_movie.id != id) return failure("Unknown or superseded input movie");
 			if (cmd == "input_movie_stop") finishMovie("stopped");
+			if (cmd == "input_movie_accept")
+			{
+				movieStatus(); // Apply completed saves/deadlines before accepting.
+				if (!s_movie.active || s_movie.state != "prepared" || !movieOwned() ||
+					VMManager::GetState() != VMState::Paused || s_executionEpoch != s_movie.epoch || currentELF() != s_movie.elf)
+					return failure("No owned prepared companion to accept");
+				const auto hash = getStr(params, "state_sha256");
+				if (hash.size() != 64 || hash.find_first_not_of("0123456789abcdef") != std::string::npos)
+					return failure("Companion verification requires SHA256");
+				s_movie.stateLock = pinMovieFile(s_movie.statePath, hash, 128 * 1024 * 1024);
+				if (!s_movie.stateLock) { finishMovie("state_verification_failed"); s_movie.state = "failed"; }
+				else { s_movie.stateSHA = hash; s_movie.state = "active"; }
+			}
 			return movieStatus();
 		}
 		if (s_movie.active || g_InputRecording.isActive()) return failure("An input recording/replay is already active");
@@ -1829,12 +1914,18 @@ namespace DebugServer
 			getStr(params, "expected_elf") != currentELF() || getNum(params, "expected_elf_crc", -1) != VMManager::GetCurrentCRC())
 			return failure("Input movie VM/ELF identity changed");
 		const auto mode = getStr(params, "mode"), elfSHA = getStr(params, "elf_sha256"), movieSHA = getStr(params, "movie_sha256");
+		const auto start = getStr(params, "start", "power_on");
+		const bool fromState = start == "savestate";
+		const auto stateSource = getStr(params, "state_path"), stateSHA = getStr(params, "state_sha256");
 		const auto frames = getNum(params, "frames", 120), timeout = getNum(params, "timeout_ms", 15000);
-		if ((mode != "record" && mode != "replay") || frames < 1 || frames > 600 || timeout < 100 || timeout > 30000 ||
+		if ((start != "power_on" && !fromState) || (mode != "record" && mode != "replay") || frames < 1 || frames > 600 || timeout < 100 || timeout > 30000 ||
 			elfSHA.size() != 64 || elfSHA.find_first_not_of("0123456789abcdef") != std::string::npos)
 			return failure("Invalid movie mode/hash or bounds (1-600 frames, 100-30000 ms)");
 		if (mode == "replay" && (movieSHA.size() != 64 || movieSHA.find_first_not_of("0123456789abcdef") != std::string::npos))
 			return failure("Replay requires its original movie SHA256");
+		if (fromState && mode == "replay" && (!Path::IsAbsolute(stateSource) || stateSource.size() > 4096 ||
+			stateSHA.size() != 64 || stateSHA.find_first_not_of("0123456789abcdef") != std::string::npos))
+			return failure("Savestate replay requires an absolute companion and SHA256");
 		std::array<FrameOperation, 2> pads;
 		for (u8 i = 0; i < 2; ++i)
 		{
@@ -1844,22 +1935,54 @@ namespace DebugServer
 			for (u32 button = 0; button < 16; ++button) pads[i].savedPressures[button] = pad->GetRawInput(button);
 			pads[i].savedLeft = pad->GetRawLeftAnalog(); pads[i].savedRight = pad->GetRawRightAnalog();
 		}
-		const auto directory = Path::Combine(EmuFolders::DataRoot, "mcp-input");
+		const auto parent = Path::Combine(EmuFolders::DataRoot, "mcp-input");
+		const auto directory = Path::Combine(parent, id);
 		const auto path = Path::Combine(directory, id + ".p2m2"), source = getStr(params, "path");
-		if (!FileSystem::CreateDirectoryPath(directory.c_str(), false) || FileSystem::FileExists(path.c_str())) return failure("Movie output is unavailable or already exists");
+		std::error_code directoryError;
+		if (!FileSystem::CreateDirectoryPath(parent.c_str(), false) || !std::filesystem::create_directory(std::filesystem::u8path(directory), directoryError))
+			return failure("Movie output directory is unavailable or already exists");
+		const auto statePath = fromState ? path + "_SaveState.p2s" : "";
 		u32 limit = static_cast<u32>(frames);
-		if (mode == "replay" && (!Path::IsAbsolute(source) || source.size() > 4096 || !copyReplay(source, path, limit)))
-			return failure("Expected a complete power-on p2m2 v1 with 1-600 frames; source was not opened for writing");
+		FileSystem::ManagedCFilePtr stateLock, movieLock;
+		if (mode == "replay")
+		{
+			if (!Path::IsAbsolute(source) || source.size() > 4096 || !copyReplay(source, path, limit, fromState, movieSHA) ||
+				!(movieLock = pinMovieFile(path, movieSHA, 570 + 36 * 600)))
+				return failure("Expected a complete matching p2m2 v1 with 1-600 frames; source was not opened for writing");
+			if (fromState)
+			{
+				const auto input = FileSystem::OpenManagedSharedCFile(stateSource.c_str(), "rb", FileSystem::FileShareMode::DenyWrite);
+				auto output = FileSystem::OpenManagedCFile(statePath.c_str(), "wbx");
+				if (!input || !output || movieSHA256(input.get(), 128 * 1024 * 1024, output.get()) != stateSHA)
+					return failure("Companion copy/hash failed before native load");
+				if (std::fclose(output.release()) != 0 || !(stateLock = pinMovieFile(statePath, stateSHA, 128 * 1024 * 1024)))
+					return failure("Companion private copy/hash failed before native load");
+			}
+		}
 		g_InputRecording.processRecordQueue(); g_InputRecording.getControls().processControlQueue();
 		s_movie = {}; s_movie.id = id; s_movie.mode = mode; s_movie.path = path; s_movie.source = mode == "replay" ? source : "";
 		s_movie.elf = currentELF(); s_movie.crc = VMManager::GetCurrentCRC(); s_movie.elfSHA = elfSHA;
 		s_movie.movieSHA = mode == "replay" ? movieSHA : "";
+		s_movie.fromState = fromState; s_movie.statePath = statePath;
+		s_movie.stateSource = fromState && mode == "replay" ? stateSource : "";
+		s_movie.stateSHA = fromState && mode == "replay" ? stateSHA : "";
+		s_movie.stateLock = std::move(stateLock); s_movie.movieLock = std::move(movieLock);
+		s_movie.stateOutcome = fromState ? (mode == "record" ? "pending" : "load_pending") : "none";
 		s_movie.session = s_session.load(); s_movie.limit = limit; s_movie.pads = pads;
 		s_movie.active = s_movie.starting = true; s_movie.sequence = ++s_movieSequence;
-		const bool started = mode == "record" ? g_InputRecording.create(path, false, "PCSX2 MCP") : g_InputRecording.play(path, true);
+		s_movie.state = fromState && mode == "record" ? "preparing" : "active";
+		// Preserve power-on/replay lifetime: a synchronous reset/load cannot be
+		// interrupted. State recording's asynchronous preparation is bounded too.
+		s_movieDeadline.store(fromState && mode == "record" ? steadyMillis() + timeout : 0);
+		if (fromState && mode == "record")
+		{
+			std::lock_guard lock(s_movieSaveMutex); s_movieSavePath = statePath; s_movieSaveResult = 0;
+		}
+		const bool started = mode == "record" ? g_InputRecording.create(path, fromState, "PCSX2 MCP") : g_InputRecording.play(path, true);
 		s_movie.starting = false; s_movie.epoch = s_executionEpoch;
-		if (!started) { s_movie.active = false; s_movie.state = "failed"; s_movie.reason = "start_failed"; }
-		else { s_movie.state = "active"; s_movieDeadline.store(steadyMillis() + timeout); }
+		if (fromState && mode == "replay") s_movie.stateOutcome = started ? "loaded" : "load_failed";
+		if (!started) { finishMovie("start_failed"); s_movie.state = "failed"; s_movie.reason = "start_failed"; }
+		else if (!(fromState && mode == "record")) s_movieDeadline.store(steadyMillis() + timeout);
 		return movieStatus();
 	}
 
@@ -2531,7 +2654,7 @@ namespace DebugServer
 	{
 		auto params = parseJsonObject(jsonLine);
 		std::string cmd = getStr(params, "cmd");
-		if (cmd == "input_movie_start" || cmd == "input_movie_status" || cmd == "input_movie_stop") return movieCommand(params, cmd);
+		if (cmd == "input_movie_start" || cmd == "input_movie_status" || cmd == "input_movie_stop" || cmd == "input_movie_accept") return movieCommand(params, cmd);
 		if (cmd == "iop_lifetime") return lifetimeReport();
 		if (cmd == "iop_load_start" || cmd == "iop_load_status" || cmd == "iop_load_cancel") return loadWatchCommand(params, cmd);
 		if (cmd == "memory_watch_start" || cmd == "memory_watch_status" || cmd == "memory_watch_cancel" || cmd == "memory_watch_list") return changeCommand(params, cmd);
@@ -2670,7 +2793,7 @@ namespace DebugServer
 				j.key("elf_crc"); j.valHex32(VMManager::GetCurrentCRC());
 				j.key("features"); j.startArray();
 				{ std::lock_guard lock(s_applicationCaptureMutex); if (s_applicationCapture) j.valStr("application_screenshot"); }
-				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies", "sif_snapshot", "bounded_instruction_step", "guarded_state_load"}) j.valStr(feature);
+				for (const char* feature : {"screenshot", "events", "console_logs", "capture_context", "load_elf", "frame_advance", "input_frames", "controller_state", "symbols", "source_breakpoints", "guarded_step", "variable_inspection", "ee_exception_watch", "ee_break_provenance", "iop_exception_watch", "ee_syscall_provenance", "iop_trap_provenance", "ee_progress_watch", "iop_module_snapshot", "gs_dump", "media_capture", "memory_change_watch", "iop_module_image", "iop_load_provenance", "iop_lifetime", "iop_module_generations", "input_movies", "input_movie_states", "sif_snapshot", "bounded_instruction_step", "guarded_state_load"}) j.valStr(feature);
 				j.endArray(); j.endObject(); return j.str();
 			});
 		}
@@ -3626,6 +3749,17 @@ namespace DebugServer
 		return !s_movie.active || s_movie.starting;
 	}
 
+	bool AllowInputMovieResume()
+	{
+		return !s_movie.active || (s_movie.state != "preparing" && s_movie.state != "prepared");
+	}
+
+	void OnInputMovieStateSaved(const std::string& path, bool success)
+	{
+		std::lock_guard lock(s_movieSaveMutex);
+		if (path == s_movieSavePath && !s_movieSaveResult) s_movieSaveResult = success ? 1 : -1;
+	}
+
 	void OnInputRecordingIOError()
 	{
 		if (s_movie.active) s_movie.ioError = true;
@@ -3643,6 +3777,7 @@ namespace DebugServer
 			(s_movie.mode == "record" ? !g_InputRecording.getControls().isRecording() : !g_InputRecording.getControls().isReplaying()))
 		{ finishMovie("recording_mode_changed"); return true; }
 		if (steadyMillis() >= s_movieDeadline.load()) { finishMovie("time_limit"); return true; }
+		if (!AllowInputMovieResume()) return true;
 		// Frame 0 is applied first. Only the *next* poll completes that input
 		// interval, so even a one-frame replay executes before EOF restores pads.
 		// Never enter the GUI fallback which changes replay into recording.
@@ -3877,7 +4012,7 @@ namespace DebugServer
 	void OnStateLoadAttempt()
 	{
 		s_pgifWrites.clear(); s_pgifWriteSequence = 0;
-		finishMovie("savestate_load_attempt");
+		if (!(s_movie.starting && s_movie.fromState && s_movie.mode == "replay")) finishMovie("savestate_load_attempt");
 		finishGuardedStep("savestate_load_attempt"); finishOperation("savestate_load_attempt"); ++s_executionEpoch;
 		++s_inspectionRevision; invalidateLoad("savestate_load_attempt");
 		s_sifReset = {}; s_iopModuleRoot = 0; lifetimeBoundary("savestate_load_attempt");

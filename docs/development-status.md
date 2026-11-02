@@ -18,6 +18,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| State-start input movies | F5b | Native finalized-save receipts, paused archive acceptance, exclusive private copies/SHA before actual restore and explicit load outcome. 289 Node/eight new native/MCP groups and eleven power-on regressions passed. Exact RAM recovery, both pads/EOF/one frame, invalidations, save/load failures and cancellation/late completions tested. Fixed playback's null-Error crash on failed internal load. [Contract](input-state-movies.md). |
 | Savestate companion inspection | F5a | Offline MCP tool verifies finalized ZIP32, pinned version/required sizes, decoded component CRC/length and SHA. 283 Node/five actual MCP file checks passed, including real v2.9.147 RAM archive and corruption controls. Native unchanged; movie startup from state remains F5b. [Contract](input-state-inspection.md). |
 | Actual editor integration | D2 | Reusable GPL VSIX installed into an isolated VS Code 1.144.0 profile. Named launch.json/variable/source mapping, Continue, frame-0/GPR/RAM cross-checks with MCP, Step Over and detach passed four actual editor groups. Adapter/editor exit 0; native unchanged. 278 Node/six native DAP regressions passed. Original stage 7 accepted in Windows/EE scope. [Contract](editor-integration.md). |
 | DAP protocol/native backend | D1 | New stdio adapter reuses guarded MCP backends. 272 Node and six real native cross-check groups passed; exact source/argument/GPR/RAM, instruction/source steps, reset reference invalidation and ownership-preserving detach. Native/existing executable MCP JavaScript unchanged; one generated declaration reordered properties, explicitly audited. Actual VS Code integration remains D2. [Contract](dap.md). |
@@ -178,10 +179,11 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay applies
 the documented reset/restore and observed module-lifetime invalidations.
 
-1. **F5b savestate-start movies.** D2 accepted the Windows/EE editor gate and F5a
-   adds the offline companion verifier. Still implement confirmed asynchronous
-   save completion, checked private copies before restore and actual movie/RAM
-   replay, failure/cancellation/late-completion and power-on regression evidence.
+1. **Audit and extend remaining local coverage.** F5b additionally passed 60
+   standalone and six native DAP regressions on its rebuilt executable (85
+   native checks total). D2 accepted the Windows/EE
+   editor gate; F5a/F5b now cover companion verification and actual state-start
+   movie/RAM replay, finalized save/failure/cancellation and power-on regression.
    Additional loader/reset/BIOS coverage and universal generations remain pending.
    Existing IOP source bindings always require fresh revalidation. The two Qt
    ownership cases, failed/dispatched restore outcomes and IRQ-active fixture

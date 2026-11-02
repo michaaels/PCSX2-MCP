@@ -324,17 +324,19 @@ baseline provenance and Windows acceptance; no perceptual/A/V/hardware claim.
 
 | Tool | Description |
 |---|---|
-| `pcsx2_input_record` | Record a bounded power-on `.p2m2` after an owned reset |
+| `pcsx2_input_record` | Record a bounded `.p2m2` from power-on or a confirmed savestate |
 | `pcsx2_input_replay` | Replay a hash-checked private read-only copy and stop at EOF |
 | `pcsx2_input_movie_status` | Read/wait by ID and verify the closed file and source preservation |
 | `pcsx2_input_movie_stop` | Close only the owned movie and pause |
 | `pcsx2_input_movie_inspect` | Offline bounded format/frame/SHA256 verification |
 
 Requires updated native `input_movies`, recording tools enabled and two
-DualShock2 ports. Start from a paused matching ELF; the tool resets and leaves
-it paused for explicit resume. Supports 1–600 input intervals and a 30-second
-maximum wall lifetime. Savestate-start movies remain unsupported. See
-[input movies](docs/input-movies.md) for ownership, reset/restore invalidation,
+DualShock2 ports. Start from a paused matching ELF; power-on resets, while
+`start:savestate` waits for a finalized verified companion without reset. Both
+leave paused for explicit resume. Supports 1–600 input intervals and a 30-second
+maximum wall lifetime. State replay requires explicit `state_path/state_sha256`
+and native `input_movie_states`. See [state-start movies](docs/input-state-movies.md)
+and [input movies](docs/input-movies.md) for ownership, reset/restore invalidation,
 verification and Windows evidence. Replay does not establish network/timing
 determinism or physical-console behavior.
 

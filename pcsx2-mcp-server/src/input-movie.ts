@@ -7,29 +7,47 @@ import { address } from './symbols.js';
 
 export const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
 export const movieOptions = z.object({
+  start: z.enum(['power_on', 'savestate']).default('power_on'),
   frames: z.number().int().min(1).max(600).default(120),
   timeout_ms: z.number().int().min(100).max(30000).default(15000),
 });
 export type MovieOptions = z.input<typeof movieOptions>;
 export const replayOptions = z.object({ path: z.string().min(1).max(4096), movie_sha256: sha256,
-  elf_sha256: sha256, timeout_ms: movieOptions.shape.timeout_ms });
+  elf_sha256: sha256, state_path: z.string().min(1).max(4096).optional(), state_sha256: sha256.optional(),
+  timeout_ms: movieOptions.shape.timeout_ms });
 export type ReplayOptions = z.input<typeof replayOptions>;
 const count = z.number().int().nonnegative().safe();
 const response = z.object({ ok: z.literal(true), operation_id: watchId, mode: z.enum(['record', 'replay']),
-  state: z.enum(['active', 'closed', 'failed']), active: z.boolean(), reason: z.string(), path: z.string(), source: z.string(),
+  state: z.enum(['preparing', 'prepared', 'active', 'closed', 'failed']), active: z.boolean(), reason: z.string(), path: z.string(), source: z.string(),
   session: count, execution_epoch: count, elf: z.string(), elf_crc: address, elf_sha256: sha256,
   input_sha256: z.union([sha256, z.literal('')]),
-  frames: count, max_frames: movieOptions.shape.frames.removeDefault(), start: z.literal('power_on'), paused: z.boolean() });
+  frames: count, max_frames: movieOptions.shape.frames.removeDefault(), start: z.enum(['power_on', 'savestate']), paused: z.boolean(),
+  state_path: z.string().default(''), state_source: z.string().default(''), state_sha256: z.union([sha256, z.literal('')]).default(''),
+  state_outcome: z.enum(['none', 'pending', 'saved', 'failed', 'load_pending', 'loaded', 'load_failed']).default('none') });
 
 export function parseMovie(value: unknown, id: string) {
   const result = response.parse(value);
-  if (result.operation_id !== id || result.active !== (result.state === 'active') || result.frames > result.max_frames ||
+  if (result.operation_id !== id || result.active !== ['preparing', 'prepared', 'active'].includes(result.state) || result.frames > result.max_frames ||
       !path.isAbsolute(result.path) || path.basename(result.path) !== `${id}.p2m2` ||
       (result.mode === 'record' ? result.source !== '' : !path.isAbsolute(result.source)) ||
       (result.mode === 'record' ? result.input_sha256 !== '' : result.input_sha256 === '') ||
       (result.reason === 'eof' && (result.mode !== 'replay' || result.frames !== result.max_frames || result.active)) ||
       (result.reason === 'frame_limit' && (result.mode !== 'record' || result.frames !== result.max_frames || result.active)))
     throw new Error('Inconsistent input movie identity/state/budget');
+  const preparing = ['preparing', 'prepared'].includes(result.state);
+  if (result.start === 'power_on') {
+    if (result.state_path || result.state_source || result.state_sha256 || result.state_outcome !== 'none' || preparing)
+      throw new Error('Unexpected power-on companion/outcome');
+  } else {
+    if (result.state_path !== result.path + '_SaveState.p2s' ||
+        (result.mode === 'record' ? result.state_source !== '' || !['pending', 'saved', 'failed'].includes(result.state_outcome)
+          : !path.isAbsolute(result.state_source) || !result.state_sha256 || !['loaded', 'load_failed'].includes(result.state_outcome)) ||
+        (preparing && (result.mode !== 'record' || !result.paused || result.frames !== 0 || result.state_sha256 !== '' ||
+          result.state_outcome !== (result.state === 'preparing' ? 'pending' : 'saved'))) ||
+        ((result.state === 'active' || result.state === 'closed' && result.frames > 0) &&
+          (!result.state_sha256 || result.state_outcome !== (result.mode === 'record' ? 'saved' : 'loaded'))))
+      throw new Error('Inconsistent savestate companion/outcome');
+  }
   return result;
 }
 

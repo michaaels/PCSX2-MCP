@@ -56,6 +56,10 @@ namespace DebugServer
 	// CPU thread: owned input movies bypass the GUI rerecording loop.
 	bool HandleInputMoviePoll();
 	bool AllowInputRecordingStart();
+	// CPU thread: reject resume until an owned companion has been finalized/verified.
+	bool AllowInputMovieResume();
+	// May run on a save worker. Publishes only an exact-path receipt; no VM access.
+	void OnInputMovieStateSaved(const std::string& path, bool success);
 	void OnInputRecordingIOError();
 	void OnVMReset();
 	// GS thread hooks, restricted to the exact dump file owned by this server.
