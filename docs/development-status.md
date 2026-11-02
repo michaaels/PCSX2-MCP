@@ -1,6 +1,6 @@
 # MCP development progress
 
-Updated: 2026-11-01. This records the debugging extensions after the original main
+Updated: 2026-11-02. This records the debugging extensions after the original main
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
 
@@ -18,6 +18,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Actual editor integration | D2 | Reusable GPL VSIX installed into an isolated VS Code 1.144.0 profile. Named launch.json/variable/source mapping, Continue, frame-0/GPR/RAM cross-checks with MCP, Step Over and detach passed four actual editor groups. Adapter/editor exit 0; native unchanged. 278 Node/six native DAP regressions passed. Original stage 7 accepted in Windows/EE scope. [Contract](editor-integration.md). |
 | DAP protocol/native backend | D1 | New stdio adapter reuses guarded MCP backends. 272 Node and six real native cross-check groups passed; exact source/argument/GPR/RAM, instruction/source steps, reset reference invalidation and ownership-preserving detach. Native/existing executable MCP JavaScript unchanged; one generated declaration reordered properties, explicitly audited. Actual VS Code integration remains D2. [Contract](dap.md). |
 | Duration/rendered progress/resources | T2 | 604.884 s, 104 RAM/pixel probes, 521.908 s in running windows, ten restore/ten reset and running reconnect/stdio replacement. Resource budgets held; all 21 children/native stopped. 262 Node and real stalled-guest rejection passed. Runtime unchanged. [Contract and limits](sustained-validation.md). |
 | Bounded repetition/source CI | T1 | 100+500 cycles in two owned instances, 600 native reconnects, 60 timeout/foreign-point/stdio-restart/PNG rounds; all 62 stdio children and both emulators stopped. TypeScript/260 Node passed. Windows/Ubuntu Node 22 workflow added; native runtime unchanged. No prolonged soak/leak claim. [Contract and remote-status distinction](stability-ci.md). |
@@ -176,12 +177,8 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay applies
 the documented reset/restore and observed module-lifetime invalidations.
 
-1. **D2 editor integration (original roadmap stage 7).** D1 now provides the
-   adapter and native cross-checks above. Add reusable VS Code configuration and
-   retain explicit project/source mappings and supported EE frame-0 scope. Require
-   an actual editor session with breakpoint/source/data checked against MCP;
-   protocol mocks alone cannot close this acceptance.
-2. **Extend scoped coverage with separate acceptance.** Savestate-start movies
+1. **Extend scoped coverage with separate acceptance.** D2 accepted the actual
+   Windows/EE editor gate above. Next, savestate-start movies
    require a checked/copied companion and finalized asynchronous save handling.
    Additional loader/reset/BIOS coverage and universal generations remain pending.
    Existing IOP source bindings always require fresh revalidation. The two Qt
@@ -189,7 +186,7 @@ the documented reset/restore and observed module-lifetime invalidations.
    have their later scoped acceptances above; broader GUI options/IOP/source
    stepping retain distinct coverage gaps. Native synchronous-load interruption
    and rollback remain deferred rather than implied by timeout/reconciliation.
-3. **Physical PS2 (stage 8).** Needs actual console/transport evidence. Native
+2. **Physical PS2 (stage 8).** Needs actual console/transport evidence. Native
    PCSX2 APIs and emulation cannot establish hardware debugger acceptance.
 
 **Application backlog stays in its separate chat:** 6B2b2 ACK/audio, Jellyfin,

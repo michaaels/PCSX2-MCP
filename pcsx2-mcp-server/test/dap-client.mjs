@@ -10,6 +10,7 @@ export class DapClient {
   constructor() {
     this.child = spawn(process.execPath, [fileURLToPath(new URL('../dist/dap.js', import.meta.url))], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     this.child.stderr.on('data', b => { if (this.stderr.length < 1048576) this.stderr += b.toString('utf8'); });
+    this.child.stdin.on('error', error => { if (error.code !== 'EPIPE') this.error = String(error); });
     this.child.stdout.on('data', b => {
       try {
         this.buffer = Buffer.concat([this.buffer, b]);

@@ -1,10 +1,16 @@
 # DAP adapter — D1 backend acceptance
 
+D2 subsequently accepted an actual installed-package VS Code session with
+source/data checked against MCP; see [editor integration](editor-integration.md).
+It also makes successful stdio disconnect self-close with exit 0 and avoids
+source paths for unresolved DWARF locations. The following D1 results retain
+their historical 272-test scope; D2 repeats native regression with 278 Node.
+
 The new `pcsx2-dap` entry is a separate stdio Debug Adapter Protocol process.
 It reuses the MCP's native client, source-line breakpoint ownership, guarded EE
 variables and bounded source-step implementations. It does not change the
-native binary or add a dependency. **The VS Code integration and actual editor
-acceptance remain D2**, rather than implied by the protocol/native tests here.
+native binary or add a dependency. D1 originally left actual editor acceptance
+for D2; the linked D2 delivery now proves that separately from these backend tests.
 
 ## Build and attach
 
@@ -153,6 +159,6 @@ release/dap-delivery-20261101.json
 ```
 
 Publication/hash/remote CI details are recorded in the ignored delivery receipt.
-D2 must add reusable editor configuration
-and an actual VS Code session before the original stage 7 can close. Emulation
+D2 has since added reusable editor configuration and actual VS Code acceptance
+in the linked Windows/EE contract, closing that scoped stage 7. Emulation
 does not establish physical PS2 debugging support.

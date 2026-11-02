@@ -38,4 +38,5 @@ jobs:
       - run: node --check test/stability-live.mjs
       - run: node --check test/soak-live.mjs
       - run: node --check test/dap-live.mjs
+      - run: node --check test/vscode-live.mjs
       - run: npm test

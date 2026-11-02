@@ -1,0 +1,173 @@
+{
+  "name": "pcsx2-debugger",
+  "displayName": "PCSX2 MCP Debugger",
+  "description": "Attach VS Code to the guarded EE DAP adapter from PCSX2-MCP.",
+  "version": "0.1.0",
+  "publisher": "michaaels",
+  "license": "GPL-3.0-only",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Debuggers"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/michaaels/PCSX2-MCP.git"
+  },
+  "main": "./extension.cjs",
+  "activationEvents": [
+    "onDebug:pcsx2"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "contributes": {
+    "breakpoints": [
+      {
+        "language": "c"
+      },
+      {
+        "language": "cpp"
+      }
+    ],
+    "configuration": {
+      "title": "PCSX2 Debugger",
+      "properties": {
+        "pcsx2.adapterPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Absolute path to your built pcsx2-mcp-server/dist/dap.js."
+        },
+        "pcsx2.nodePath": {
+          "type": "string",
+          "default": "node",
+          "scope": "machine-overridable",
+          "description": "Node 22+ executable: node on PATH or an absolute executable path."
+        }
+      }
+    },
+    "debuggers": [
+      {
+        "type": "pcsx2",
+        "label": "PCSX2 (EE)",
+        "languages": [
+          "c",
+          "cpp"
+        ],
+        "configurationAttributes": {
+          "attach": {
+            "required": [
+              "elf"
+            ],
+            "properties": {
+              "elf": {
+                "type": "string",
+                "description": "Absolute matching local debug ELF; workspace variables are supported."
+              },
+              "port": {
+                "type": "integer",
+                "default": 21512,
+                "minimum": 1,
+                "maximum": 65535,
+                "description": "Loopback DebugServer port of the intended PCSX2 instance."
+              },
+              "adapterPath": {
+                "type": "string",
+                "description": "Built dist/dap.js; defaults to pcsx2.adapterPath."
+              },
+              "nodePath": {
+                "type": "string",
+                "description": "Node executable; defaults to pcsx2.nodePath."
+              },
+              "expectedSha256": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{64}$",
+                "description": "Optional exact debug ELF build fingerprint."
+              },
+              "stopOnAttach": {
+                "type": "boolean",
+                "default": true
+              },
+              "pathMappings": {
+                "type": "array",
+                "maxItems": 16,
+                "default": [],
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "from": {
+                      "type": "string"
+                    },
+                    "to": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "description": "Explicit DWARF/build prefix to local source prefix mappings."
+              },
+              "env": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "PCSX2_DWARF_PYTHON": {
+                    "type": "string"
+                  },
+                  "PCSX2_ADDR2LINE_BACKEND": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "native",
+                      "wsl"
+                    ]
+                  },
+                  "PCSX2_ADDR2LINE": {
+                    "type": "string"
+                  },
+                  "PCSX2_ADDR2LINE_WSL_DISTRO": {
+                    "type": "string"
+                  }
+                },
+                "description": "Optional local DWARF/addr2line configuration; values are never printed."
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "name": "PCSX2: attach EE",
+            "type": "pcsx2",
+            "request": "attach",
+            "elf": "${workspaceFolder}/build/game-debug.elf",
+            "port": 21512,
+            "stopOnAttach": true,
+            "pathMappings": []
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "PCSX2: attach EE",
+            "description": "Attach to an already running modified PCSX2 instance.",
+            "body": {
+              "name": "PCSX2: attach EE",
+              "type": "pcsx2",
+              "request": "attach",
+              "elf": "^\"\\${workspaceFolder}/build/game-debug.elf\"",
+              "port": 21512,
+              "stopOnAttach": true,
+              "pathMappings": []
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

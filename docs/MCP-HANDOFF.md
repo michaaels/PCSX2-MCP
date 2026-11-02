@@ -20,7 +20,9 @@ Local Windows components:
 - In-flight EE GUI ownership: [supervised case and limits](inflight-gui-ownership.md)
 - Bounded repetition/source CI: [commands, evidence and T2 limits](stability-ci.md)
 - Sustained rendered progress/resources/recovery: [T2 contract](sustained-validation.md)
-- DAP protocol/native backend: [D1 contract and pending D2 editor gate](dap.md)
+- DAP protocol/native backend: [D1 contract](dap.md)
+- Actual VS Code integration: [D2 acceptance and install/configuration](editor-integration.md)
+- D2 evidence: ignored `release/editor-delivery-20261102.json`
 - D1 evidence: ignored `release/dap-delivery-20261101.json`
 - Current delivery evidence: ignored `release/stability-ci-final-delivery-20261101.json`
 - T2 duration/resources evidence: ignored `release/soak-delivery-20261101.json`
@@ -35,6 +37,14 @@ Local Windows components:
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
 
+D2 accepts original stage 7 for the trusted Windows/EE fixture: installed VSIX,
+actual VS Code 1.144.0 project config/mappings, source Continue/Step Over,
+same-pause MCP/GPR/argument/RAM cross-checks and graceful detach. Four editor
+groups, 278 Node and six repeated native DAP groups passed; adapter/editor exit
+0 and owned roots stopped. Native remains unchanged. The user's global editor
+profile is not configured by this delivery. Next: scoped savestate-start input
+movies; physical PS2 remains a separate hardware gate.
+
 D1 adds `node pcsx2-mcp-server/dist/dap.js` / `pcsx2-dap` as a separate stdio
 protocol. 272 Node and six actual DAP/native/MCP groups passed, including source
 next/out/into and frame-0 data cross-checks. It attaches to an existing VM,
@@ -44,8 +54,8 @@ Native and previous executable MCP JavaScript retain T2 hashes. A generated
 2026-11-02 audit reproduces its T2 hash when compiling without DAP and retains
 both hashes/diff. See the DAP contract for this explicit declaration exception.
 Two DAP processes/MCP/
-native test process stopped. Actual editor acceptance remains D2: add reusable
-VS Code integration and run a real editor session, not only protocol mocks.
+native test process stopped. D1 originally left actual editor acceptance for
+D2, which is now accepted above with its own installed-package/editor evidence.
 
 T2 passed a 604.884-second duration run with 104 RAM/rendered-pixel probes,
 521.908 seconds in running windows, ten restore/ten reset and twenty native

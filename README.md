@@ -19,9 +19,10 @@ validated locally; [Node tests on Windows/Ubuntu](../../actions/workflows/mcp-te
 rendered homebrew, 104 RAM/pixel probes and twenty reset/restore rounds;
 262 local Node tests. No game, multi-hour or leak-freedom acceptance.
 
-[DAP backend](docs/dap.md): separate `pcsx2-dap` stdio entry, 272 Node tests
-and native breakpoint/source/register/memory cross-checks. Actual VS Code
-integration remains the next D2 acceptance gate.
+[DAP backend](docs/dap.md) and [VS Code integration](docs/editor-integration.md):
+reusable local VSIX, actual editor/source/data checked against MCP, graceful
+detach, 278 Node tests and native DAP regression. Windows/EE scope; hardware
+and broader backend limits remain separate.
 
 ```
 ┌─────────────┐    stdio (MCP)    ┌─────────────────────┐    TCP:21512    ┌─────────────────┐

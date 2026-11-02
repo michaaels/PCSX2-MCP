@@ -1,6 +1,6 @@
 # Plan de implementación y publicación
 
-Actualizado: 2026-11-01. Autorizado por el usuario: implementar las mejoras del
+Actualizado: 2026-11-02. Autorizado por el usuario: implementar las mejoras del
 estudio de forks y después continuar el plan original de depuración PS2.
 
 ## Regla de entrega
@@ -13,6 +13,15 @@ incluir BIOS, credenciales, contenido privado o artefactos locales de ejecución
 Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
+
+D2 (2026-11-02): etapa 7 aceptada en Windows/EE con VS Code 1.144.0. VSIX
+instalado en perfil nuevo; `launch.json` con variables/mapeos y ajustes locales
+del adaptador. Cuatro grupos reales de editor/MCP pasaron, 278 Node y seis
+regresiones DAP. Detach sale 0 y conserva PCSX2 pausado; procesos propios cerrados.
+Native intacto. CI/publicación por SHA en el recibo. [Contrato](editor-integration.md).
+Sigue ampliar cobertura acotada: películas iniciadas desde savestate con
+compañero validado/copiado y guardado asíncrono finalizado. Hardware queda
+separado y necesita consola/transporte reales; no retomar SMS automáticamente.
 
 D1 (2026-11-01): adaptador DAP stdio añadido sobre los backends existentes.
 TypeScript/272 Node y seis grupos nativos pasaron: breakpoint/fuente, GPR/RAM/
@@ -137,6 +146,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| D2 | Integración reutilizable y sesión real VS Code | Cuatro grupos editor/MCP, 278 Node, seis regresiones nativas DAP y VSIX instalado. Etapa 7 aceptada solo en Windows/EE; sigue savestate-start input movies |
 | D1 | Adaptador DAP sobre capacidades acreditadas | 272 Node, seis grupos con DAP/MCP/PCSX2 reales y empaquetado comprobados. Falta D2 editor real; etapa 7 no cerrada |
 | T2 | Duración, progreso renderizado, recursos y recuperación bajo carga | 604.884 s, 104 sondeos, diez restore/diez reset y 21 stdio cerrados; 262 Node y control de stall. Sin aceptación multi-hora/fugas. Sigue DAP/editor |
 | T1 | Repetición acotada y CI de fuentes | 100+500 ciclos live, 60 rondas de recuperación/captura y 260 Node; runtime intacto. Workflow Windows/Ubuntu; estado remoto por SHA. Sigue T2 de duración/recursos |

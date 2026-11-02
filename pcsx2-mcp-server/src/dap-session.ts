@@ -117,9 +117,11 @@ export class Pcsx2DapSession {
       if (request.command === 'attach') this.event('initialized');
       if (request.command === 'configurationDone' && this.paused) this.stopped('entry');
       if (request.command === 'disconnect') { this.event('terminated'); this.ended = true; }
+        return request.command === 'disconnect';
     } catch (error) {
       this.send({ seq: this.seq++, type: 'response', request_seq: request.seq, command: request.command,
         success: false, message: error instanceof Error ? error.message : String(error) });
+      return false;
     }
   }
   private async dispatch(command: string, args: Record<string, unknown>): Promise<unknown> {
@@ -236,11 +238,11 @@ export class Pcsx2DapSession {
       const verified = await this.client.inspectEE(identity, { revision: snapshot.revision, pc: snapshot.pc });
       if (verified.gpr.some((value, i) => value !== snapshot.gpr[i])) throw new Error('EE registers changed during stack lookup');
       const frames = pcs.slice(input.startFrame, input.startFrame + (input.levels || 64)).map((pc, i) => {
-        const index = i + input.startFrame, line = resolved.locations.find(l => l.address === pc)?.frames[0];
+        const index = i + input.startFrame, location = resolved.locations.find(l => l.address === pc), line = location?.frames[0];
         return { id: this.handle({ identity, snapshot, kind: 'frame', index, pc }), name: line?.function ?? pc,
           instructionPointerReference: pc, line: line?.line ? line.line - 1 + this.lineBase : 0,
           column: line?.column ? line.column - 1 + this.columnBase : 0,
-          ...(line?.file ? { source: { name: path.basename(line.file), path: this.mapped(line.file) } } : {}) };
+          ...(location?.resolved && line?.file && line.line ? { source: { name: path.basename(line.file), path: this.mapped(line.file) } } : {}) };
       });
       return { stackFrames: frames, totalFrames: pcs.length };
     }

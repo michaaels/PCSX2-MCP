@@ -105,6 +105,13 @@ test('DAP guards references against same-revision register edits and VM resets',
   assert.equal((await f.request('scopes', { frameId: frame.id })).success, false);
 });
 
+test('DAP unresolved DWARF frames keep their name without inventing a local source file', async t => {
+  const f = await fixture(t);
+  f.session.source = new SourceResolver({ backend: 'native', runner: async () => '0x00100000\nctors\n<built-in>:0\n' });
+  const reply = await f.request('stackTrace', { threadId: 1 }); assert.equal(reply.success, true);
+  const frame = reply.body.stackFrames[0]; assert.equal(frame.name, 'ctors'); assert.equal(frame.line, 0); assert.equal(frame.source, undefined);
+});
+
 test('DAP source replacement and detach preserve changed ownership and unsupported line options', async t => {
   const f = await fixture(t), source = { path: path.join(f.directory, 'test.c') };
   const installed = await f.request('setBreakpoints', { source, breakpoints: [{ line: 7 }] });
@@ -162,4 +169,14 @@ test('DAP stdio malformed header exits with failure instead of waiting indefinit
   child.stdin.write('Content-Length: 1048577\r\n\r\n');
   const outcome = await Promise.race([once(child, 'exit'), new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('DAP malformed-input shutdown hung')), 5000); timer.unref(); })]);
   assert.equal(outcome[0], 1);
+});
+
+test('DAP successful disconnect flushes its response and exits zero without client EOF or forced kill', async t => {
+  const child = spawn(process.execPath, ['dist/dap.js'], { cwd: path.resolve(import.meta.dirname, '..'), stdio: ['pipe','pipe','pipe'] });
+  t.after(() => child.kill()); const output = []; child.stdout.on('data', b => output.push(b)); child.stderr.resume();
+  child.stdin.write(Buffer.concat([encodeDap({ seq: 1, type: 'request', command: 'initialize' }), encodeDap({ seq: 2, type: 'request', command: 'disconnect' })]));
+  const result = await Promise.race([once(child, 'exit'), new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error('Disconnect waited for client EOF')), 5000); timer.unref(); })]);
+  assert.equal(result[0], 0);
+  const bytes = Buffer.concat(output).toString('utf8');
+  assert.match(bytes, /"command":"disconnect","success":true/); assert.match(bytes, /"event":"terminated"/);
 });
