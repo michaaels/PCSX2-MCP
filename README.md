@@ -15,6 +15,9 @@ step-over](docs/inflight-gui-ownership.md), with preserved ownership and a
 
 [Bounded repetition and CI](docs/stability-ci.md): 100+500 repeated EE cycles
 validated locally; [Node tests on Windows/Ubuntu](../../actions/workflows/mcp-tests.yml).
+[Duration/resources/recovery](docs/sustained-validation.md): ten-minute
+rendered homebrew, 104 RAM/pixel probes and twenty reset/restore rounds;
+262 local Node tests. No game, multi-hour or leak-freedom acceptance.
 
 ```
 ┌─────────────┐    stdio (MCP)    ┌─────────────────────┐    TCP:21512    ┌─────────────────┐

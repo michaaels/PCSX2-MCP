@@ -105,6 +105,11 @@ a local pass does not imply remote CI success.
 
 ## Remaining work
 
+T2 subsequently passed a 604.884-second supervised rendered-fixture run,
+104 probes and twenty reset/restore/reconnect rounds with resource/artifact
+gates. See [the separate contract and evidence](sustained-validation.md).
+The following paragraph records the limits of T1 itself.
+
 This is bounded repetition over roughly 84 seconds across two measured loops,
 not a multi-hour soak or a proof of memory-leak freedom, general performance or
 game stability. No RSS/handle/socket growth guarantee is established. Reset,

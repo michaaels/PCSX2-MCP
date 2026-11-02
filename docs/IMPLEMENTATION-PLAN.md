@@ -14,6 +14,15 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
 
+T2 (2026-11-01): pasaron 604.884 s con 104 sondeos de contador RAM/píxeles GS,
+521.908 s en ventanas de ejecución y 20 recuperaciones: diez restore y diez
+reset, con reconexión nativa/reinicio stdio mientras el guest seguía ejecutando.
+Recursos dentro de presupuestos, 262 Node pasaron y el control con guest pausado
+fue rechazado. Cerrados el emulador y sus 21 hijos MCP. Sin cambios del runtime.
+CI y publicación se registran por SHA en el recibo. [Contrato](sustained-validation.md).
+Después sigue la etapa 7 original: DAP y sesión real desde el editor, con
+breakpoint/fuente/datos contrastados contra MCP y mapeos de fuentes explícitos.
+
 T1 (2026-10-30): repetición acotada y CI de fuentes. Pasaron 100 y 500 ciclos
 en instancias nuevas: 600 reemplazos de socket, 60 rondas de timeout/punto
 ajeno/reinicio stdio/captura PNG, 62 servidores stdio y dos emuladores cerrados.
@@ -120,6 +129,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| T2 | Duración, progreso renderizado, recursos y recuperación bajo carga | 604.884 s, 104 sondeos, diez restore/diez reset y 21 stdio cerrados; 262 Node y control de stall. Sin aceptación multi-hora/fugas. Sigue DAP/editor |
 | T1 | Repetición acotada y CI de fuentes | 100+500 ciclos live, 60 rondas de recuperación/captura y 260 Node; runtime intacto. Workflow Windows/Ubuntu; estado remoto por SHA. Sigue T2 de duración/recursos |
 | S2b2c2 | Reemplazo Qt durante `step_over` EE en fixture autónomo | Tres checks guiados y captura real verificados; sesión/pausa preservadas; runtime sin cambios. Otras opciones/IOP/source-step pendientes; sigue estabilidad/CI acotada |
 | S3 | Captura de ventana principal/depurador con widgets Qt | Windows/TypeScript, 260 Node, siete checks live, 60 regresiones y 29 archivos probados |

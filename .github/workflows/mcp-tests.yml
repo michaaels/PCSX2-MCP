@@ -36,4 +36,5 @@ jobs:
           cache-dependency-path: pcsx2-mcp-server/package-lock.json
       - run: npm ci
       - run: node --check test/stability-live.mjs
+      - run: node --check test/soak-live.mjs
       - run: npm test

@@ -1,6 +1,6 @@
 # MCP development progress
 
-Updated: 2026-10-30. This records the debugging extensions after the original main
+Updated: 2026-11-01. This records the debugging extensions after the original main
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
 
@@ -18,6 +18,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Duration/rendered progress/resources | T2 | 604.884 s, 104 RAM/pixel probes, 521.908 s in running windows, ten restore/ten reset and running reconnect/stdio replacement. Resource budgets held; all 21 children/native stopped. 262 Node and real stalled-guest rejection passed. Runtime unchanged. [Contract and limits](sustained-validation.md). |
 | Bounded repetition/source CI | T1 | 100+500 cycles in two owned instances, 600 native reconnects, 60 timeout/foreign-point/stdio-restart/PNG rounds; all 62 stdio children and both emulators stopped. TypeScript/260 Node passed. Windows/Ubuntu Node 22 workflow added; native runtime unchanged. No prolonged soak/leak claim. [Contract and remote-status distinction](stability-ci.md). |
 | In-flight Qt EE step ownership | S2b2c2 | Real Qt dialog replaced the private return target during EE `step_over`; three supervised checks passed, ownership error preserved `GUI-OWNED` and the same paused VM. Native debugger PNG reviewed with unchanged capture state; owned process stopped. Runtime unchanged. [Evidence and limits](inflight-gui-ownership.md). |
 | Application/debugger PNG | S3, this delivery | New `pcsx2_application_screenshot` for existing visible main/debugger Qt widgets. Windows/TypeScript, 260 Node, seven new live checks, 60 standalone regressions and 29-file integration passed. No focus/resume/desktop fallback. [Contract](application-screenshots.md). |
@@ -174,29 +175,26 @@ each validated delivery must be committed and published to `main` of
 `michaaels/PCSX2-MCP`, with the remote HEAD checked. Native input replay applies
 the documented reset/restore and observed module-lifetime invalidations.
 
-1. **S2b2: GUI ownership, restore failures and broader instruction coverage.**
-   S2b1 accepts connection-generation isolation, actual ELF reset and successful
-   PINE restore: 247 Node and 37 live checks. GUI breakpoint replacement,
-   failed/cancelled restores and interrupt-active IOP remain open, followed by
-   long-run/CI. [Recovery contract](connection-recovery.md).
-2. **Application backlog, separate chat: 6B2b2.** 6B2b1 adds
-   paused SIF/PGIF state and bounded write observations; see [evidence](sif-diagnostics.md). 6B2a
-   now measures a real failed attempt: known clip, zero captured PCM, stalled
-   player clocks and a separate verified first header-ACK wait. Investigate the
-   IOP/emulator acknowledgment path with independent evidence, then repeat the
-   clip successfully. Listening, A/V timing and physical intermittent audio
-   remain separate; the incident verifier accepts evidence only.
-3. **Long-run/recovery and CI.** Add repeated playback/catalog/network recovery
-   with bounded failure criteria, and CI separation for tests without BIOS or
-   hardware. 5B2 fresh transport and the scoped HostFs incident are already
-   proven; retain clock uncertainty and separate E11/audio acceptance.
-4. **Measured diagnostics and editor workflows.** Add verified SIF/RPC, DMA and
-   A/V observations where available, with overhead evidence, then a DAP adapter
-   over supported operations. Unavailable metrics must remain explicit.
-5. **Extend scoped coverage with separate acceptance.** Savestate-start movies
+1. **Editor integration (original roadmap stage 7).** Build a DAP adapter over
+   supported connection, pause/continue, source breakpoints, registers, memory
+   and stack. Expose source stepping/current-frame variables only within their
+   supported subset. Add explicit project/source mapping configuration. Require
+   an actual editor session with breakpoint/source/data checked against MCP;
+   protocol mocks alone cannot close this acceptance.
+2. **Extend scoped coverage with separate acceptance.** Savestate-start movies
    require a checked/copied companion and finalized asynchronous save handling.
    Additional loader/reset/BIOS coverage and universal generations remain pending.
-   Existing IOP source bindings always require fresh revalidation.
+   Existing IOP source bindings always require fresh revalidation. The two Qt
+   ownership cases, failed/dispatched restore outcomes and IRQ-active fixture
+   have their later scoped acceptances above; broader GUI options/IOP/source
+   stepping retain distinct coverage gaps. Native synchronous-load interruption
+   and rollback remain deferred rather than implied by timeout/reconciliation.
+3. **Physical PS2 (stage 8).** Needs actual console/transport evidence. Native
+   PCSX2 APIs and emulation cannot establish hardware debugger acceptance.
+
+**Application backlog stays in its separate chat:** 6B2b2 ACK/audio, Jellyfin,
+playback/catalog/network recovery and physical intermittent audio. No automatic
+resumption from an MCP continuation. See [the incident](sms-playback-audio.md).
 
 ## Scope limits
 
@@ -206,7 +204,8 @@ Neither a configured heartbeat stall nor an exception observation proves a
 deadlock, fatal crash or root cause. A heartbeat must represent useful work in
 the program, with legitimate waits signaled appropriately.
 
-The latest debugging acceptance targets Windows PCSX2 v2.6.3. Earlier rendered
+The current native baseline targets Windows PCSX2 v2.9.147; the v2.6.3 results
+are historical. Earlier rendered
 screenshot checks also used Linux/WSL; that does not validate every later
 debugging feature on Linux. Emulator tests do not establish physical PS2 debug
 support or playback/audio acceptance. See the feature contracts above for

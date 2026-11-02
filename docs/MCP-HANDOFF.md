@@ -19,7 +19,9 @@ Local Windows components:
 - Application/debugger capture: [targets, rebuild/restart and limits](application-screenshots.md)
 - In-flight EE GUI ownership: [supervised case and limits](inflight-gui-ownership.md)
 - Bounded repetition/source CI: [commands, evidence and T2 limits](stability-ci.md)
+- Sustained rendered progress/resources/recovery: [T2 contract](sustained-validation.md)
 - Current delivery evidence: ignored `release/stability-ci-final-delivery-20261101.json`
+- T2 duration/resources evidence: ignored `release/soak-delivery-20261101.json`
 - In-flight GUI evidence: ignored `release/inflight-gui-delivery-20261030.json`
 - S3 evidence: ignored `release/application-capture-delivery-20261029.json`
 - Guided preparation evidence: ignored `release/guided-gui-delivery-20261029.json`
@@ -31,13 +33,21 @@ Local Windows components:
 - S2a evidence: ignored `release/instruction-delivery-20261024.json`
 - S1 evidence: ignored `release/standalone-delivery-20261024.json`
 
+T2 passed a 604.884-second duration run with 104 RAM/rendered-pixel probes,
+521.908 seconds in running windows, ten restore/ten reset and twenty native
+reconnect/stdio replacements while running. All 21 MCP children and the native
+process stopped. 262 local Node tests passed; the actual paused-guest negative
+control failed as expected and cleaned up. Process resource/periodic artifact
+budgets held. Production native/Node hashes remain unchanged. This accepts a
+supervised ten-minute fixture, not multi-hour/game/leak or hung-core recovery.
+Next: original stage 7, DAP plus actual editor breakpoint/source/data acceptance.
+
 T1 passed 100+500 repeated EE cycles, 600 native reconnects and 60 rounds of
 timeout/foreign-breakpoint/stdio restart/actual MCP PNG capture. Both emulators
 and all 62 stdio children stopped. The new local TypeScript/260 Node run passed;
 native/dist/runtime hashes retain S3. Hosted CI tests Node 22 on Windows/Ubuntu,
 without BIOS/native execution. These are 13.117/71.345-second repetition loops,
-not prolonged soak/resource-leak acceptance. Next: duration/progress/resource
-sampling (T2) before broader sustained reset/restore and editor integration.
+not prolonged soak/resource-leak acceptance. The later T2 acceptance is above.
 
 S3 passes 260 Node, the same 60 standalone checks and seven
 new application-window live checks; native integration now manages 29 files.
