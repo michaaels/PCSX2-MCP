@@ -43,4 +43,5 @@ jobs:
       - run: node --check test/input-state-movie-live.mjs
       - run: node --check test/input-movie-live.mjs
       - run: node --check test/conditional-points-live.mjs
+      - run: node --check test/gui-options-live.mjs
       - run: npm test

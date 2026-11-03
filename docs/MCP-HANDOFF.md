@@ -1,5 +1,12 @@
 # Context for a separate project-debugging chat
 
+S4b-prep adds a supervised Qt condition/logging/max-hit matrix while preserving
+the original source marker. Five native/MCP setup/negative checks and three
+helper checks passed; no real Qt option edit was accepted. Computer Use now
+lists windows/opens Edit, but modal input still fails after reset/rebinding.
+User chose another restoration. Owned instances stopped, runtime unchanged.
+Continue with [the Qt matrix](qt-options-gui.md); preparation is not GUI proof.
+
 The MCP is maintained in `D:\dev\PCSX2-MCP`, fork
 `https://github.com/michaaels/PCSX2-MCP`, branch `main`.
 

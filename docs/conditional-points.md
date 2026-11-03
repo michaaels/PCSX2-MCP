@@ -109,6 +109,12 @@ Ignored evidence:
 
 ## Pending real Qt matrix — S4b
 
+Later [S4b preparation](qt-options-gui.md) passed five native/MCP setup/negative
+controls and three helper checks. Computer Use now lists windows and opens
+Edit; modal fields still lack usable input after reset/rebinding. The user
+chose another restoration. No option edit was accepted; all owned instances
+stopped. The following disconnection describes the earlier S4a attempt.
+
 **This is API evidence, not GUI acceptance.** Computer Use returned
 `native pipe ... os error 2` through both available providers, including after
 JavaScript reset/reinitialization. Reconnection was requested; no Qt edit was

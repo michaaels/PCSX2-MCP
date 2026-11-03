@@ -14,6 +14,15 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
 
+S4b-prep (2026-11-02): nueva matriz supervisada de condición/logging/max-hits
+con marcador original intacto y comparación exacta de opciones. Pasaron cinco
+controles nativos/MCP de preparación y tres del helper; no hay aceptación GUI.
+Computer Use vuelve a listar ventanas y abrir Edit, pero el diálogo no admite
+entrada verificable (geometría/caché y foco sin cambio), también tras reset.
+El usuario prefiere restablecerlo de nuevo. Instancias propias cerradas;
+runtime S4a/T2R intacto. Sigue S4b real, IOP y source-step.
+[Guía, comandos y límites](qt-options-gui.md).
+
 T2R (2026-11-02): repetida la aceptación sostenida con el binario actual S4a,
 después de los cambios nativos F5b/S4a: 604.097 s, 96 sondeos RAM/píxeles,
 481.732 s en ventanas de ejecución, diez restore/diez reset y 21 stdio cerrados.
@@ -185,6 +194,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S4b-prep | Matriz Qt de opciones con marcador intacto | Cinco controles nativos/MCP y tres del helper; GUI no aceptada, entrada modal de Computer Use pendiente |
 | T2R | Revalidar duración/recuperación con native F5b/S4a | 604.097 s/96 sondeos/20 recuperaciones, recursos en límites y 21 stdio cerrados; runtime idéntico a S4a. GUI sigue S4b |
 | S4a | Condiciones atómicas y selección EE/IOP en puntos MCP | 295 Node; 13 grupos nuevos, cuatro de compatibilidad y 74 regresiones; fallo previo reproducido. Sigue S4b con ediciones Qt reales, controlador sin conexión |
 | F5b | Guardado confirmado y películas desde savestate | 289 Node/ocho grupos nativos/MCP y once power-on pasaron; SHA antes de cargar, RAM/outcomes/EOF y fallos reales. Sin rollback, determinismo ni asociación ELF embebida |

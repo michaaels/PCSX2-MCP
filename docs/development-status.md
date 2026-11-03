@@ -1,5 +1,14 @@
 # MCP development progress
 
+S4b-prep (2026-11-02): nueva matriz supervisada de condición/logging/max-hits
+con marcador original intacto y comparación exacta de opciones. Pasaron cinco
+controles nativos/MCP de preparación y tres del helper; no hay aceptación GUI.
+Computer Use vuelve a listar ventanas y abrir Edit, pero el diálogo no admite
+entrada verificable (geometría/caché y foco sin cambio), también tras reset.
+El usuario prefiere restablecerlo de nuevo. Instancias propias cerradas;
+runtime S4a/T2R intacto. Sigue S4b real, IOP y source-step.
+[Guía, comandos y límites](qt-options-gui.md).
+
 Updated: 2026-11-02. This records the debugging extensions after the original main
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
@@ -196,6 +205,10 @@ the documented reset/restore and observed module-lifetime invalidations.
    tools/inspection. S4b must exercise actual Qt condition/logging/max-hit edits,
    IOP ownership and source-step replacement after Computer Use reconnects;
    no new GUI acceptance is claimed by its API checks.
+   [S4b preparation](qt-options-gui.md) now has five real native/MCP negative/setup
+   checks and three helper controls. Window inventory works again, but Qt modal
+   input still fails after reset/rebinding; the user chose another restoration.
+   All three option edits and the other real GUI cases remain unaccepted.
 2. **Physical PS2 (stage 8).** Needs actual console/transport evidence. Native
    PCSX2 APIs and emulation cannot establish hardware debugger acceptance.
 
