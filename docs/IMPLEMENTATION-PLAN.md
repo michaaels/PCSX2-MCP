@@ -14,6 +14,15 @@ Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
 
+L1R (2026-11-02): 11 grupos lifetime y 12 bindings pasaron en el binario actual
+S4a/2.9.147 con el fixture/BIOS local: cargas y registro reales, re-registro,
+servicio fallido, SifIopReset/Sync, reset MMIO, restore y revocación de watches.
+El harness distingue ahora rechazo por identidad VM antigua y por lifetime IOP
+antiguo tras restore; el primer fallo de expectativa se conserva aparte.
+Runtime intacto. [Evidencia y límites](iop-lifecycle-validation.md).
+S4b Qt continúa pendiente de entrada modal; otras BIOS/loaders/custom/SIF no
+quedan aceptados por esta repetición acotada.
+
 S4b-prep (2026-11-02): nueva matriz supervisada de condición/logging/max-hits
 con marcador original intacto y comparación exacta de opciones. Pasaron cinco
 controles nativos/MCP de preparación y tres del helper; no hay aceptación GUI.
@@ -194,6 +203,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| L1R | Vida de módulos IOP en el runtime 2.9.147 actual | 11 lifetime/12 bindings pasaron; guardas VM/lifetime independientes tras restore; cobertura observada, otras BIOS/custom/SIF pendientes |
 | S4b-prep | Matriz Qt de opciones con marcador intacto | Cinco controles nativos/MCP y tres del helper; GUI no aceptada, entrada modal de Computer Use pendiente |
 | T2R | Revalidar duración/recuperación con native F5b/S4a | 604.097 s/96 sondeos/20 recuperaciones, recursos en límites y 21 stdio cerrados; runtime idéntico a S4a. GUI sigue S4b |
 | S4a | Condiciones atómicas y selección EE/IOP en puntos MCP | 295 Node; 13 grupos nuevos, cuatro de compatibilidad y 74 regresiones; fallo previo reproducido. Sigue S4b con ediciones Qt reales, controlador sin conexión |

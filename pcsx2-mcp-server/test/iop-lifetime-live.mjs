@@ -180,7 +180,19 @@ try {
   assert.equal(restoredState.binding_reason, 'savestate_load_attempt');
   const restore = await lifetime(), noLocator = await call('pcsx2_iop_modules'); result.evidence.push({ restore, noLocator });
   assert.ok(restore.iop_lifetime_epoch > restoreCaps.iop_lifetime_epoch); assert.equal(noLocator.status, 'unavailable');
-  assert.equal(noLocator.list_address, '0x00000000'); await assert.rejects(inspector.iopModuleSnapshot(restoreCaps), /lifetime/);
+  assert.equal(noLocator.list_address, '0x00000000');
+  const restoredCaps = await inspector.getCapabilities(), restoredPause = await inspector.getStatus();
+  assert.equal(restoredPause.paused, true);
+  assert.ok(restoredCaps.execution_epoch > restoreCaps.execution_epoch);
+  for (const key of ['process_id', 'session', 'elf', 'elf_crc']) assert.equal(restoredCaps[key], restoreCaps[key], key);
+  await assert.rejects(inspector.iopModuleSnapshot(restoreCaps),
+    error => error.message === 'IOP module snapshot VM/ELF/reset identity changed');
+  // Refresh only VM affinity: the old lifetime token must still independently refuse.
+  await assert.rejects(inspector.iopModuleSnapshot({ ...restoredCaps, iop_lifetime_epoch: restoreCaps.iop_lifetime_epoch }),
+    error => error.message === 'IOP module lifetime epoch changed');
+  assert.deepEqual(await inspector.getCapabilities(), restoredCaps);
+  assert.deepEqual(await inspector.getStatus(), restoredPause);
+  result.evidence.push({ restoreCaps, restoredCaps, restoredPause, stale_guards: ['execution_epoch', 'iop_lifetime_epoch'] });
   passed('native savestate loading advances lifetime, clears the old locator and keeps captured file bytes historical rather than current');
   await boot('hardreset'); await finishLoad(); const hardCaps = await inspector.getCapabilities();
   await inspector.resume(); await delay(200); await inspector.pause(); const hard = await lifetime(); result.evidence.push(hard);

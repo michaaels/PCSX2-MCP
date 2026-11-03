@@ -44,4 +44,6 @@ jobs:
       - run: node --check test/input-movie-live.mjs
       - run: node --check test/conditional-points-live.mjs
       - run: node --check test/gui-options-live.mjs
+      - run: node --check test/iop-lifetime-live.mjs
+      - run: node --check test/iop-bindings-live.mjs
       - run: npm test

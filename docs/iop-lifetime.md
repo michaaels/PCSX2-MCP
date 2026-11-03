@@ -1,5 +1,10 @@
 # Conservative IOP lifetime boundaries
 
+Current-build follow-up (2026-11-02): the existing lifetime/binding fixtures
+passed 11/12 groups on modified v2.9.147. Restore now independently checks stale
+VM and stale lifetime refusals. See [L1R evidence and limits](iop-lifecycle-validation.md).
+The version/counts below document the original v2.6.3 delivery.
+
 5A3a, 2026-10-22. Rebuild native PCSX2 and TypeScript, then restart MCP.
 Capability: `iop_lifetime`. This delivery adds an invalidation epoch and bounded
 history for observed loader, registry, reset and restore boundaries. It is the

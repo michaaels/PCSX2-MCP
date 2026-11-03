@@ -1,5 +1,10 @@
 # Revalidated IOP artifact bindings
 
+Current-build follow-up (2026-11-02): the existing lifetime/binding fixtures
+passed 11/12 groups on modified v2.9.147. Restore now independently checks stale
+VM and stale lifetime refusals. See [L1R evidence and limits](iop-lifecycle-validation.md).
+The version/counts below document the original v2.6.3 delivery.
+
 5A3b, 2026-10-23. Requires rebuilt native PCSX2 and TypeScript, then an MCP
 restart. Capability: `iop_module_generations`. This adds bounded, explicit
 artifact bindings backed by **observed registration generations**, with fresh

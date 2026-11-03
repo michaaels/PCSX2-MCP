@@ -1,5 +1,14 @@
 # Context for a separate project-debugging chat
 
+L1R (2026-11-02): 11 grupos lifetime y 12 bindings pasaron en el binario actual
+S4a/2.9.147 con el fixture/BIOS local: cargas y registro reales, re-registro,
+servicio fallido, SifIopReset/Sync, reset MMIO, restore y revocación de watches.
+El harness distingue ahora rechazo por identidad VM antigua y por lifetime IOP
+antiguo tras restore; el primer fallo de expectativa se conserva aparte.
+Runtime intacto. [Evidencia y límites](iop-lifecycle-validation.md).
+S4b Qt continúa pendiente de entrada modal; otras BIOS/loaders/custom/SIF no
+quedan aceptados por esta repetición acotada.
+
 S4b-prep adds a supervised Qt condition/logging/max-hit matrix while preserving
 the original source marker. Five native/MCP setup/negative checks and three
 helper checks passed; no real Qt option edit was accepted. Computer Use now
