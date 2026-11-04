@@ -1,5 +1,22 @@
 # Context for a separate project-debugging chat
 
+U1/T2 (2026-11-03): el binario GUI final pasó 606.311 s, 96 sondeos
+RAM/píxeles, diez restores/diez resets y cierre de 21 stdio y su emulador.
+Recursos dentro de límites. Ver `release/ui-control-soak-600-20261103-ports/validation.json`.
+
+U1 (2026-11-03): siete herramientas de control GUI por MCP, con servicio Qt
+independiente de la VM, snapshots/identidad/recibos y capturas. Pasaron 15 grupos
+GUI reales y cinco del asistente inicial: campos, menús, archivos/modelos,
+depurador y ediciones EE de condición/logging/max-hits con marcador intacto y
+estado nativo preservado. Big Picture: F1/About y Settings por ratón verificados
+visualmente; captura D3D11 después de ImGui, sin fallback al escritorio.
+302 Node y 74 regresiones nativas pasaron; integración consistente en 35 archivos.
+Puerto GUI independiente 21513/PCSX2_UI_PORT, sin derivarlo del debug/PINE.
+Actor `mcp_qt_ui`, sin Computer Use ni SMS/Jellyfin. Sigue IOP en vuelo y
+reemplazo durante source-step; no se acepta cada pantalla/renderer/hardware.
+[Contrato, comandos y límites](application-ui.md). Los avisos de Computer Use
+anteriores se conservan como historia, ya no son requisito para esta ruta.
+
 L1R (2026-11-02): 11 grupos lifetime y 12 bindings pasaron en el binario actual
 S4a/2.9.147 con el fixture/BIOS local: cargas y registro reales, re-registro,
 servicio fallido, SifIopReset/Sync, reset MMIO, restore y revocación de watches.

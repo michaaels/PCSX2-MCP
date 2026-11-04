@@ -1,5 +1,13 @@
 # Qt point-options ownership — S4b preparation
 
+Update 2026-11-03: the three real EE option edits are now accepted through the
+new [MCP Qt GUI service](application-ui.md), preserving the original marker and
+cross-checking exact native point options, both CPU GPR/PC and sampled RAM.
+Actor is `mcp_qt_ui`, not a person or Computer Use. Evidence:
+`release/application-ui-live-20261103-16/validation.json`. IOP in-flight and
+source-step cases remain open. The following records the earlier supervised
+preparation and its external input limitation.
+
 Prepared on Windows with modified PCSX2 v2.9.147. **Real Qt acceptance remains
 pending.** The native Computer Use connection now lists windows and opens the
 breakpoint editor. Its modal input still failed: current accessible controls

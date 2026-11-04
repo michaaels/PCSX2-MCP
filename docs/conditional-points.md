@@ -107,20 +107,18 @@ Ignored evidence:
 - `release/conditional-points-integration-accepted-20261102/integration.json`
 - `release/conditional-points-delivery-20261102.json`
 
-## Pending real Qt matrix — S4b
+## Real Qt EE option matrix — U1/S4b
 
-Later [S4b preparation](qt-options-gui.md) passed five native/MCP setup/negative
-controls and three helper checks. Computer Use now lists windows and opens
-Edit; modal fields still lack usable input after reset/rebinding. The user
-chose another restoration. No option edit was accepted; all owned instances
-stopped. The following disconnection describes the earlier S4a attempt.
+The [application GUI service](application-ui.md) now drives actual Qt controls
+through MCP. Three fresh paused EE source groups were edited in the real
+BreakpointDialog: condition `t0 == 0x42`, logging `GUI-LOG-S4`, and max hits 2.
+The original MCP description marker and every other point option stayed intact.
+Native cleanup preserved the exact edited point, removed only unchanged points,
+and refused repeat group removal. Both CPU GPR/PC, identity, paused status and
+256 sampled EE RAM bytes stayed unchanged. Actor: `mcp_qt_ui`.
 
-**This is API evidence, not GUI acceptance.** Computer Use returned
-`native pipe ... os error 2` through both available providers, including after
-JavaScript reset/reinitialization. Reconnection was requested; no Qt edit was
-performed. The separately accepted EE description replacement and paused source
-group remain in [their GUI contracts](inflight-gui-ownership.md).
-Condition/logging/max-hit Qt changes, IOP in-flight ownership and source-step
-replacement still need real GUI actions and native verification. This delivery
-does not close that matrix, establish deterministic execution, universal IOP
-source stepping/generations or physical debugger support.
+Evidence: `release/application-ui-live-20261103-16/validation.json`, with PNGs
+and queued/terminal action receipts. The earlier supervised preparation and
+Computer Use failures remain historical, not prerequisites for this MCP route.
+IOP in-flight ownership and source-step replacement remain next; this does not
+establish universal stepping/generations or physical debugger support.

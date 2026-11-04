@@ -1,5 +1,22 @@
 # MCP development progress
 
+U1/T2 (2026-11-03): el binario GUI final pasó 606.311 s, 96 sondeos
+RAM/píxeles, diez restores/diez resets y cierre de 21 stdio y su emulador.
+Recursos dentro de límites. Ver `release/ui-control-soak-600-20261103-ports/validation.json`.
+
+U1 (2026-11-03): siete herramientas de control GUI por MCP, con servicio Qt
+independiente de la VM, snapshots/identidad/recibos y capturas. Pasaron 15 grupos
+GUI reales y cinco del asistente inicial: campos, menús, archivos/modelos,
+depurador y ediciones EE de condición/logging/max-hits con marcador intacto y
+estado nativo preservado. Big Picture: F1/About y Settings por ratón verificados
+visualmente; captura D3D11 después de ImGui, sin fallback al escritorio.
+302 Node y 74 regresiones nativas pasaron; integración consistente en 35 archivos.
+Puerto GUI independiente 21513/PCSX2_UI_PORT, sin derivarlo del debug/PINE.
+Actor `mcp_qt_ui`, sin Computer Use ni SMS/Jellyfin. Sigue IOP en vuelo y
+reemplazo durante source-step; no se acepta cada pantalla/renderer/hardware.
+[Contrato, comandos y límites](application-ui.md). Los avisos de Computer Use
+anteriores se conservan como historia, ya no son requisito para esta ruta.
+
 L1R (2026-11-02): 11 grupos lifetime y 12 bindings pasaron en el binario actual
 S4a/2.9.147 con el fixture/BIOS local: cargas y registro reales, re-registro,
 servicio fallido, SifIopReset/Sync, reset MMIO, restore y revocación de watches.
@@ -18,7 +35,7 @@ El usuario prefiere restablecerlo de nuevo. Instancias propias cerradas;
 runtime S4a/T2R intacto. Sigue S4b real, IOP y source-step.
 [Guía, comandos y límites](qt-options-gui.md).
 
-Updated: 2026-11-02. This records the debugging extensions after the original main
+Updated: 2026-11-03. This records the debugging extensions after the original main
 commit `8f9bf45`. Each implementation remains in a separate commit so its
 behavior, native integration and tests can be reviewed together.
 
@@ -36,6 +53,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| MCP application GUI | U1 | Seven frontend tools independent of VM lifetime; 15 actual Qt/Big Picture groups and five first-run groups. Real EE condition/logging/max-hit ownership accepted with native cross-checks. 302 Node/74 native regression groups; 35-file integration. [Contract](application-ui.md). |
 | Current native duration revalidation | T2R | The S4a binary passed 604.097 s, 96 RAM/pixel probes, ten restore/ten reset and running reconnect/stdio replacement. 481.732 s in execution windows; all 21 stdio/native processes closed. Resource limits held; actual stalled guest rejected. Runtime/harness unchanged; retains S4a's 295 source tests. [Evidence](sustained-validation.md). |
 | Atomic point conditions / CPU selection | S4a | Native parser failures refuse before changing a breakpoint/watchpoint or source-group ownership. Six public point tools select EE/IOP; native condition/options metadata is visible. 295 Node, 13 new native/MCP groups, four old-build compatibility and 74 regression groups passed; old bug reproduced separately. Real Qt matrix remains S4b, blocked by the disconnected Computer Use pipe. [Contract](conditional-points.md). |
 | State-start input movies | F5b | Native finalized-save receipts, paused archive acceptance, exclusive private copies/SHA before actual restore and explicit load outcome. 289 Node/eight new native/MCP groups and eleven power-on regressions passed. Exact RAM recovery, both pads/EOF/one frame, invalidations, save/load failures and cancellation/late completions tested. Fixed playback's null-Error crash on failed internal load. [Contract](input-state-movies.md). |

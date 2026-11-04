@@ -5,6 +5,7 @@
 #include "Debugger/DebuggerWindow.h"
 #include "MainWindow.h"
 #include "QtHost.h"
+#include "MCPApplicationUI.h"
 #include <QtCore/QBuffer>
 #include <QtGui/QPixmap>
 #include <QtWidgets/QApplication>

@@ -1,5 +1,13 @@
 # Duration, rendered progress and recovery — T2
 
+U1/T2 (2026-11-03): el binario GUI final pasó 606.311 s, 96 sondeos
+RAM/píxeles, diez restores/diez resets y cierre de 21 stdio y su emulador.
+Recursos dentro de límites. Ver `release/ui-control-soak-600-20261103-ports/validation.json`.
+
+The U1 GUI binary includes the frontend service and D3D11 presentation readback
+hook. Its accepted duration run is separate from the S4a runs below; all resource
+limits held. [GUI contract](application-ui.md).
+
 This Windows-only live harness drives its own PS2 homebrew, emulator, data root,
 PINE port and stdio MCP children. It does not use SMS, Jellyfin or a game.
 PCSX2 remains pinned to v2.9.147. Native and production Node sources do not

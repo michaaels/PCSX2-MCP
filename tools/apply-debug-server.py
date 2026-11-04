@@ -456,12 +456,40 @@ def main() -> None:
         '#include "QtHost.h"\n#include "MCPApplicationCapture.h"', str(qt_host))
     qt_text = replace_once(qt_text, 'void EmuThread::run()\n{',
         'void EmuThread::run()\n{\n\tMCPApplicationCapture::Register();', str(qt_host))
+    # Upgrade an earlier UI integration which waited for the main window. The
+    # frontend service must also be available inside the first-run setup wizard.
+    qt_text = qt_text.replace('\n\tMCPApplicationUI::Register();', '')
+    qt_text = replace_once(qt_text, '\tEmuThread::start();',
+        '\tEmuThread::start();\n\tMCPApplicationUI::Register();', str(qt_host))
     breakpoint_files[qt_host] = qt_text
+
+    qt_cmake = source / 'pcsx2-qt/CMakeLists.txt'
+    breakpoint_files[qt_cmake] = replace_once(qt_cmake.read_text(encoding='utf-8'),
+        '\tQt6::Widgets\n', '\tQt6::Widgets\n\tQt6::Network\n', str(qt_cmake))
+    qt_search = source / 'cmake/SearchForStuff.cmake'
+    breakpoint_files[qt_search] = replace_once(qt_search.read_text(encoding='utf-8'),
+        'WidgetsTools Widgets LinguistTools REQUIRED)', 'WidgetsTools Widgets Network LinguistTools REQUIRED)', str(qt_search))
+
+    dx11 = source / 'pcsx2/GS/Renderers/DX11/GSDevice11.cpp'
+    dx11_text = replace_once(dx11.read_text(encoding='utf-8'), '#include "GSDevice11.h"',
+        '#include "GSDevice11.h"\n#include "common/MCPRenderedUICapture.h"', str(dx11))
+    dx11_text = replace_once(dx11_text, 'void GSDevice11::EndPresent()\n{\n\tRenderImGui();',
+        'void GSDevice11::EndPresent()\n{\n\tRenderImGui();\n#include "MCPD3D11UICapture.inl"', str(dx11))
+    breakpoint_files[dx11] = dx11_text
+    for original_name, target_name in [('RenderedUICapture.h', 'common/MCPRenderedUICapture.h'),
+            ('D3D11UICapture.inl', 'pcsx2/GS/Renderers/DX11/MCPD3D11UICapture.inl')]:
+        original = repo / 'pcsx2-plugin' / original_name
+        target = source / target_name
+        if not target.exists() or target.read_bytes() != original.read_bytes(): shutil.copy2(original, target)
 
     qt_header = source / 'pcsx2-qt/MCPApplicationCapture.h'
     original = repo / 'pcsx2-plugin/QtApplicationCapture.h'
     if not qt_header.exists() or qt_header.read_bytes() != original.read_bytes():
         shutil.copy2(original, qt_header)
+    qt_ui = source / 'pcsx2-qt/MCPApplicationUI.h'
+    original_ui = repo / 'pcsx2-plugin/QtApplicationUI.h'
+    if not qt_ui.exists() or qt_ui.read_bytes() != original_ui.read_bytes():
+        shutil.copy2(original_ui, qt_ui)
     for name in ('DebugServer.cpp', 'DebugServer.h', 'DebugServerCompat.h'):
         original = repo / 'pcsx2-plugin' / name
         target = source / 'pcsx2/DebugTools' / name

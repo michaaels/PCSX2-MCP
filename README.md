@@ -9,6 +9,12 @@
 > **Control a PS2 emulator from your AI coding assistant.**
 > Set breakpoints, read registers, disassemble MIPS, inspect memory — all via MCP tools.
 
+[Control the application GUI through MCP](docs/application-ui.md): seven new
+tools inspect and operate menus, fields, tabs, models, dialogs and Big Picture,
+including before boot and after VM shutdown. Actual Qt/ImGui captures, 20 live
+GUI/wizard groups, 302 Node tests and 74 native regressions passed on Windows
+with modified 2.9.147. DisplaySurface capture currently supports D3D11 RGBA8/BGRA8.
+
 Latest standalone acceptance: [real Qt breakpoint replacement during EE
 step-over](docs/inflight-gui-ownership.md), with preserved ownership and a
 [debugger application screenshot](docs/application-screenshots.md).

@@ -710,6 +710,13 @@ export class DebugServerClient {
   // ===== Screenshots =====
 
   /** Capture Qt widgets from this native process, independently of the GS frame. */
+  /** Frontend UI service uses the same bounded JSON transport on its own port. */
+  async applicationUICommand(command: 'ui_status' | 'ui_snapshot' | 'ui_action' | 'ui_action_status' | 'ui_screenshot', input: Record<string, unknown> = {}): Promise<unknown> {
+    if (!['ui_status', 'ui_snapshot', 'ui_action', 'ui_action_status', 'ui_screenshot'].includes(command))
+      throw new Error('Unknown application UI command');
+    return this.send({ ...input, cmd: command });
+  }
+
   async captureApplicationScreenshot(input: unknown = {}) {
     const options = applicationScreenshotOptions.parse(input);
     const response = await this.send({ cmd: 'application_screenshot', ...options });

@@ -38,9 +38,11 @@ def main():
              'pcsx2/GS/GSDump.cpp', 'pcsx2/GS/GSCapture.h', 'pcsx2/GS/GSCapture.cpp', 'pcsx2/Sif1.cpp',
              'pcsx2/Recording/InputRecording.cpp', 'pcsx2/Recording/InputRecordingFile.cpp',
              'pcsx2/Recording/InputRecording.h', 'pcsx2/Recording/InputRecordingFile.h',
-             'pcsx2/ps2/Iop/IopHwWrite.cpp', 'pcsx2-qt/QtHost.cpp']
+             'pcsx2/ps2/Iop/IopHwWrite.cpp', 'pcsx2-qt/QtHost.cpp',
+             'pcsx2-qt/CMakeLists.txt', 'cmake/SearchForStuff.cmake', 'pcsx2/GS/Renderers/DX11/GSDevice11.cpp']
     generated = ['pcsx2/DebugTools/DebugServer.cpp', 'pcsx2/DebugTools/DebugServer.h', 'pcsx2/DebugTools/DebugServerCompat.h',
-                 'pcsx2-qt/MCPApplicationCapture.h']
+                 'pcsx2-qt/MCPApplicationCapture.h', 'pcsx2-qt/MCPApplicationUI.h',
+                 'common/MCPRenderedUICapture.h', 'pcsx2/GS/Renderers/DX11/MCPD3D11UICapture.inl']
 
     def git(root, revision, filename):
         return subprocess.check_output(['git', '-C', str(root), 'show', f'{revision}:{filename}'])

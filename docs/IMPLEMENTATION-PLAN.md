@@ -1,6 +1,23 @@
 # Plan de implementación y publicación
 
-Actualizado: 2026-11-02. Autorizado por el usuario: implementar las mejoras del
+U1/T2 (2026-11-03): el binario GUI final pasó 606.311 s, 96 sondeos
+RAM/píxeles, diez restores/diez resets y cierre de 21 stdio y su emulador.
+Recursos dentro de límites. Ver `release/ui-control-soak-600-20261103-ports/validation.json`.
+
+U1 (2026-11-03): siete herramientas de control GUI por MCP, con servicio Qt
+independiente de la VM, snapshots/identidad/recibos y capturas. Pasaron 15 grupos
+GUI reales y cinco del asistente inicial: campos, menús, archivos/modelos,
+depurador y ediciones EE de condición/logging/max-hits con marcador intacto y
+estado nativo preservado. Big Picture: F1/About y Settings por ratón verificados
+visualmente; captura D3D11 después de ImGui, sin fallback al escritorio.
+302 Node y 74 regresiones nativas pasaron; integración consistente en 35 archivos.
+Puerto GUI independiente 21513/PCSX2_UI_PORT, sin derivarlo del debug/PINE.
+Actor `mcp_qt_ui`, sin Computer Use ni SMS/Jellyfin. Sigue IOP en vuelo y
+reemplazo durante source-step; no se acepta cada pantalla/renderer/hardware.
+[Contrato, comandos y límites](application-ui.md). Los avisos de Computer Use
+anteriores se conservan como historia, ya no son requisito para esta ruta.
+
+Actualizado: 2026-11-03. Autorizado por el usuario: implementar las mejoras del
 estudio de forks y después continuar el plan original de depuración PS2.
 
 ## Regla de entrega
@@ -203,6 +220,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| U1 | Control de la GUI desde MCP, incluida captura ImGui D3D11 | Siete herramientas; 15 grupos GUI/cinco wizard, 302 Node/74 regresiones; EE Qt options aceptadas, siguen IOP en vuelo/source-step y mayor cobertura de pantallas/renderers |
 | L1R | Vida de módulos IOP en el runtime 2.9.147 actual | 11 lifetime/12 bindings pasaron; guardas VM/lifetime independientes tras restore; cobertura observada, otras BIOS/custom/SIF pendientes |
 | S4b-prep | Matriz Qt de opciones con marcador intacto | Cinco controles nativos/MCP y tres del helper; GUI no aceptada, entrada modal de Computer Use pendiente |
 | T2R | Revalidar duración/recuperación con native F5b/S4a | 604.097 s/96 sondeos/20 recuperaciones, recursos en límites y 21 stdio cerrados; runtime idéntico a S4a. GUI sigue S4b |

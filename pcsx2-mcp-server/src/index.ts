@@ -18,6 +18,7 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { DebugServerClient } from './debug-server-client.js';
 import { registerBreakpointTools } from './breakpoint-tools.js';
+import { registerApplicationUITools } from './application-ui-tools.js';
 import { applicationScreenshotOptions } from './application-screenshot.js';
 import { PineClient, EmuStatus } from './pine-client.js';
 import { registerSessionTools } from './session-tools.js';
@@ -90,6 +91,7 @@ async function writeMem(addr: number, data: Buffer): Promise<void> {
 const server = new McpServer({ name: 'pcsx2-ultimate-debugger', version: '2.0.0' }, { capabilities: { tools: {}, resources: {} } });
 registerSessionTools(server, () => debugServer);
 registerBreakpointTools(server, () => debugServer);
+const disconnectUI = registerApplicationUITools(server);
 registerWorkflowTools(server, () => debugServer);
 registerSourceTools(server, () => debugServer);
 registerExceptionTools(server, () => debugServer);
@@ -107,7 +109,7 @@ registerInputMovieTools(server, () => debugServer);
 registerProjectDiagnosticTools(server, () => debugServer);
 registerVisualTools(server);
 registerAutomationTools(server, () => debugServer, client => { debugServer?.disconnect(); debugServer = client; });
-process.stdin.once('end', () => { debugServer?.disconnect(); pine?.disconnect(); });
+process.stdin.once('end', () => { debugServer?.disconnect(); pine?.disconnect(); disconnectUI(); });
 
 // ==========================================================
 //  TOOL: pcsx2_connect
