@@ -237,6 +237,17 @@ try {
   let dragSlider = unique(s, c => c.object_name === 'standardVolume' && c.visible);
   const beforeDragValue = dragSlider.value;
   await action(s, dragSlider, { action: 'set_value', value: dragSlider.minimum });
+  await delay(100); s = await snap({ window_id: audioID }); dragSlider = unique(s, c => c.object_name === 'standardVolume' && c.visible);
+  const edgeID = await action(s, dragSlider, { action: 'drag', x: 7, y: Math.floor(dragSlider.height / 2),
+    end_x: dragSlider.width - 8, end_y: Math.floor(dragSlider.height / 2), duration_ms: 600 }, false);
+  await waitSnapshot(v => v.controls.some(c => c.object_name === 'standardVolume' && c.slider_down), { window_id: audioID });
+  const edgeReceipt = (await call('pcsx2_ui_action_status', { action_id: edgeID, wait_ms: 1500 })).action;
+  assert.equal(edgeReceipt.state, 'failed', JSON.stringify(edgeReceipt)); assert.match(edgeReceipt.error, /became unavailable; button released/);
+  s = await snap({ window_id: audioID }); const narrowed = unique(s, c => c.object_name === 'standardVolume' && c.visible);
+  assert.equal(narrowed.slider_down, false); assert.ok(narrowed.width < dragSlider.width); assert.deepEqual(await machine(), pausedBeforeDrag);
+  report.layout_cancelled_drag = { before: dragSlider, after: narrowed, receipt: edgeReceipt };
+  passed('live percentage-label reflow invalidates an edge endpoint; drag fails explicitly and releases without moving paused CPU/RAM/identity');
+  await action(s, narrowed, { action: 'set_value', value: narrowed.minimum }); await delay(100);
   s = await snap({ window_id: audioID }); dragSlider = unique(s, c => c.object_name === 'standardVolume' && c.visible);
   const dragID = await action(s, dragSlider, { action: 'drag', x: 7, y: Math.floor(dragSlider.height / 2),
     // The live percentage label changes width while dragging. Keep the

@@ -7,6 +7,10 @@ DisplaySurface that lists it in a fresh snapshot. Supply integer `x`, `y`,
 Both endpoints must remain inside that same control. Model-item targets do
 not acquire this action; inspect their actual view/viewport instead.
 
+U4a adds optional [`end_control_id`](ui-cross-control-drag.md) for a destination
+widget in the same snapshot/window, plus root-relative widget bounds. The
+original same-control contract below remains available when that field is absent.
+
 ```json
 {
   "snapshot_id": "<fresh snapshot UUID>", "control_id": "c42",

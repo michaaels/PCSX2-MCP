@@ -51,6 +51,7 @@
 #include <cmath>
 #include <functional>
 #include <memory>
+#include <optional>
 
 // A frontend-only service: lifetime is QApplication, not a VM. All object/model
 // access and input run on the UI thread. There is no global OS input injection.
@@ -150,6 +151,11 @@ inline QJsonObject Describe(const Target& target)
 	{
 		out["kind"] = "widget"; out["enabled"] = widget->isEnabled(); out["visible"] = widget->isVisible();
 		out["width"] = widget->width(); out["height"] = widget->height();
+		if (auto* root = qobject_cast<QWidget*>(target.root.data()))
+		{
+			const QPoint point = widget->mapTo(root, QPoint());
+			out["bounds_in_window"] = QJsonObject{{"x", point.x()}, {"y", point.y()}, {"width", widget->width()}, {"height", widget->height()}};
+		}
 		out["title"] = widget->windowTitle().left(512); out["tooltip"] = widget->toolTip().left(512);
 		if (ManagedWindow(widget))
 		{
@@ -191,7 +197,7 @@ class Service final : public QObject
 	bool m_originalQtDialogs = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
 	struct Drag
 	{
-		QPointer<QObject> receiver, root;
+		QPointer<QObject> receiver, root, endpoint;
 		QPointer<QTcpSocket> socket;
 		QPointer<QTimer> timer;
 		QPoint start, end, last;
@@ -212,12 +218,21 @@ class Service final : public QObject
 	}
 	static void DragEvent(const std::shared_ptr<Drag>& drag, QEvent::Type type, Qt::MouseButtons held)
 	{
-		if (!drag->receiver) return;
-		const QPoint global = qobject_cast<QWidget*>(drag->receiver.data()) ?
-			qobject_cast<QWidget*>(drag->receiver.data())->mapToGlobal(drag->last) :
-			qobject_cast<QWindow*>(drag->receiver.data())->mapToGlobal(drag->last);
-		QMouseEvent event(type, drag->last, global, type == QEvent::MouseMove ? Qt::NoButton : drag->button, held, Qt::NoModifier);
+		if (!drag->receiver || !drag->root) return;
+		const QPoint global = GlobalPoint(drag->root, drag->last);
+		const QPoint local = LocalPoint(drag->receiver, global);
+		QMouseEvent event(type, local, global, type == QEvent::MouseMove ? Qt::NoButton : drag->button, held, Qt::NoModifier);
 		QCoreApplication::sendEvent(drag->receiver, &event);
+	}
+	static QPoint GlobalPoint(QObject* object, const QPoint& point)
+	{
+		if (auto* widget = qobject_cast<QWidget*>(object)) return widget->mapToGlobal(point);
+		return qobject_cast<QWindow*>(object)->mapToGlobal(point);
+	}
+	static QPoint LocalPoint(QObject* object, const QPoint& point)
+	{
+		if (auto* widget = qobject_cast<QWidget*>(object)) return widget->mapFromGlobal(point);
+		return qobject_cast<QWindow*>(object)->mapFromGlobal(point);
 	}
 	void FinishDrag(const std::shared_ptr<Drag>& drag, const QString& error)
 	{
@@ -230,31 +245,37 @@ class Service final : public QObject
 		if (m_drag == drag) m_drag.reset();
 		drag->complete(error);
 	}
-	void StartDrag(QObject* receiver, QObject* root, const QPoint& start, const QPoint& end,
+	void StartDrag(QObject* receiver, QObject* root, QObject* endpoint, const QPoint& start, const QPoint& end,
 		Qt::MouseButton button, int duration, const QDeadlineTimer& expires,
 		const std::shared_ptr<Peer>& peer, const std::function<void(QString)>& complete)
 	{
 		auto drag = std::make_shared<Drag>();
-		drag->receiver = receiver; drag->root = root; drag->socket = peer->socket;
-		drag->start = drag->last = start; drag->end = end; drag->button = button;
+		drag->receiver = receiver; drag->root = root; drag->endpoint = endpoint; drag->socket = peer->socket;
+		drag->start = drag->last = LocalPoint(root, GlobalPoint(receiver, start)); drag->end = end; drag->button = button;
 		drag->duration = duration; drag->expires = expires; drag->complete = complete;
 		drag->timer = new QTimer(this); m_drag = drag;
 		connect(drag->timer, &QTimer::timeout, this, [this, drag]() {
 			if (drag->finished) return;
 			if (!drag->socket || drag->socket->state() != QAbstractSocket::ConnectedState) { FinishDrag(drag, "Drag peer disconnected; button released"); return; }
 			if (drag->expires.hasExpired()) { FinishDrag(drag, "Drag deadline expired; button released"); return; }
-			if (!drag->receiver || !drag->root) { FinishDrag(drag, "Drag target or window was destroyed"); return; }
+			if (!drag->receiver || !drag->root || !drag->endpoint) { FinishDrag(drag, "Drag target, endpoint or window was destroyed"); return; }
 			auto* widget = qobject_cast<QWidget*>(drag->receiver.data());
 			auto* rootWidget = qobject_cast<QWidget*>(drag->root.data());
+			auto* endWidget = qobject_cast<QWidget*>(drag->endpoint.data());
 			auto* surface = qobject_cast<QWindow*>(drag->receiver.data());
 			auto* modal = QApplication::activeModalWidget();
 			if ((widget && (!widget->isVisible() || !widget->isEnabled())) || (rootWidget && rootWidget->isMinimized()) ||
 				(surface && (!surface->isVisible() || surface->windowState() == Qt::WindowMinimized)) ||
 				(modal && modal != drag->root && (!rootWidget || !modal->isAncestorOf(rootWidget))) ||
-				!DragBounds(drag->receiver).contains(drag->end)) { FinishDrag(drag, "Drag target became unavailable; button released"); return; }
+				(endWidget && (!rootWidget || !endWidget->isVisible() || !endWidget->isEnabled() || (endWidget != rootWidget && !rootWidget->isAncestorOf(endWidget)))) ||
+				(widget && (!rootWidget || (widget != rootWidget && !rootWidget->isAncestorOf(widget)))) ||
+				!DragBounds(drag->endpoint).contains(drag->end)) { FinishDrag(drag, "Drag target became unavailable; button released"); return; }
 			const qint64 elapsed = drag->elapsed.elapsed();
 			const double fraction = std::min(1.0, static_cast<double>(elapsed) / drag->duration);
-			drag->last = drag->start + QPoint(qRound((drag->end.x() - drag->start.x()) * fraction), qRound((drag->end.y() - drag->start.y()) * fraction));
+			const QPoint end = LocalPoint(drag->root, GlobalPoint(drag->endpoint, drag->end));
+			if (!DragBounds(drag->root).contains(end)) { FinishDrag(drag, "Drag endpoint left the application window; button released"); return; }
+			drag->last = drag->start + QPoint(qRound((end.x() - drag->start.x()) * fraction), qRound((end.y() - drag->start.y()) * fraction));
+			if (!DragBounds(drag->root).contains(drag->last)) { FinishDrag(drag, "Drag path left the application window; button released"); return; }
 			DragEvent(drag, QEvent::MouseMove, drag->button);
 			if (elapsed >= drag->duration) FinishDrag(drag, {});
 		});
@@ -376,7 +397,7 @@ class Service final : public QObject
 			{"window_id", root ? WindowID(peer, root) : QString()}, {"windows", windows}, {"screens", screens}, {"controls", controls}, {"truncated", truncated}};
 	}
 	QString Execute(const Target& target, const QJsonObject& request, const QDeadlineTimer& expires,
-		const std::shared_ptr<Peer>& peer, const std::function<void(QString)>& complete, bool& deferred)
+		const std::shared_ptr<Peer>& peer, const std::optional<Target>& endpoint, const std::function<void(QString)>& complete, bool& deferred)
 	{
 		if (m_drag) return "A local drag is running; wait for its release before another UI action";
 		if (!target.object || !target.root) return "Target or window was destroyed";
@@ -554,10 +575,20 @@ class Service final : public QObject
 			if (!x.isDouble() || !y.isDouble() || x.toDouble() != x.toInt() || y.toDouble() != y.toInt() ||
 				!durationValue.isDouble() || durationValue.toDouble() != duration || duration < 50 || duration > 1000) return "Drag requires integer end_x/end_y and duration_ms (50-1000)";
 			const QPoint end(x.toInt(), y.toInt());
-			if (!bounds.contains(end)) return "Drag endpoint is outside the target control";
+			QObject* endObject = receiver;
+			if (endpoint)
+			{
+				if (endpoint->modelItem || endpoint->root != target.root || !endpoint->object || Describe(*endpoint) != endpoint->observed) return "Drag endpoint changed or is not a widget in this snapshot window";
+				auto* endWidget = qobject_cast<QWidget*>(endpoint->object.data());
+				if (!widget || !rootWidget || !endWidget || (endWidget != rootWidget && !rootWidget->isAncestorOf(endWidget)) || !endWidget->isVisible() || !endWidget->isEnabled()) return "Cross-control drag requires visible enabled widgets in the same application window";
+				endObject = endWidget;
+			}
+			if (!DragBounds(endObject).contains(end)) return "Drag endpoint is outside the target control";
+			if (!DragBounds(target.root).contains(LocalPoint(target.root, GlobalPoint(receiver, point))) ||
+				!DragBounds(target.root).contains(LocalPoint(target.root, GlobalPoint(endObject, end)))) return "Drag must stay inside its application window";
 			if (expires.remainingTime() < duration + 50) return "Drag duration exceeds its remaining action deadline";
 			deferred = true;
-			StartDrag(receiver, target.root, point, end, button, duration, expires, peer, complete);
+			StartDrag(receiver, target.root, endObject, point, end, button, duration, expires, peer, complete);
 			return {};
 		}
 		QPointer<QObject> live = receiver;
@@ -571,7 +602,7 @@ class Service final : public QObject
 	void Handle(const std::shared_ptr<Peer>& peer, const QJsonObject& request)
 	{
 		const QString command = request["cmd"].toString();
-		if (command == "ui_status") { Reply(peer, {{"ok", true}, {"features", QJsonArray{"qt_ui_snapshot", "qt_ui_actions", "qt_ui_screenshot", "ui_without_vm", "qt_render_surface_input", "qt_local_drag"}}}); return; }
+		if (command == "ui_status") { Reply(peer, {{"ok", true}, {"features", QJsonArray{"qt_ui_snapshot", "qt_ui_actions", "qt_ui_screenshot", "ui_without_vm", "qt_render_surface_input", "qt_local_drag", "qt_cross_control_drag"}}}); return; }
 		if (request["expected_service_id"].toString() != m_id || request["expected_process_id"].toDouble(-1) != QCoreApplication::applicationPid()) { Reply(peer, Failure("UI process/service identity mismatch")); return; }
 		if (command == "ui_snapshot") { Reply(peer, Snapshot(*peer, request)); return; }
 		if (command == "ui_action_status") { const QString id = request["action_id"].toString(); Reply(peer, peer->receipts.contains(id) ? QJsonObject{{"ok", true}, {"action", peer->receipts[id]}} : Failure("Unknown action receipt on this connection")); return; }
@@ -624,6 +655,13 @@ class Service final : public QObject
 		const qint64 deadline = static_cast<qint64>(deadlineNumber);
 		const QDeadlineTimer expires(std::max<qint64>(0, deadline - Now()));
 		if (!peer->targets.contains(id)) { Reply(peer, Failure("Unknown control ID in this snapshot")); return; }
+		std::optional<Target> endpoint;
+		if (request.contains("end_control_id"))
+		{
+			const QString endID = request["end_control_id"].toString();
+			if (request["action"] != "drag" || endID.isEmpty() || !peer->targets.contains(endID)) { Reply(peer, Failure("end_control_id requires a drag target in this same snapshot")); return; }
+			endpoint = peer->targets[endID];
+		}
 		int pending = 0; for (const auto& receipt : peer->receipts) if (receipt["state"] == "queued" || receipt["state"] == "running") ++pending;
 		if (pending >= 8 || (peer->receiptOrder.size() >= 128 && (peer->receipts[peer->receiptOrder.front()]["state"] == "queued" || peer->receipts[peer->receiptOrder.front()]["state"] == "running"))) { Reply(peer, Failure("UI action receipt capacity reached")); return; }
 		while (peer->receiptOrder.size() >= 128) peer->receipts.remove(peer->receiptOrder.takeFirst());
@@ -632,7 +670,7 @@ class Service final : public QObject
 		peer->receipts[operation] = {{"action_id", operation}, {"state", "queued"}, {"action", request["action"]}, {"queued_at_ms", Now()}};
 		peer->receiptOrder.append(operation);
 		Reply(peer, {{"ok", true}, {"action", peer->receipts[operation]}});
-		QTimer::singleShot(0, this, [this, peer, target, request, operation, expires]() {
+		QTimer::singleShot(0, this, [this, peer, target, request, endpoint, operation, expires]() {
 			if (!peer->socket || peer->socket->state() != QAbstractSocket::ConnectedState || expires.hasExpired()) { peer->receipts[operation]["state"] = "expired"; return; }
 			peer->receipts[operation]["state"] = "running"; peer->receipts[operation]["started_at_ms"] = Now();
 			const auto complete = [peer, operation](const QString& error) {
@@ -643,7 +681,7 @@ class Service final : public QObject
 				if (!error.isEmpty()) peer->receipts[operation]["error"] = error;
 			};
 			bool deferred = false;
-			const QString error = Execute(target, request, expires, peer, complete, deferred);
+			const QString error = Execute(target, request, expires, peer, endpoint, complete, deferred);
 			if (!deferred) complete(error);
 		});
 	}

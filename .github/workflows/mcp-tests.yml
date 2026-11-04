@@ -52,6 +52,7 @@ jobs:
       - run: node --check test/ui-window-live.mjs
       - run: node --check test/ui-drag-live.mjs
       - run: node --check test/imgui-drag-live.mjs
+      - run: node --check test/ui-cross-drag-live.mjs
       - run: node --check test/iop-lifetime-live.mjs
       - run: node --check test/iop-bindings-live.mjs
       - run: npm test

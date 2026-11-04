@@ -23,6 +23,7 @@ export const uiActionOptions = z.object({ snapshot_id: id, control_id: z.string(
   key: z.string().min(1).max(64).optional(), x: z.number().int().min(0).max(65535).optional(),
   y: z.number().int().min(0).max(65535).optional(), button: z.enum(['left', 'right', 'middle']).optional(),
   end_x: z.number().int().min(0).max(65535).optional(), end_y: z.number().int().min(0).max(65535).optional(),
+  end_control_id: z.string().regex(/^c\d{1,4}$/).optional(),
   duration_ms: z.number().int().min(50).max(1000).optional(),
   delta_x: z.number().int().min(-1200).max(1200).optional(), delta_y: z.number().int().min(-1200).max(1200).optional(),
   double_click: z.boolean().optional(), state: z.enum(['normal', 'minimized', 'maximized']).optional(),
@@ -39,9 +40,10 @@ type Transport = Pick<DebugServerClient, 'connect' | 'disconnect' | 'isConnected
 export class ApplicationUIClient {
   private client: Transport | null = null;
   private identity: UIIdentity | null = null;
+  private features = new Set<string>();
   constructor(private factory: (port: number) => Transport = value => new DebugServerClient('127.0.0.1', value)) {}
 
-  disconnect() { this.client?.disconnect(); this.client = null; this.identity = null; }
+  disconnect() { this.client?.disconnect(); this.client = null; this.identity = null; this.features.clear(); }
   isConnected() { return !!this.identity && !!this.client?.isConnected(); }
   getIdentity() { return this.identity ? { ...this.identity } : null; }
 
@@ -60,6 +62,7 @@ export class ApplicationUIClient {
           (options.expected_data_directory !== undefined && path.resolve(identity.data_directory) !== path.resolve(options.expected_data_directory)))
         throw new Error('Qt UI service process/port/data-directory mismatch');
       if (this.client !== candidate) throw new Error('UI connection changed during connect');
+      this.features = new Set(z.array(z.string().max(128)).max(128).parse(response.features ?? []));
       this.identity = identity;
       return { identity, features: response.features };
     } catch (error) { candidate.disconnect(); if (this.client === candidate) { this.client = null; this.identity = null; } throw error; }
@@ -90,6 +93,9 @@ export class ApplicationUIClient {
 
   async action(input: unknown) {
     const options = uiActionOptions.parse(input);
+    if (options.end_control_id !== undefined && options.action !== 'drag') throw new Error('end_control_id requires drag');
+    if (options.end_control_id !== undefined && this.identity && !this.features.has('qt_cross_control_drag'))
+      throw new Error('Cross-control drag requires native qt_cross_control_drag support; update/restart the PCSX2 integration');
     const required: Record<string, string[]> = { set_text: ['text'], edit_text: ['text'], set_checked: ['checked'], set_check_state: ['check_state'],
       select_index: ['index'], set_value: ['value'], key: ['key'], wheel: ['x', 'y', 'delta_y'],
       drag: ['x', 'y', 'end_x', 'end_y', 'duration_ms'], window_state: ['state'], set_geometry: ['geometry'] };

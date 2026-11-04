@@ -1,5 +1,13 @@
 # Context for a separate project-debugging chat
 
+U4a (2026-11-03): arrastre entre controles de la misma ventana mediante
+`end_control_id` y `bounds_in_window`; capacidad nativa explícita para rechazar
+binarios anteriores antes de enviar. Separador Qt real movido 60 unidades y
+restaurado; cancelación por reflow con ambas CPU/RAM pausadas intactas. Pasaron
+57 grupos live y 303 Node, build Windows/TypeScript e integración de 36 archivos.
+[Contrato](ui-cross-control-drag.md). Siguen docking entre ventanas, drag-and-drop
+nativo y otros backends de captura; sin SMS/Jellyfin ni validación física.
+
 U3c (2026-11-03): arrastre Big Picture/ImGui acreditado en el mismo runtime U3b.
 Cuatro grupos reales pasaron sin VM: capturas del volumen de 100% a 158%, lectura
 independiente Qt=158 y restauración a 100, identidad/INI/exe intactos y procesos

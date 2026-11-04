@@ -12,8 +12,8 @@
 [Control the application GUI through MCP](docs/application-ui.md): seven new
 tools inspect and operate menus, fields, tabs, models, dialogs and Big Picture,
 including before boot and after VM shutdown. [Window state/geometry](docs/ui-window-management.md)
-and [local pointer drag](docs/ui-local-drag.md) are available. The latest GUI
-build passed 47 live groups and 302 Node tests on Windows with modified
+and [pointer drag across controls](docs/ui-cross-control-drag.md) are available. The latest GUI
+build passed 57 live groups and 303 Node tests on Windows with modified
 2.9.147. DisplaySurface capture currently supports D3D11 RGBA8/BGRA8.
 
 Latest standalone acceptance: [real Qt breakpoint replacement during EE

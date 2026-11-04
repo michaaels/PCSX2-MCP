@@ -1,5 +1,13 @@
 # Plan de implementación y publicación
 
+U4a (2026-11-03): arrastre entre controles de la misma ventana mediante
+`end_control_id` y `bounds_in_window`; capacidad nativa explícita para rechazar
+binarios anteriores antes de enviar. Separador Qt real movido 60 unidades y
+restaurado; cancelación por reflow con ambas CPU/RAM pausadas intactas. Pasaron
+57 grupos live y 303 Node, build Windows/TypeScript e integración de 36 archivos.
+[Contrato](ui-cross-control-drag.md). Siguen docking entre ventanas, drag-and-drop
+nativo y otros backends de captura; sin SMS/Jellyfin ni validación física.
+
 U3c (2026-11-03): arrastre Big Picture/ImGui acreditado en el mismo runtime U3b.
 Cuatro grupos reales pasaron sin VM: capturas del volumen de 100% a 158%, lectura
 independiente Qt=158 y restauración a 100, identidad/INI/exe intactos y procesos
@@ -267,6 +275,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| U4a | Arrastre entre controles de la misma ventana | 57 live/303 Node; separador Qt +60/restore, cancelación por reflow y capacidad nativa comprobadas; integración 36 |
 | U3c | Arrastre Big Picture/ImGui real | Cuatro grupos y PNG 100%→158%, Qt=158 y restore=100; sin VM, runtime U3b intacto. Sigue arrastre entre límites/backends |
 | U3b | Arrastre Qt local con recibos y limpieza | 47 live/302 Node; cancelación por desconexión, rechazo de conflictos y VM pausada intacta; integración 36. Sigue cobertura específica ImGui/pantallas/backends |
 | U3a | Estado y geometría de ventanas desde MCP | 40 grupos live/302 Node; gestión sin VM y con fixture pausado, rechazos/restore verificados, integración 36. Sigue arrastre local U3b |

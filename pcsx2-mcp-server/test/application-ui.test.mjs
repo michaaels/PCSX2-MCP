@@ -8,10 +8,10 @@ const uuid = '11111111-1111-4111-8111-111111111111';
 const operation = '22222222-2222-4222-8222-222222222222';
 const identity = { protocol_version: 1, service_id: uuid, process_id: 123, ui_port: 21513,
   data_directory: '/fixture', scope: 'pcsx2_qt_application' };
-function fixture() {
+function fixture(features = ['ui_without_vm']) {
   const clients = [];
   const client = new ApplicationUIClient(value => {
-    const backend = { live: false, calls: [], handler: async command => command === 'ui_status' ? { features: ['ui_without_vm'] } : {},
+    const backend = { live: false, calls: [], handler: async command => command === 'ui_status' ? { features } : {},
       connect: async () => { backend.live = true; }, disconnect: () => { backend.live = false; }, isConnected: () => backend.live,
       applicationUICommand: async (command, input) => { backend.calls.push({ command, input }); return { ok: true, identity: { ...identity, ui_port: value }, ...await backend.handler(command, input) }; } };
     clients.push(backend); return backend;
@@ -54,6 +54,7 @@ test('UI action validation refuses missing fields, malformed handles and UTF-8 o
     { action: 'wheel', x: 1, y: 2 }, { action: 'wheel', x: 1, y: 2, delta_y: 1201 },
     { action: 'drag' }, { action: 'drag', x: 1, y: 2, end_x: 10, end_y: 2 },
     { action: 'drag', x: 1, y: 2, end_x: 10, end_y: 2, duration_ms: 1001 },
+    { action: 'click', end_control_id: 'c2' }, { action: 'drag', end_control_id: 'foreign-id' },
     { action: 'window_state' }, { action: 'window_state', state: 'fullscreen' }, { action: 'set_geometry' },
     { action: 'set_geometry', geometry: { x: 0, y: 0, width: 0, height: 600 } },
     { action: 'set_text', text: 'é'.repeat(8193) }, { action: 'click', control_id: 'foreign-id' }, { action: 'invoke_method' },
@@ -78,6 +79,22 @@ test('UI actions retain queued/running receipts and never replay a mutation whil
   const done = await f.client.actionStatus({ action_id: operation, wait_ms: 200 }); assert.equal(done.action.state, 'completed');
   assert.equal(backend.calls.filter(value => value.command === 'ui_action').length, 1);
   assert.equal(polls, 2);
+});
+
+test('cross-control drag refuses an older native peer before dispatch and preserves destination fields for a capable peer', async () => {
+  const input = { snapshot_id: uuid, control_id: 'c1', action: 'drag', x: 2, y: 10,
+    end_control_id: 'c2', end_x: 80, end_y: 10, duration_ms: 600 };
+  const old = fixture(); await old.connect(); const count = old.clients[0].calls.length;
+  await assert.rejects(old.client.action(input), /requires native qt_cross_control_drag/);
+  assert.equal(old.clients[0].calls.length, count);
+  const current = fixture(['ui_without_vm', 'qt_cross_control_drag']); await current.connect();
+  current.clients[0].handler = async (command, args) => {
+    assert.equal(command, 'ui_action');
+    for (const [key, value] of Object.entries(input)) assert.equal(args[key], value);
+    return { action: { action_id: operation, state: 'queued', action: 'drag' } };
+  };
+  assert.equal((await current.client.action(input)).action.state, 'queued');
+  assert.equal(current.clients[0].calls.filter(c => c.command === 'ui_action').length, 1);
 });
 
 test('UI snapshots enforce control bounds; screenshots reject a substituted window before returning image content', async () => {
