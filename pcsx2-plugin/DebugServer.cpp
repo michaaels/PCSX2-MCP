@@ -119,6 +119,19 @@ namespace DebugServer
 		std::lock_guard lock(s_applicationCaptureMutex);
 		s_applicationCapture = std::move(handler);
 	}
+	static std::mutex s_breakpointRefreshMutex;
+	static std::function<void()> s_breakpointRefresh;
+	void SetBreakpointConfigurationChangedHandler(std::function<void()> handler)
+	{
+		std::lock_guard lock(s_breakpointRefreshMutex);
+		s_breakpointRefresh = std::move(handler);
+	}
+	void OnBreakpointConfigurationChanged()
+	{
+		std::function<void()> handler;
+		{ std::lock_guard lock(s_breakpointRefreshMutex); handler = s_breakpointRefresh; }
+		if (handler) handler();
+	}
 	// v2.9 boots homebrew with a host: relative name. Resolve it through the
 	// same HostFs mapper used by the guest, retaining full-path ELF guards.
 	static std::string currentELF()

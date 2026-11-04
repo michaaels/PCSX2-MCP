@@ -476,6 +476,12 @@ def main() -> None:
     dx11_text = replace_once(dx11_text, 'void GSDevice11::EndPresent()\n{\n\tRenderImGui();',
         'void GSDevice11::EndPresent()\n{\n\tRenderImGui();\n#include "MCPD3D11UICapture.inl"', str(dx11))
     breakpoint_files[dx11] = dx11_text
+    points = source / 'pcsx2/DebugTools/Breakpoints.cpp'
+    point_text = replace_once(points.read_text(encoding='utf-8'), '#include "Breakpoints.h"',
+        '#include "Breakpoints.h"\n#include "DebugServer.h"', str(points))
+    point_text = replace_once(point_text, '\tif (resume)\n\t\tr5900Debug.resumeCpu();\n}',
+        '\tif (resume)\n\t\tr5900Debug.resumeCpu();\n\tDebugServer::OnBreakpointConfigurationChanged();\n}', str(points))
+    breakpoint_files[points] = point_text
     for original_name, target_name in [('RenderedUICapture.h', 'common/MCPRenderedUICapture.h'),
             ('D3D11UICapture.inl', 'pcsx2/GS/Renderers/DX11/MCPD3D11UICapture.inl')]:
         original = repo / 'pcsx2-plugin' / original_name

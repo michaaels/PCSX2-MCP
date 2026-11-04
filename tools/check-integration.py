@@ -39,7 +39,8 @@ def main():
              'pcsx2/Recording/InputRecording.cpp', 'pcsx2/Recording/InputRecordingFile.cpp',
              'pcsx2/Recording/InputRecording.h', 'pcsx2/Recording/InputRecordingFile.h',
              'pcsx2/ps2/Iop/IopHwWrite.cpp', 'pcsx2-qt/QtHost.cpp',
-             'pcsx2-qt/CMakeLists.txt', 'cmake/SearchForStuff.cmake', 'pcsx2/GS/Renderers/DX11/GSDevice11.cpp']
+             'pcsx2-qt/CMakeLists.txt', 'cmake/SearchForStuff.cmake', 'pcsx2/GS/Renderers/DX11/GSDevice11.cpp',
+             'pcsx2/DebugTools/Breakpoints.cpp']
     generated = ['pcsx2/DebugTools/DebugServer.cpp', 'pcsx2/DebugTools/DebugServer.h', 'pcsx2/DebugTools/DebugServerCompat.h',
                  'pcsx2-qt/MCPApplicationCapture.h', 'pcsx2-qt/MCPApplicationUI.h',
                  'common/MCPRenderedUICapture.h', 'pcsx2/GS/Renderers/DX11/MCPD3D11UICapture.inl']
@@ -53,7 +54,7 @@ def main():
             target = tree / filename
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(git(upstream, ref, filename))
-        (tree / 'pcsx2/DebugTools').mkdir(parents=True)
+        (tree / 'pcsx2/DebugTools').mkdir(parents=True, exist_ok=True)
         return tree
 
     def apply(script, tree):

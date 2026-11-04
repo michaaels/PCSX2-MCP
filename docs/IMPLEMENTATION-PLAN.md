@@ -1,5 +1,17 @@
 # Plan de implementación y publicación
 
+S4b2/U2 (2026-11-03): source-step into/over/out con reemplazo Qt real aceptado
+bajo retardo explícito de una respuesta nativa (65–76 ms medidos, tope programado
+700 ms). Se conservan el punto GUI y el control IOP con cleanup incompleto
+explícito. Corregida una fila privada obsoleta en Qt: notificación/coalescing
+después de mutaciones, sin crear modelos ni reanudar, con edición inline
+preservada y reconciliación tras Escape. Pasaron 18 grupos source/Qt, 20 GUI/
+wizard, siete IOP, 74 regresiones y 100 ciclos de estabilidad; 91.731 s/16 sondeos/
+tres recuperaciones con recursos en límites. Integración de 36 archivos; Node y
+DLLs intactos (302 pruebas fuente). [Contrato y límites](source-step-qt-ownership.md).
+Siguen ampliar el control GUI con drag/geometría y otras pantallas/backends;
+no se aceptan carreras naturales universales ni hardware/SMS/Jellyfin.
+
 S4b1 (2026-11-03): aceptado el reemplazo Qt real de un breakpoint IOP durante
 step-over, actor `mcp_qt_ui`, con IRQ aislada por el fixture. Siete grupos nuevos
 pasaron, incluidos controles EE/IOP con la misma dirección numérica. Se reprodujo
@@ -231,6 +243,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S4b2/U2 | Source-step Qt y sincronización de puntos con interfaz pausada | Into/over/out con latencia de respuesta explícita y edición real; 18 source/Qt, 20 GUI/wizard, siete IOP, 74 regresiones, 100 ciclos y 91.731 s; integración 36 archivos. Sigue drag/geometría y cobertura ampliada |
 | S4b1 | Aislamiento CPU y reemplazo Qt IOP en vuelo | Bug upstream reproducido; siete grupos nuevos y 74 regresiones pasaron; 93.826 s/15 sondeos/tres recuperaciones, Node intacto. Sigue source-step GUI |
 | U1 | Control de la GUI desde MCP, incluida captura ImGui D3D11 | Siete herramientas; 15 grupos GUI/cinco wizard, 302 Node/74 regresiones; EE Qt options aceptadas, siguen IOP en vuelo/source-step y mayor cobertura de pantallas/renderers |
 | L1R | Vida de módulos IOP en el runtime 2.9.147 actual | 11 lifetime/12 bindings pasaron; guardas VM/lifetime independientes tras restore; cobertura observada, otras BIOS/custom/SIF pendientes |

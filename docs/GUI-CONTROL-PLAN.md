@@ -1,5 +1,17 @@
 # Control de toda la GUI desde MCP — U1
 
+S4b2/U2 (2026-11-03): source-step into/over/out con reemplazo Qt real aceptado
+bajo retardo explícito de una respuesta nativa (65–76 ms medidos, tope programado
+700 ms). Se conservan el punto GUI y el control IOP con cleanup incompleto
+explícito. Corregida una fila privada obsoleta en Qt: notificación/coalescing
+después de mutaciones, sin crear modelos ni reanudar, con edición inline
+preservada y reconciliación tras Escape. Pasaron 18 grupos source/Qt, 20 GUI/
+wizard, siete IOP, 74 regresiones y 100 ciclos de estabilidad; 91.731 s/16 sondeos/
+tres recuperaciones con recursos en límites. Integración de 36 archivos; Node y
+DLLs intactos (302 pruebas fuente). [Contrato y límites](source-step-qt-ownership.md).
+Siguen ampliar el control GUI con drag/geometría y otras pantallas/backends;
+no se aceptan carreras naturales universales ni hardware/SMS/Jellyfin.
+
 S4b1 (2026-11-03): aceptado el reemplazo Qt real de un breakpoint IOP durante
 step-over, actor `mcp_qt_ui`, con IRQ aislada por el fixture. Siete grupos nuevos
 pasaron, incluidos controles EE/IOP con la misma dirección numérica. Se reprodujo
@@ -56,6 +68,6 @@ de captura negra/región de escritorio y la colisión inicial debug+1/PINE se
 conservan como fallidos, sin contarlos como aceptación. La GUI usa puerto
 21513 o PCSX2_UI_PORT explícito, independiente del puerto debug.
 
-Siguiente entrega: usar este control Qt para reemplazo durante source-step,
-registrando el actor real. Ampliaciones de GUI aún no aceptadas: drag-and-drop,
+Siguiente entrega U3: ampliar entrada GUI con arrastre y gestión de geometría
+de ventanas, con pruebas reales y sin entrada global al sistema. Ampliaciones de GUI aún no aceptadas: drag-and-drop,
 gestión geométrica de ventanas y pruebas específicas de más pantallas/backends.

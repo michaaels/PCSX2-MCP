@@ -36,6 +36,9 @@ namespace DebugServer
 	using ApplicationScreenshotHandler = std::function<void(std::string, uint32_t, uint32_t, ApplicationScreenshotCompletion)>;
 	// Frontend registers an asynchronous UI-thread handler; other hosts remain unsupported.
 	void SetApplicationScreenshotHandler(ApplicationScreenshotHandler handler);
+	// Optional frontend invalidation; handler must only queue work, never block CPU.
+	void SetBreakpointConfigurationChangedHandler(std::function<void()> handler);
+	void OnBreakpointConfigurationChanged();
 	// CPU thread only. PCSX2_DEBUG_PORT overrides the default per process.
 	// A failed bind does not start a session. Stop before starting another VM.
 	void Start(int port = 21512);

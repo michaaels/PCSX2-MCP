@@ -1,5 +1,11 @@
 # Real IOP Qt ownership and CPU-isolated points — S4b1
 
+Update 2026-11-03 / S4b2/U2: [real Qt source-step into/over/out replacement](source-step-qt-ownership.md)
+is accepted under explicit bounded response latency. Native configuration changes
+now reconcile paused Qt point tables, including deferral around active inline
+editing. This closes those concrete cases; earlier pending statements below
+record their historical scope, not a claim of universal GUI/backend coverage.
+
 The MCP Qt service now verifies replacement of an IOP step-over breakpoint
 through the actual debugger, without manual input or Computer Use. This also
 exposed and fixed a pinned-upstream bug affecting every native point snapshot

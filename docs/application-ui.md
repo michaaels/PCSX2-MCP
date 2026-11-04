@@ -1,5 +1,11 @@
 # Application GUI control through MCP — U1
 
+Update 2026-11-03 / S4b2/U2: [real Qt source-step into/over/out replacement](source-step-qt-ownership.md)
+is accepted under explicit bounded response latency. Native configuration changes
+now reconcile paused Qt point tables, including deferral around active inline
+editing. This closes those concrete cases; earlier pending statements below
+record their historical scope, not a claim of universal GUI/backend coverage.
+
 Update 2026-11-03 / S4b1: [actual Qt IOP in-flight ownership](iop-qt-ownership.md)
 is now accepted for the IRQ-isolated fixture. The same delivery corrects native
 cross-CPU breakpoint snapshot/ownership leakage. Seven new groups and 74 native

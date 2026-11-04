@@ -1,5 +1,17 @@
 # MCP development progress
 
+S4b2/U2 (2026-11-03): source-step into/over/out con reemplazo Qt real aceptado
+bajo retardo explícito de una respuesta nativa (65–76 ms medidos, tope programado
+700 ms). Se conservan el punto GUI y el control IOP con cleanup incompleto
+explícito. Corregida una fila privada obsoleta en Qt: notificación/coalescing
+después de mutaciones, sin crear modelos ni reanudar, con edición inline
+preservada y reconciliación tras Escape. Pasaron 18 grupos source/Qt, 20 GUI/
+wizard, siete IOP, 74 regresiones y 100 ciclos de estabilidad; 91.731 s/16 sondeos/
+tres recuperaciones con recursos en límites. Integración de 36 archivos; Node y
+DLLs intactos (302 pruebas fuente). [Contrato y límites](source-step-qt-ownership.md).
+Siguen ampliar el control GUI con drag/geometría y otras pantallas/backends;
+no se aceptan carreras naturales universales ni hardware/SMS/Jellyfin.
+
 S4b1 (2026-11-03): aceptado el reemplazo Qt real de un breakpoint IOP durante
 step-over, actor `mcp_qt_ui`, con IRQ aislada por el fixture. Siete grupos nuevos
 pasaron, incluidos controles EE/IOP con la misma dirección numérica. Se reprodujo
@@ -64,6 +76,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Source-step Qt ownership / synchronized point tables | S4b2/U2 | All three EE source modes preserve real Qt replacement under explicit bounded transport latency. Paused tables reconcile native changes without erasing inline input. 36-file integration, 119 live groups plus 100-cycle suite and 91.731 s recovery. [Contract](source-step-qt-ownership.md). |
 | CPU-isolated points / actual IOP GUI ownership | S4b1 | Seven new native/Qt groups accept one IRQ-isolated IOP in-flight replacement and correct cross-CPU list/ownership leakage. 74 regressions/93.826-second bounded recovery passed; Node runtime unchanged. [Contract](iop-qt-ownership.md). |
 | MCP application GUI | U1 | Seven frontend tools independent of VM lifetime; 15 actual Qt/Big Picture groups and five first-run groups. Real EE condition/logging/max-hit ownership accepted with native cross-checks. 302 Node/74 native regression groups; 35-file integration. [Contract](application-ui.md). |
 | Current native duration revalidation | T2R | The S4a binary passed 604.097 s, 96 RAM/pixel probes, ten restore/ten reset and running reconnect/stdio replacement. 481.732 s in execution windows; all 21 stdio/native processes closed. Resource limits held; actual stalled guest rejected. Runtime/harness unchanged; retains S4a's 295 source tests. [Evidence](sustained-validation.md). |

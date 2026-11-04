@@ -3,17 +3,44 @@
 
 #include "pcsx2/DebugTools/DebugServer.h"
 #include "Debugger/DebuggerWindow.h"
+#include "Debugger/Breakpoints/BreakpointModel.h"
 #include "MainWindow.h"
 #include "QtHost.h"
 #include "MCPApplicationUI.h"
 #include <QtCore/QBuffer>
 #include <QtGui/QPixmap>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QAbstractItemView>
+#include <QtCore/QSet>
+#include <QtCore/QTimer>
 
 namespace MCPApplicationCapture
 {
+	inline std::atomic_bool s_refreshQueued{false};
+	inline void ScheduleBreakpointRefresh(int delay = 25)
+	{
+		if (!qApp || s_refreshQueued.exchange(true)) return;
+		QTimer::singleShot(delay, qApp, []() {
+			s_refreshQueued = false;
+			QSet<BreakpointModel*> models, editing;
+			// Never create a model: its constructor can load saved breakpoints.
+			for (QWidget* widget : QApplication::allWidgets())
+			{
+				auto* view = qobject_cast<QAbstractItemView*>(widget);
+				auto* model = view ? qobject_cast<BreakpointModel*>(view->model()) : nullptr;
+				if (!model) continue;
+				models.insert(model);
+				if (view->viewport()->findChild<QWidget*>(QString(), Qt::FindDirectChildrenOnly)) editing.insert(model);
+			}
+			for (auto* model : models) if (!editing.contains(model)) model->refreshData();
+			// Preserve active inline editing; retry even if editing is cancelled
+			// without a subsequent native mutation/dataChanged notification.
+			if (!editing.isEmpty()) ScheduleBreakpointRefresh(100);
+		});
+	}
 	inline void Register()
 	{
+		DebugServer::SetBreakpointConfigurationChangedHandler([]() { ScheduleBreakpointRefresh(); });
 		DebugServer::SetApplicationScreenshotHandler([](std::string target, uint32_t maxWidth, uint32_t maxHeight,
 			DebugServer::ApplicationScreenshotCompletion complete) {
 			QtHost::RunOnUIThread([target = std::move(target), maxWidth, maxHeight, complete = std::move(complete)]() mutable {
