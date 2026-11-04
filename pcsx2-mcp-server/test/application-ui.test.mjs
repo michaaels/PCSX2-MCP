@@ -52,6 +52,8 @@ test('UI action validation refuses missing fields, malformed handles and UTF-8 o
   const base = { snapshot_id: uuid, control_id: 'c1' };
   for (const input of [{ action: 'set_text' }, { action: 'set_checked' }, { action: 'set_check_state' }, { action: 'select_index' }, { action: 'set_value' }, { action: 'key' },
     { action: 'wheel', x: 1, y: 2 }, { action: 'wheel', x: 1, y: 2, delta_y: 1201 },
+    { action: 'drag' }, { action: 'drag', x: 1, y: 2, end_x: 10, end_y: 2 },
+    { action: 'drag', x: 1, y: 2, end_x: 10, end_y: 2, duration_ms: 1001 },
     { action: 'window_state' }, { action: 'window_state', state: 'fullscreen' }, { action: 'set_geometry' },
     { action: 'set_geometry', geometry: { x: 0, y: 0, width: 0, height: 600 } },
     { action: 'set_text', text: 'é'.repeat(8193) }, { action: 'click', control_id: 'foreign-id' }, { action: 'invoke_method' },

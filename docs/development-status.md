@@ -1,5 +1,13 @@
 # MCP development progress
 
+U3b (2026-11-03): arrastre Qt local asíncrono mediante `pcsx2_ui_action`, con
+recibo en ejecución hasta liberar, exclusión de otra mutación y limpieza al
+desconectar. Pasaron seis grupos nuevos y 41 de regresión (47 live), incluidos
+arrastre de volumen con ambas CPU/RAM/identidad pausadas intactas. 302 Node,
+Windows/TypeScript e integración de 36 archivos pasaron. [Contrato](ui-local-drag.md).
+Quedan coberturas específicas de ImGui/backends/pantallas; drag-and-drop del SO
+y acoplamiento entre ventanas no están implementados por el arrastre local.
+
 U3a (2026-11-03): gestión de ventanas desde MCP: mover/redimensionar con límites
 y maximizar/minimizar/restaurar. Snapshots incluyen geometría, pantallas y estado.
 Seis grupos nuevos sin VM y 34 regresiones GUI/wizard/IOP/source pasaron; la VM

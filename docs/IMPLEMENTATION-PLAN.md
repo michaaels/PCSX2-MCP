@@ -1,5 +1,13 @@
 # Plan de implementación y publicación
 
+U3b (2026-11-03): arrastre Qt local asíncrono mediante `pcsx2_ui_action`, con
+recibo en ejecución hasta liberar, exclusión de otra mutación y limpieza al
+desconectar. Pasaron seis grupos nuevos y 41 de regresión (47 live), incluidos
+arrastre de volumen con ambas CPU/RAM/identidad pausadas intactas. 302 Node,
+Windows/TypeScript e integración de 36 archivos pasaron. [Contrato](ui-local-drag.md).
+Quedan coberturas específicas de ImGui/backends/pantallas; drag-and-drop del SO
+y acoplamiento entre ventanas no están implementados por el arrastre local.
+
 U3a (2026-11-03): gestión de ventanas desde MCP: mover/redimensionar con límites
 y maximizar/minimizar/restaurar. Snapshots incluyen geometría, pantallas y estado.
 Seis grupos nuevos sin VM y 34 regresiones GUI/wizard/IOP/source pasaron; la VM
@@ -251,6 +259,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| U3b | Arrastre Qt local con recibos y limpieza | 47 live/302 Node; cancelación por desconexión, rechazo de conflictos y VM pausada intacta; integración 36. Sigue cobertura específica ImGui/pantallas/backends |
 | U3a | Estado y geometría de ventanas desde MCP | 40 grupos live/302 Node; gestión sin VM y con fixture pausado, rechazos/restore verificados, integración 36. Sigue arrastre local U3b |
 | S4b2/U2 | Source-step Qt y sincronización de puntos con interfaz pausada | Into/over/out con latencia de respuesta explícita y edición real; 18 source/Qt, 20 GUI/wizard, siete IOP, 74 regresiones, 100 ciclos y 91.731 s; integración 36 archivos. Sigue drag/geometría y cobertura ampliada |
 | S4b1 | Aislamiento CPU y reemplazo Qt IOP en vuelo | Bug upstream reproducido; siete grupos nuevos y 74 regresiones pasaron; 93.826 s/15 sondeos/tres recuperaciones, Node intacto. Sigue source-step GUI |

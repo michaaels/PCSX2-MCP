@@ -191,6 +191,7 @@ try {
     const original = points.find(p => p.address === target), before = await machine(), marker = 'MCP source group ' + group.group_id;
     assert.equal(original.description, marker);
     s = await waitSnapshot(v => v.controls.some(c => c.kind === 'model_item' && c.text === marker), { window_id: debuggerID });
+    await delay(100); s = await snap({ window_id: debuggerID });
     const item = unique(s, c => c.kind === 'model_item' && c.text === marker);
     await action(s, item, { action: 'context_menu' }, false);
     s = await waitSnapshot(v => v.controls.some(c => c.kind === 'action' && c.text?.replaceAll('&', '') === 'Edit'));
@@ -225,6 +226,34 @@ try {
     await inspector.removeBreakpoint(target);
     passed('actual Qt ' + edit.name + ' edit preserves original marker; native cleanup preserves exact options and rejects repeat removal without CPU/RAM/identity movement');
   }
+  const pausedBeforeDrag = await machine();
+  s = await snap({ window_id: mainID });
+  await action(s, unique(s, c => c.object_name === 'actionAudioSettings'), { action: 'trigger' }, false);
+  s = await waitSnapshot(v => v.controls.some(c => c.object_name === 'standardVolume' && c.visible));
+  const audioID = s.window_id;
+  // Opening Settings queues layout/range initialization. Observe it settling
+  // before issuing a mutation; a stale target is never blindly replayed.
+  await delay(150); s = await snap({ window_id: audioID });
+  let dragSlider = unique(s, c => c.object_name === 'standardVolume' && c.visible);
+  const beforeDragValue = dragSlider.value;
+  await action(s, dragSlider, { action: 'set_value', value: dragSlider.minimum });
+  s = await snap({ window_id: audioID }); dragSlider = unique(s, c => c.object_name === 'standardVolume' && c.visible);
+  const dragID = await action(s, dragSlider, { action: 'drag', x: 7, y: Math.floor(dragSlider.height / 2),
+    // The live percentage label changes width while dragging. Keep the
+    // endpoint within the narrower resulting layout as well as this snapshot.
+    end_x: dragSlider.width - 48, end_y: Math.floor(dragSlider.height / 2), duration_ms: 600 }, false);
+  await waitSnapshot(v => v.controls.some(c => c.object_name === 'standardVolume' && c.visible && c.slider_down), { window_id: audioID });
+  assert.deepEqual(await machine(), pausedBeforeDrag);
+  const pausedDragReceipt = (await call('pcsx2_ui_action_status', { action_id: dragID, wait_ms: 1500 })).action;
+  assert.equal(pausedDragReceipt.state, 'completed', JSON.stringify(pausedDragReceipt));
+  s = await snap({ window_id: audioID }); dragSlider = unique(s, c => c.object_name === 'standardVolume' && c.visible);
+  assert.equal(dragSlider.slider_down, false); assert.ok(dragSlider.value > dragSlider.minimum);
+  await action(s, dragSlider, { action: 'set_value', value: beforeDragValue });
+  s = await snap({ window_id: audioID }); report.paused_drag_png = await capture(s, 'paused-audio-drag-restored');
+  await action(s, unique(s, c => c.parent_id === '' && c.kind === 'widget'), { action: 'close' });
+  assert.deepEqual(await machine(), pausedBeforeDrag);
+  report.paused_drag = { before: pausedBeforeDrag, action_id: dragID, value_after_drag: dragSlider.value };
+  passed('actual Qt drag and release retain the paused fixture, both CPUs, sampled RAM and native identity');
   const pausedBeforeWindowStates = await machine();
   for (const state of ['maximized', 'normal', 'minimized', 'normal']) {
     s = await snap({ window_id: mainID });

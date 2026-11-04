@@ -1,5 +1,9 @@
 # Application GUI control through MCP — U1
 
+Latest additions: [managed window state/geometry](ui-window-management.md) and
+[application-local asynchronous drag](ui-local-drag.md). These retain the seven-tool
+catalog; the original U1 evidence below remains tied to its own executable.
+
 Update U3a: managed top-level windows expose `window_state` and `set_geometry`,
 with screen coordinates/bounds in snapshots. Real no-VM and paused-fixture
 cases passed; minimized capture/input refuse. [Contract](ui-window-management.md).

@@ -1,5 +1,13 @@
 # Control de toda la GUI desde MCP — U1
 
+U3b (2026-11-03): arrastre Qt local asíncrono mediante `pcsx2_ui_action`, con
+recibo en ejecución hasta liberar, exclusión de otra mutación y limpieza al
+desconectar. Pasaron seis grupos nuevos y 41 de regresión (47 live), incluidos
+arrastre de volumen con ambas CPU/RAM/identidad pausadas intactas. 302 Node,
+Windows/TypeScript e integración de 36 archivos pasaron. [Contrato](ui-local-drag.md).
+Quedan coberturas específicas de ImGui/backends/pantallas; drag-and-drop del SO
+y acoplamiento entre ventanas no están implementados por el arrastre local.
+
 U3a (2026-11-03): gestión de ventanas desde MCP: mover/redimensionar con límites
 y maximizar/minimizar/restaurar. Snapshots incluyen geometría, pantallas y estado.
 Seis grupos nuevos sin VM y 34 regresiones GUI/wizard/IOP/source pasaron; la VM
@@ -76,6 +84,6 @@ de captura negra/región de escritorio y la colisión inicial debug+1/PINE se
 conservan como fallidos, sin contarlos como aceptación. La GUI usa puerto
 21513 o PCSX2_UI_PORT explícito, independiente del puerto debug.
 
-Siguiente entrega U3b: arrastre acotado dentro de controles de la aplicación,
-con pruebas reales, recibos de duración y sin entrada global al sistema. Ampliaciones de GUI aún no aceptadas: drag-and-drop,
-gestión geométrica de ventanas y pruebas específicas de más pantallas/backends.
+U3a y U3b completan geometría/estado y arrastre local de controles. Próxima
+cobertura: interacción de arrastre ImGui real y auditoría por pantalla/backend.
+Siguen fuera del alcance probado drag-and-drop del SO y docking entre ventanas.
