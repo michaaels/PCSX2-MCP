@@ -1,5 +1,13 @@
 # Context for a separate project-debugging chat
 
+U3c (2026-11-03): arrastre Big Picture/ImGui acreditado en el mismo runtime U3b.
+Cuatro grupos reales pasaron sin VM: capturas del volumen de 100% a 158%, lectura
+independiente Qt=158 y restauración a 100, identidad/INI/exe intactos y procesos
+propios cerrados. Runtime/DLLs/dist sin cambios por SHA; no se repitieron los 302
+Node/47 live locales anteriores. [Contrato](imgui-drag-validation.md).
+Sigue ampliar arrastre entre límites de controles/dock handles y backends de
+captura; no se acepta toda configuración/renderer ni drag-and-drop del SO.
+
 U3b (2026-11-03): arrastre Qt local asíncrono mediante `pcsx2_ui_action`, con
 recibo en ejecución hasta liberar, exclusión de otra mutación y limpieza al
 desconectar. Pasaron seis grupos nuevos y 41 de regresión (47 live), incluidos

@@ -33,7 +33,8 @@ moves the desktop pointer or replays a gesture after reconnect.
 This supplies Qt-local pointer dragging. It does not implement OS/OLE file
 drag-and-drop, cross-widget/window docking, or infer a custom control's visible
 effect from successful event delivery. DisplaySurface accepts local events;
-an ImGui drag interaction has not yet received its own visual acceptance test.
+the [Big Picture volume slider](imgui-drag-validation.md) has separate visual
+and independent Qt-value acceptance on the identical runtime.
 Keep endpoints away from edges when labels/layouts resize during interaction.
 
 ## Actual acceptance

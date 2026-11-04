@@ -1,5 +1,13 @@
 # Plan de implementación y publicación
 
+U3c (2026-11-03): arrastre Big Picture/ImGui acreditado en el mismo runtime U3b.
+Cuatro grupos reales pasaron sin VM: capturas del volumen de 100% a 158%, lectura
+independiente Qt=158 y restauración a 100, identidad/INI/exe intactos y procesos
+propios cerrados. Runtime/DLLs/dist sin cambios por SHA; no se repitieron los 302
+Node/47 live locales anteriores. [Contrato](imgui-drag-validation.md).
+Sigue ampliar arrastre entre límites de controles/dock handles y backends de
+captura; no se acepta toda configuración/renderer ni drag-and-drop del SO.
+
 U3b (2026-11-03): arrastre Qt local asíncrono mediante `pcsx2_ui_action`, con
 recibo en ejecución hasta liberar, exclusión de otra mutación y limpieza al
 desconectar. Pasaron seis grupos nuevos y 41 de regresión (47 live), incluidos
@@ -259,6 +267,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| U3c | Arrastre Big Picture/ImGui real | Cuatro grupos y PNG 100%→158%, Qt=158 y restore=100; sin VM, runtime U3b intacto. Sigue arrastre entre límites/backends |
 | U3b | Arrastre Qt local con recibos y limpieza | 47 live/302 Node; cancelación por desconexión, rechazo de conflictos y VM pausada intacta; integración 36. Sigue cobertura específica ImGui/pantallas/backends |
 | U3a | Estado y geometría de ventanas desde MCP | 40 grupos live/302 Node; gestión sin VM y con fixture pausado, rechazos/restore verificados, integración 36. Sigue arrastre local U3b |
 | S4b2/U2 | Source-step Qt y sincronización de puntos con interfaz pausada | Into/over/out con latencia de respuesta explícita y edición real; 18 source/Qt, 20 GUI/wizard, siete IOP, 74 regresiones, 100 ciclos y 91.731 s; integración 36 archivos. Sigue drag/geometría y cobertura ampliada |

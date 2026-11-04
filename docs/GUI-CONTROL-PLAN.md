@@ -1,5 +1,13 @@
 # Control de toda la GUI desde MCP — U1
 
+U3c (2026-11-03): arrastre Big Picture/ImGui acreditado en el mismo runtime U3b.
+Cuatro grupos reales pasaron sin VM: capturas del volumen de 100% a 158%, lectura
+independiente Qt=158 y restauración a 100, identidad/INI/exe intactos y procesos
+propios cerrados. Runtime/DLLs/dist sin cambios por SHA; no se repitieron los 302
+Node/47 live locales anteriores. [Contrato](imgui-drag-validation.md).
+Sigue ampliar arrastre entre límites de controles/dock handles y backends de
+captura; no se acepta toda configuración/renderer ni drag-and-drop del SO.
+
 U3b (2026-11-03): arrastre Qt local asíncrono mediante `pcsx2_ui_action`, con
 recibo en ejecución hasta liberar, exclusión de otra mutación y limpieza al
 desconectar. Pasaron seis grupos nuevos y 41 de regresión (47 live), incluidos
@@ -85,5 +93,5 @@ conservan como fallidos, sin contarlos como aceptación. La GUI usa puerto
 21513 o PCSX2_UI_PORT explícito, independiente del puerto debug.
 
 U3a y U3b completan geometría/estado y arrastre local de controles. Próxima
-cobertura: interacción de arrastre ImGui real y auditoría por pantalla/backend.
+cobertura: arrastre entre límites de controles/dock handles y auditoría por pantalla/backend.
 Siguen fuera del alcance probado drag-and-drop del SO y docking entre ventanas.
