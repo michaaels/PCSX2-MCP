@@ -17,13 +17,15 @@ export const uiSnapshotOptions = z.object({ window_id: id.optional(), max_nodes:
   max_depth: z.number().int().min(1).max(32).default(16), max_items: z.number().int().min(0).max(512).default(128) });
 export const uiActionOptions = z.object({ snapshot_id: id, control_id: z.string().regex(/^c\d{1,4}$/),
   action: z.enum(['trigger', 'click', 'close', 'set_checked', 'set_check_state', 'set_text', 'select_index', 'set_value', 'focus', 'key',
-    'select', 'edit_text', 'expand', 'collapse', 'mouse', 'wheel', 'context_menu']),
+    'select', 'edit_text', 'expand', 'collapse', 'mouse', 'wheel', 'context_menu', 'window_state', 'set_geometry']),
   text: z.string().max(16384).refine(value => Buffer.byteLength(value, 'utf8') <= 16384, 'Text exceeds 16384 UTF-8 bytes').optional(),
   checked: z.boolean().optional(), check_state: z.number().int().min(0).max(2).optional(), index: z.number().int().min(0).max(1000000).optional(), value: z.number().finite().optional(),
   key: z.string().min(1).max(64).optional(), x: z.number().int().min(0).max(65535).optional(),
   y: z.number().int().min(0).max(65535).optional(), button: z.enum(['left', 'right', 'middle']).optional(),
   delta_x: z.number().int().min(-1200).max(1200).optional(), delta_y: z.number().int().min(-1200).max(1200).optional(),
-  double_click: z.boolean().optional() }).strict();
+  double_click: z.boolean().optional(), state: z.enum(['normal', 'minimized', 'maximized']).optional(),
+  geometry: z.object({ x: z.number().int().min(-32768).max(32768), y: z.number().int().min(-32768).max(32768),
+    width: z.number().int().min(160).max(4096), height: z.number().int().min(120).max(2160) }).strict().optional() }).strict();
 
 export function defaultUIPort(environment: NodeJS.ProcessEnv = process.env): number {
   if (environment.PCSX2_UI_PORT !== undefined) return port.parse(Number(environment.PCSX2_UI_PORT));
@@ -87,7 +89,7 @@ export class ApplicationUIClient {
   async action(input: unknown) {
     const options = uiActionOptions.parse(input);
     const required: Record<string, string[]> = { set_text: ['text'], edit_text: ['text'], set_checked: ['checked'], set_check_state: ['check_state'],
-      select_index: ['index'], set_value: ['value'], key: ['key'], wheel: ['x', 'y', 'delta_y'] };
+      select_index: ['index'], set_value: ['value'], key: ['key'], wheel: ['x', 'y', 'delta_y'], window_state: ['state'], set_geometry: ['geometry'] };
     for (const field of required[options.action] ?? []) if (!(field in options)) throw new Error(`${options.action} requires ${field}`);
     if (options.action === 'key' && options.text && options.text.length > 32) throw new Error('Key text exceeds 32 characters');
     const response = await this.request('ui_action', { ...options, deadline_ms: Date.now() + 4000 });

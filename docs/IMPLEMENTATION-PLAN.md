@@ -1,5 +1,13 @@
 # Plan de implementación y publicación
 
+U3a (2026-11-03): gestión de ventanas desde MCP: mover/redimensionar con límites
+y maximizar/minimizar/restaurar. Snapshots incluyen geometría, pantallas y estado.
+Seis grupos nuevos sin VM y 34 regresiones GUI/wizard/IOP/source pasaron; la VM
+pausada conserva CPU/RAM/identidad durante cada transición. 302 Node y build
+Windows/TypeScript pasaron; integración 36 archivos. [Contrato](ui-window-management.md).
+Sigue U3b: arrastre acotado dentro de la aplicación. No se acepta entrada global,
+cualquier política de foco/juego en ejecución ni hardware/SMS/Jellyfin.
+
 S4b2/U2 (2026-11-03): source-step into/over/out con reemplazo Qt real aceptado
 bajo retardo explícito de una respuesta nativa (65–76 ms medidos, tope programado
 700 ms). Se conservan el punto GUI y el control IOP con cleanup incompleto
@@ -243,6 +251,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| U3a | Estado y geometría de ventanas desde MCP | 40 grupos live/302 Node; gestión sin VM y con fixture pausado, rechazos/restore verificados, integración 36. Sigue arrastre local U3b |
 | S4b2/U2 | Source-step Qt y sincronización de puntos con interfaz pausada | Into/over/out con latencia de respuesta explícita y edición real; 18 source/Qt, 20 GUI/wizard, siete IOP, 74 regresiones, 100 ciclos y 91.731 s; integración 36 archivos. Sigue drag/geometría y cobertura ampliada |
 | S4b1 | Aislamiento CPU y reemplazo Qt IOP en vuelo | Bug upstream reproducido; siete grupos nuevos y 74 regresiones pasaron; 93.826 s/15 sondeos/tres recuperaciones, Node intacto. Sigue source-step GUI |
 | U1 | Control de la GUI desde MCP, incluida captura ImGui D3D11 | Siete herramientas; 15 grupos GUI/cinco wizard, 302 Node/74 regresiones; EE Qt options aceptadas, siguen IOP en vuelo/source-step y mayor cobertura de pantallas/renderers |

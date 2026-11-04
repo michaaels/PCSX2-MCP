@@ -1,5 +1,13 @@
 # Control de toda la GUI desde MCP — U1
 
+U3a (2026-11-03): gestión de ventanas desde MCP: mover/redimensionar con límites
+y maximizar/minimizar/restaurar. Snapshots incluyen geometría, pantallas y estado.
+Seis grupos nuevos sin VM y 34 regresiones GUI/wizard/IOP/source pasaron; la VM
+pausada conserva CPU/RAM/identidad durante cada transición. 302 Node y build
+Windows/TypeScript pasaron; integración 36 archivos. [Contrato](ui-window-management.md).
+Sigue U3b: arrastre acotado dentro de la aplicación. No se acepta entrada global,
+cualquier política de foco/juego en ejecución ni hardware/SMS/Jellyfin.
+
 S4b2/U2 (2026-11-03): source-step into/over/out con reemplazo Qt real aceptado
 bajo retardo explícito de una respuesta nativa (65–76 ms medidos, tope programado
 700 ms). Se conservan el punto GUI y el control IOP con cleanup incompleto
@@ -68,6 +76,6 @@ de captura negra/región de escritorio y la colisión inicial debug+1/PINE se
 conservan como fallidos, sin contarlos como aceptación. La GUI usa puerto
 21513 o PCSX2_UI_PORT explícito, independiente del puerto debug.
 
-Siguiente entrega U3: ampliar entrada GUI con arrastre y gestión de geometría
-de ventanas, con pruebas reales y sin entrada global al sistema. Ampliaciones de GUI aún no aceptadas: drag-and-drop,
+Siguiente entrega U3b: arrastre acotado dentro de controles de la aplicación,
+con pruebas reales, recibos de duración y sin entrada global al sistema. Ampliaciones de GUI aún no aceptadas: drag-and-drop,
 gestión geométrica de ventanas y pruebas específicas de más pantallas/backends.

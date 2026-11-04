@@ -225,6 +225,15 @@ try {
     await inspector.removeBreakpoint(target);
     passed('actual Qt ' + edit.name + ' edit preserves original marker; native cleanup preserves exact options and rejects repeat removal without CPU/RAM/identity movement');
   }
+  const pausedBeforeWindowStates = await machine();
+  for (const state of ['maximized', 'normal', 'minimized', 'normal']) {
+    s = await snap({ window_id: mainID });
+    await action(s, unique(s, c => c.class === 'MainWindow' && c.kind === 'widget'), { action: 'window_state', state });
+    await waitSnapshot(v => v.controls.some(c => c.class === 'MainWindow' && c.window_state === state), { window_id: mainID });
+    assert.deepEqual(await machine(), pausedBeforeWindowStates);
+  }
+  report.paused_window_states = { states: ['maximized', 'normal', 'minimized', 'normal'], native_state: pausedBeforeWindowStates };
+  passed('actual maximize/minimize/restore retain the same paused fixture, both CPUs, sampled RAM and native identity');
   s = await snap({ window_id: mainID });
   await action(s, unique(s, c => c.object_name === 'actionPowerOffWithoutSaving'), { action: 'trigger' }, false);
   for (let n = 0; ; ++n) {

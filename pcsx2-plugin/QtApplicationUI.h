@@ -83,6 +83,17 @@ struct Peer
 	QHash<QString, QPointer<QObject>> windows;
 };
 
+inline bool ManagedWindow(QWidget* window)
+{
+	return window && window->isWindow() && (window->windowType() == Qt::Window ||
+		window->windowType() == Qt::Dialog || window->windowType() == Qt::Tool);
+}
+
+inline QString WindowState(QWidget* window)
+{
+	return window->isFullScreen() ? "fullscreen" : window->isMinimized() ? "minimized" : window->isMaximized() ? "maximized" : "normal";
+}
+
 inline QJsonArray Actions(QObject* object, bool item = false)
 {
 	QJsonArray actions;
@@ -91,6 +102,7 @@ inline QJsonArray Actions(QObject* object, bool item = false)
 	if (qobject_cast<QWindow*>(object)) return {"focus", "key", "mouse", "wheel", "close"};
 	if (qobject_cast<QWidget*>(object)) actions = {"focus", "key", "mouse", "wheel", "context_menu"};
 	if (auto* window = qobject_cast<QWidget*>(object); window && window->isWindow()) actions.append("close");
+	if (ManagedWindow(qobject_cast<QWidget*>(object))) { actions.append("window_state"); actions.append("set_geometry"); }
 	if (qobject_cast<QAbstractButton*>(object)) { actions.append("click"); actions.append("set_checked"); }
 	if (qobject_cast<QGroupBox*>(object)) actions.append("set_checked");
 	if (qobject_cast<QCheckBox*>(object)) actions.append("set_check_state");
@@ -139,6 +151,16 @@ inline QJsonObject Describe(const Target& target)
 		out["kind"] = "widget"; out["enabled"] = widget->isEnabled(); out["visible"] = widget->isVisible();
 		out["width"] = widget->width(); out["height"] = widget->height();
 		out["title"] = widget->windowTitle().left(512); out["tooltip"] = widget->toolTip().left(512);
+		if (ManagedWindow(widget))
+		{
+			const QRect geometry = widget->geometry();
+			out["window_state"] = WindowState(widget);
+			out["geometry"] = QJsonObject{{"x", geometry.x()}, {"y", geometry.y()}, {"width", geometry.width()}, {"height", geometry.height()}};
+			out["minimum_width"] = widget->minimumWidth(); out["minimum_height"] = widget->minimumHeight();
+			out["maximum_width"] = widget->maximumWidth(); out["maximum_height"] = widget->maximumHeight();
+			out["can_minimize"] = bool(widget->windowFlags() & Qt::WindowMinimizeButtonHint);
+			out["can_maximize"] = bool(widget->windowFlags() & Qt::WindowMaximizeButtonHint);
+		}
 		if (auto* line = qobject_cast<QLineEdit*>(widget))
 		{
 			out["read_only"] = line->isReadOnly(); out["redacted"] = line->echoMode() != QLineEdit::Normal;
@@ -269,8 +291,15 @@ class Service final : public QObject
 		};
 		if (auto* widget = qobject_cast<QWidget*>(root)) walk(widget, {}, 0);
 		else if (qobject_cast<QWindow*>(root)) { Target target; target.object = root; target.root = root; add(target, {}); }
+		QJsonArray screens;
+		for (auto* screen : QGuiApplication::screens())
+		{
+			if (screens.size() >= 16) break;
+			const QRect area = screen->availableGeometry();
+			screens.append(QJsonObject{{"index", static_cast<int>(screens.size())}, {"available_geometry", QJsonObject{{"x", area.x()}, {"y", area.y()}, {"width", area.width()}, {"height", area.height()}}}, {"device_pixel_ratio", screen->devicePixelRatio()}});
+		}
 		return {{"ok", true}, {"snapshot_id", peer.snapshot}, {"created_at_ms", peer.snapshotTime}, {"expires_at_ms", peer.snapshotTime + 120000},
-			{"window_id", root ? WindowID(peer, root) : QString()}, {"windows", windows}, {"controls", controls}, {"truncated", truncated}};
+			{"window_id", root ? WindowID(peer, root) : QString()}, {"windows", windows}, {"screens", screens}, {"controls", controls}, {"truncated", truncated}};
 	}
 	QString Execute(const Target& target, const QJsonObject& request)
 	{
@@ -286,6 +315,31 @@ class Service final : public QObject
 			if (line->isVisible() && line->echoMode() != QLineEdit::Normal) return "A redacted/authentication dialog requires user input";
 		if (QWidget* modal = QApplication::activeModalWidget(); modal && modal != target.root && (!rootWidget || !modal->isAncestorOf(rootWidget))) return "A modal window blocks this target; inspect the modal";
 		if ((widget && !widget->isVisible()) || (surface && (!surface->isVisible() || surface->windowState() == Qt::WindowMinimized))) return "Target is not visible or is minimized";
+		if (rootWidget && rootWidget->isMinimized() && operation != "window_state" && operation != "close") return "Restore this minimized application window before using its controls";
+		if (operation == "window_state")
+		{
+			const QString state = request["state"].toString();
+			if (widget->isFullScreen()) return "Leave fullscreen through the application menu before changing window state";
+			if (state == "normal") widget->showNormal();
+			else if (state == "minimized" && widget->windowFlags().testFlag(Qt::WindowMinimizeButtonHint)) widget->showMinimized();
+			else if (state == "maximized" && widget->windowFlags().testFlag(Qt::WindowMaximizeButtonHint)) widget->showMaximized();
+			else return "Window state is unsupported or its application control is unavailable";
+			return {};
+		}
+		if (operation == "set_geometry")
+		{
+			if (WindowState(widget) != "normal") return "Restore the application window to normal state before setting its geometry";
+			const auto value = request["geometry"].toObject();
+			for (const auto& name : {"x", "y", "width", "height"})
+				if (!value[name].isDouble() || value[name].toDouble() != value[name].toInt()) return "Geometry requires integer x/y/width/height";
+			const int x = value["x"].toInt(), y = value["y"].toInt(), width = value["width"].toInt(), height = value["height"].toInt();
+			if (x < -32768 || x > 32768 || y < -32768 || y > 32768 || width < 160 || width > 4096 || height < 120 || height > 2160 ||
+				width < widget->minimumWidth() || width > widget->maximumWidth() || height < widget->minimumHeight() || height > widget->maximumHeight()) return "Geometry exceeds application or service bounds";
+			const QRect rectangle(x, y, width, height); bool fits = false;
+			for (auto* screen : QGuiApplication::screens()) if (screen->availableGeometry().contains(rectangle)) { fits = true; break; }
+			if (!fits) return "Geometry must fit within one available application screen area";
+			widget->setGeometry(rectangle); return {};
+		}
 		if (operation == "trigger")
 		{
 			auto* action = qobject_cast<QAction*>(target.object);

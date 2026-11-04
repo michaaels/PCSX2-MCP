@@ -1,5 +1,9 @@
 # Application GUI control through MCP — U1
 
+Update U3a: managed top-level windows expose `window_state` and `set_geometry`,
+with screen coordinates/bounds in snapshots. Real no-VM and paused-fixture
+cases passed; minimized capture/input refuse. [Contract](ui-window-management.md).
+
 Update 2026-11-03 / S4b2/U2: [real Qt source-step into/over/out replacement](source-step-qt-ownership.md)
 is accepted under explicit bounded response latency. Native configuration changes
 now reconcile paused Qt point tables, including deferral around active inline

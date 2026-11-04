@@ -1,5 +1,13 @@
 # MCP development progress
 
+U3a (2026-11-03): gestión de ventanas desde MCP: mover/redimensionar con límites
+y maximizar/minimizar/restaurar. Snapshots incluyen geometría, pantallas y estado.
+Seis grupos nuevos sin VM y 34 regresiones GUI/wizard/IOP/source pasaron; la VM
+pausada conserva CPU/RAM/identidad durante cada transición. 302 Node y build
+Windows/TypeScript pasaron; integración 36 archivos. [Contrato](ui-window-management.md).
+Sigue U3b: arrastre acotado dentro de la aplicación. No se acepta entrada global,
+cualquier política de foco/juego en ejecución ni hardware/SMS/Jellyfin.
+
 S4b2/U2 (2026-11-03): source-step into/over/out con reemplazo Qt real aceptado
 bajo retardo explícito de una respuesta nativa (65–76 ms medidos, tope programado
 700 ms). Se conservan el punto GUI y el control IOP con cleanup incompleto
@@ -76,6 +84,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| Qt window management | U3a | Six new window groups and 34 GUI regressions, including unchanged paused guest state across maximize/minimize/restore. 302 Node, 36-file native integration. [Contract](ui-window-management.md). |
 | Source-step Qt ownership / synchronized point tables | S4b2/U2 | All three EE source modes preserve real Qt replacement under explicit bounded transport latency. Paused tables reconcile native changes without erasing inline input. 36-file integration, 119 live groups plus 100-cycle suite and 91.731 s recovery. [Contract](source-step-qt-ownership.md). |
 | CPU-isolated points / actual IOP GUI ownership | S4b1 | Seven new native/Qt groups accept one IRQ-isolated IOP in-flight replacement and correct cross-CPU list/ownership leakage. 74 regressions/93.826-second bounded recovery passed; Node runtime unchanged. [Contract](iop-qt-ownership.md). |
 | MCP application GUI | U1 | Seven frontend tools independent of VM lifetime; 15 actual Qt/Big Picture groups and five first-run groups. Real EE condition/logging/max-hit ownership accepted with native cross-checks. 302 Node/74 native regression groups; 35-file integration. [Contract](application-ui.md). |
