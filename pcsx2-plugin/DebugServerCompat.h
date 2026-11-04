@@ -5,11 +5,23 @@
 #include "DebugInterface.h"
 #include "Breakpoints.h"
 #include "MipsStackWalk.h"
+#include <algorithm>
 
 // Compile-time adapters for the pinned 2.6 and 2.9 debugger APIs. Keep native
 // validity/error results; do not replace failed reads with successful zeroes.
 namespace DebugServer::Compat
 {
+	// v2.9.147 builds a CPU-filtered vector but returns the unfiltered global
+	// vector when includeTemp=true. Keep temporary points without crossing CPUs;
+	// ownership guards must never count another CPU's coincident address.
+	inline auto GetBreakpoints(BreakPointCpu cpu, bool includeTemp)
+	{
+		auto points = CBreakPoints::GetBreakpoints(cpu, includeTemp);
+		std::erase_if(points, [cpu, includeTemp](const auto& point) {
+			return point.cpu != cpu || (!includeTemp && point.temporary);
+		});
+		return points;
+	}
 	template <typename CPU> u32 Read8(CPU& cpu, u32 address, bool& valid)
 	{
 		if constexpr (requires { cpu.Read8(address, &valid); }) return cpu.Read8(address, &valid);

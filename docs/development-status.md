@@ -1,5 +1,16 @@
 # MCP development progress
 
+S4b1 (2026-11-03): aceptado el reemplazo Qt real de un breakpoint IOP durante
+step-over, actor `mcp_qt_ui`, con IRQ aislada por el fixture. Siete grupos nuevos
+pasaron, incluidos controles EE/IOP con la misma dirección numérica. Se reprodujo
+y corrigió el retorno global de GetBreakpoints(cpu, true) del pin 2.9.147: las
+siete consultas/guardas MCP filtran ahora la CPU sin perder temporales.
+Pasaron 74 regresiones nativas y 93.826 s con 15 sondeos RAM/píxeles, dos restores,
+un reset y cuatro stdio/emulador cerrados; recursos dentro de límites. Node/dist
+intactos respecto de U1 (302 pruebas fuente). La duración U1 de 606 s pertenece
+al binario anterior; no se atribuye a éste. Sigue reemplazo GUI de source-step.
+[Contrato y evidencia](iop-qt-ownership.md). Sin SMS/Jellyfin ni hardware físico.
+
 U1/T2 (2026-11-03): el binario GUI final pasó 606.311 s, 96 sondeos
 RAM/píxeles, diez restores/diez resets y cierre de 21 stdio y su emulador.
 Recursos dentro de límites. Ver `release/ui-control-soak-600-20261103-ports/validation.json`.
@@ -53,6 +64,7 @@ resuming supervised GUI acceptance. [Migration contract](pcsx2-2.9-migration.md)
 
 | Area | Commits | Result and contract |
 |---|---|---|
+| CPU-isolated points / actual IOP GUI ownership | S4b1 | Seven new native/Qt groups accept one IRQ-isolated IOP in-flight replacement and correct cross-CPU list/ownership leakage. 74 regressions/93.826-second bounded recovery passed; Node runtime unchanged. [Contract](iop-qt-ownership.md). |
 | MCP application GUI | U1 | Seven frontend tools independent of VM lifetime; 15 actual Qt/Big Picture groups and five first-run groups. Real EE condition/logging/max-hit ownership accepted with native cross-checks. 302 Node/74 native regression groups; 35-file integration. [Contract](application-ui.md). |
 | Current native duration revalidation | T2R | The S4a binary passed 604.097 s, 96 RAM/pixel probes, ten restore/ten reset and running reconnect/stdio replacement. 481.732 s in execution windows; all 21 stdio/native processes closed. Resource limits held; actual stalled guest rejected. Runtime/harness unchanged; retains S4a's 295 source tests. [Evidence](sustained-validation.md). |
 | Atomic point conditions / CPU selection | S4a | Native parser failures refuse before changing a breakpoint/watchpoint or source-group ownership. Six public point tools select EE/IOP; native condition/options metadata is visible. 295 Node, 13 new native/MCP groups, four old-build compatibility and 74 regression groups passed; old bug reproduced separately. Real Qt matrix remains S4b, blocked by the disconnected Computer Use pipe. [Contract](conditional-points.md). |

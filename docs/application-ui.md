@@ -1,5 +1,11 @@
 # Application GUI control through MCP — U1
 
+Update 2026-11-03 / S4b1: [actual Qt IOP in-flight ownership](iop-qt-ownership.md)
+is now accepted for the IRQ-isolated fixture. The same delivery corrects native
+cross-CPU breakpoint snapshot/ownership leakage. Seven new groups and 74 native
+regressions passed; the source-step GUI replacement remains next. Earlier scope
+statements below describe their original deliveries.
+
 The modified PCSX2 **v2.9.147** frontend exposes seven additional MCP tools.
 The Qt service starts inside the first-run wizard, before MainWindow or a VM
 exists, and survives VM shutdown. Existing debugging tools retain their own

@@ -46,6 +46,7 @@ jobs:
       - run: node --check test/gui-options-live.mjs
       - run: node --check test/application-ui-live.mjs
       - run: node --check test/application-ui-bootstrap-live.mjs
+      - run: node --check test/iop-inflight-qt-live.mjs
       - run: node --check test/iop-lifetime-live.mjs
       - run: node --check test/iop-bindings-live.mjs
       - run: npm test

@@ -1,5 +1,11 @@
 # In-flight EE step ownership — S2b2c2
 
+Update 2026-11-03 / S4b1: [actual Qt IOP in-flight ownership](iop-qt-ownership.md)
+is now accepted for the IRQ-isolated fixture. The same delivery corrects native
+cross-CPU breakpoint snapshot/ownership leakage. Seven new groups and 74 native
+regressions passed; the source-step GUI replacement remains next. Earlier scope
+statements below describe their original deliveries.
+
 Accepted on Windows with modified PCSX2 v2.9.147 on 2026-10-30. The real Qt
 breakpoint dialog replaced the private target of an executing MCP EE
 `pcsx2_step_over`. The MCP returned `completed: false` and

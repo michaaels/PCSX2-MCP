@@ -1,5 +1,16 @@
 # Control de toda la GUI desde MCP — U1
 
+S4b1 (2026-11-03): aceptado el reemplazo Qt real de un breakpoint IOP durante
+step-over, actor `mcp_qt_ui`, con IRQ aislada por el fixture. Siete grupos nuevos
+pasaron, incluidos controles EE/IOP con la misma dirección numérica. Se reprodujo
+y corrigió el retorno global de GetBreakpoints(cpu, true) del pin 2.9.147: las
+siete consultas/guardas MCP filtran ahora la CPU sin perder temporales.
+Pasaron 74 regresiones nativas y 93.826 s con 15 sondeos RAM/píxeles, dos restores,
+un reset y cuatro stdio/emulador cerrados; recursos dentro de límites. Node/dist
+intactos respecto de U1 (302 pruebas fuente). La duración U1 de 606 s pertenece
+al binario anterior; no se atribuye a éste. Sigue reemplazo GUI de source-step.
+[Contrato y evidencia](iop-qt-ownership.md). Sin SMS/Jellyfin ni hardware físico.
+
 U1/T2 (2026-11-03): el binario GUI final pasó 606.311 s, 96 sondeos
 RAM/píxeles, diez restores/diez resets y cierre de 21 stdio y su emulador.
 Recursos dentro de límites. Ver `release/ui-control-soak-600-20261103-ports/validation.json`.
@@ -45,6 +56,6 @@ de captura negra/región de escritorio y la colisión inicial debug+1/PINE se
 conservan como fallidos, sin contarlos como aceptación. La GUI usa puerto
 21513 o PCSX2_UI_PORT explícito, independiente del puerto debug.
 
-Siguiente entrega: usar este control Qt para IOP en vuelo y source-step,
+Siguiente entrega: usar este control Qt para reemplazo durante source-step,
 registrando el actor real. Ampliaciones de GUI aún no aceptadas: drag-and-drop,
 gestión geométrica de ventanas y pruebas específicas de más pantallas/backends.

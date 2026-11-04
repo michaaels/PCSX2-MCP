@@ -1221,7 +1221,7 @@ namespace DebugServer
 		s_stepDeadline.store(0);
 		if (s_step.owned && s_step.epoch == s_executionEpoch)
 		{
-			const auto points = CBreakPoints::GetBreakpoints(BREAKPOINT_EE, true);
+			const auto points = Compat::GetBreakpoints(BREAKPOINT_EE, true);
 			const auto count = std::count_if(points.begin(), points.end(), [](const BreakPoint& bp) { return bp.addr == s_step.target; });
 			const auto own = std::find_if(points.begin(), points.end(), [](const BreakPoint& bp) {
 				return bp.addr == s_step.target && bp.description == s_step.marker && bp.enabled && !bp.temporary && !bp.stepping && !bp.hasCond && Compat::DefaultBreakpointOptions(bp);
@@ -1287,7 +1287,7 @@ namespace DebugServer
 			if (!r5900Debug.isValidAddress(pc + 4) || delay.isBranch || delay.isSyscall || delay.encodedOpcode == 0x42000018)
 				return failure("Unsupported branch/delay-slot instruction; VM remains paused");
 		}
-		const auto points = CBreakPoints::GetBreakpoints(BREAKPOINT_EE, true);
+		const auto points = Compat::GetBreakpoints(BREAKPOINT_EE, true);
 		for (const auto& bp : points)
 			if (bp.addr == target || (info.isBranch && bp.addr == pc + 4))
 				return failure("Existing breakpoint at successor/delay slot; VM remains paused and breakpoint is preserved");
@@ -1368,7 +1368,7 @@ namespace DebugServer
 			const u32 op = opcode >> 26;
 			target = pc + (over && (op == 3 || (op == 0 && (opcode & 63) == 9)) ? 8 : 4);
 			if (!cpu->isValidAddress(target)) return failure("Invalid step target");
-			const auto points = CBreakPoints::GetBreakpoints(type, true);
+			const auto points = Compat::GetBreakpoints(type, true);
 			if (std::any_of(points.begin(), points.end(), [target](const BreakPoint& bp) { return bp.addr == target; }))
 				return failure("Existing breakpoint at step target; breakpoint preserved");
 			marker = s_registrationNamespace + ":legacy-step:" + std::to_string(++s_stepSequence);
@@ -1389,7 +1389,7 @@ namespace DebugServer
 				(cpuName == "iop" && (resetEpoch != s_iopResetEpoch || lifetimeEpoch != s_iopLifetimeEpoch));
 			const bool timedOut = !changed && !cpu->isCpuPaused();
 			if (timedOut) cpu->pauseCpu();
-			const auto points = CBreakPoints::GetBreakpoints(type, true);
+			const auto points = Compat::GetBreakpoints(type, true);
 			const auto count = std::count_if(points.begin(), points.end(), [target](const BreakPoint& bp) { return bp.addr == target; });
 			const auto own = std::find_if(points.begin(), points.end(), [&](const BreakPoint& bp) {
 				return bp.addr == target && bp.description == marker && bp.enabled && !bp.temporary && !bp.stepping && !bp.hasCond && Compat::DefaultBreakpointOptions(bp);
@@ -1556,7 +1556,7 @@ namespace DebugServer
 			const auto& group = found->second;
 			if (group.session != s_session.load() || group.elf != currentELF() || group.crc != VMManager::GetCurrentCRC())
 				return failure("VM/ELF identity changed; source breakpoints were not removed");
-			const auto current = CBreakPoints::GetBreakpoints(BREAKPOINT_EE, true);
+			const auto current = Compat::GetBreakpoints(BREAKPOINT_EE, true);
 			std::vector<u32> removed, preserved;
 			for (u32 address : group.addresses)
 			{
@@ -1602,7 +1602,7 @@ namespace DebugServer
 			addresses.push_back(address);
 			if (addresses.size() > 64) return failure("Source breakpoint address limit exceeded");
 		}
-		for (const auto& bp : CBreakPoints::GetBreakpoints(BREAKPOINT_EE, true))
+		for (const auto& bp : Compat::GetBreakpoints(BREAKPOINT_EE, true))
 			if (std::find(addresses.begin(), addresses.end(), bp.addr) != addresses.end())
 				return failure("An existing breakpoint occupies a source target; no breakpoints changed");
 		// Validation and installation share one CPU-thread operation, so ELF reset cannot interleave.
@@ -3131,7 +3131,7 @@ namespace DebugServer
 		// ----- LIST BREAKPOINTS -----
 		else if (cmd == "list_breakpoints")
 		{
-			auto bps = CBreakPoints::GetBreakpoints(getBpCpu(cpuName), true);
+			auto bps = Compat::GetBreakpoints(getBpCpu(cpuName), true);
 			j.startObject();
 			j.kv("ok", true);
 			j.key("breakpoints"); j.startArray();

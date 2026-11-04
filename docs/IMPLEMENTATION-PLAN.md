@@ -1,5 +1,16 @@
 # Plan de implementación y publicación
 
+S4b1 (2026-11-03): aceptado el reemplazo Qt real de un breakpoint IOP durante
+step-over, actor `mcp_qt_ui`, con IRQ aislada por el fixture. Siete grupos nuevos
+pasaron, incluidos controles EE/IOP con la misma dirección numérica. Se reprodujo
+y corrigió el retorno global de GetBreakpoints(cpu, true) del pin 2.9.147: las
+siete consultas/guardas MCP filtran ahora la CPU sin perder temporales.
+Pasaron 74 regresiones nativas y 93.826 s con 15 sondeos RAM/píxeles, dos restores,
+un reset y cuatro stdio/emulador cerrados; recursos dentro de límites. Node/dist
+intactos respecto de U1 (302 pruebas fuente). La duración U1 de 606 s pertenece
+al binario anterior; no se atribuye a éste. Sigue reemplazo GUI de source-step.
+[Contrato y evidencia](iop-qt-ownership.md). Sin SMS/Jellyfin ni hardware físico.
+
 U1/T2 (2026-11-03): el binario GUI final pasó 606.311 s, 96 sondeos
 RAM/píxeles, diez restores/diez resets y cierre de 21 stdio y su emulador.
 Recursos dentro de límites. Ver `release/ui-control-soak-600-20261103-ports/validation.json`.
@@ -220,6 +231,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| S4b1 | Aislamiento CPU y reemplazo Qt IOP en vuelo | Bug upstream reproducido; siete grupos nuevos y 74 regresiones pasaron; 93.826 s/15 sondeos/tres recuperaciones, Node intacto. Sigue source-step GUI |
 | U1 | Control de la GUI desde MCP, incluida captura ImGui D3D11 | Siete herramientas; 15 grupos GUI/cinco wizard, 302 Node/74 regresiones; EE Qt options aceptadas, siguen IOP en vuelo/source-step y mayor cobertura de pantallas/renderers |
 | L1R | Vida de módulos IOP en el runtime 2.9.147 actual | 11 lifetime/12 bindings pasaron; guardas VM/lifetime independientes tras restore; cobertura observada, otras BIOS/custom/SIF pendientes |
 | S4b-prep | Matriz Qt de opciones con marcador intacto | Cinco controles nativos/MCP y tres del helper; GUI no aceptada, entrada modal de Computer Use pendiente |

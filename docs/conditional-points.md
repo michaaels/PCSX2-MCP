@@ -1,5 +1,11 @@
 # Atomic conditional points and CPU selection — S4a
 
+Update 2026-11-03 / S4b1: [actual Qt IOP in-flight ownership](iop-qt-ownership.md)
+is now accepted for the IRQ-isolated fixture. The same delivery corrects native
+cross-CPU breakpoint snapshot/ownership leakage. Seven new groups and 74 native
+regressions passed; the source-step GUI replacement remains next. Earlier scope
+statements below describe their original deliveries.
+
 Validated on Windows with modified, pinned PCSX2 v2.9.147. Both native and Node
 must be rebuilt/restarted. The six basic breakpoint/watchpoint MCP tools now
 accept `cpu:"ee"|"iop"`, defaulting to EE. This selects the point table and native

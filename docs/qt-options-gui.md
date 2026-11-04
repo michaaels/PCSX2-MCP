@@ -1,5 +1,11 @@
 # Qt point-options ownership — S4b preparation
 
+Update 2026-11-03 / S4b1: [actual Qt IOP in-flight ownership](iop-qt-ownership.md)
+is now accepted for the IRQ-isolated fixture. The same delivery corrects native
+cross-CPU breakpoint snapshot/ownership leakage. Seven new groups and 74 native
+regressions passed; the source-step GUI replacement remains next. Earlier scope
+statements below describe their original deliveries.
+
 Update 2026-11-03: the three real EE option edits are now accepted through the
 new [MCP Qt GUI service](application-ui.md), preserving the original marker and
 cross-checking exact native point options, both CPU GPR/PC and sampled RAM.
