@@ -1,5 +1,14 @@
 # Control de toda la GUI desde MCP — U1
 
+U4c (2026-11-12): capturas pendientes se cancelan al destruir su ventana con
+error explícito, sin esperar timeout de backend ni perder la conexión. Reproducida
+espera de 4499 ms en U4b; seis controles pendientes reales respondieron en 155–166
+ms, incluidos 100 ms de espera deliberada. D3D11/D3D12 y recreación sin reconectar
+pasaron. 93 grupos live, integración 38 y 92.676 s/16 sondeos pareados/tres
+recuperaciones, con recursos en límites y procesos cerrados. [Contrato](ui-capture-lifetime.md).
+Node dist/DLLs/GS/debug core intactos; 303 Node locales anteriores sin repetir.
+OpenGL solo se usa como control pendiente, su captura sigue sin soporte.
+
 U4b (2026-11-12): capturas de DisplaySurface D3D12 después de ImGui, con método
 de captura explícito; re-presentación de la textura actual al capturar en pausa,
 sin reanudar EE/IOP. Pasaron 81 grupos live, 303 Node y compilación Windows/TS;

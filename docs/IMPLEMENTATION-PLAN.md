@@ -1,5 +1,14 @@
 # Plan de implementación y publicación
 
+U4c (2026-11-12): capturas pendientes se cancelan al destruir su ventana con
+error explícito, sin esperar timeout de backend ni perder la conexión. Reproducida
+espera de 4499 ms en U4b; seis controles pendientes reales respondieron en 155–166
+ms, incluidos 100 ms de espera deliberada. D3D11/D3D12 y recreación sin reconectar
+pasaron. 93 grupos live, integración 38 y 92.676 s/16 sondeos pareados/tres
+recuperaciones, con recursos en límites y procesos cerrados. [Contrato](ui-capture-lifetime.md).
+Node dist/DLLs/GS/debug core intactos; 303 Node locales anteriores sin repetir.
+OpenGL solo se usa como control pendiente, su captura sigue sin soporte.
+
 U4b (2026-11-12): capturas de DisplaySurface D3D12 después de ImGui, con método
 de captura explícito; re-presentación de la textura actual al capturar en pausa,
 sin reanudar EE/IOP. Pasaron 81 grupos live, 303 Node y compilación Windows/TS;
@@ -285,6 +294,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| U4c | Cancelación de captura por vida de ventana | 93 live; baseline 4499 ms, controles pendientes 155–166 ms/recreación; integración 38 y 92.676 s/16 sondeos/tres recuperaciones |
 | U4b | Captura UI D3D12 y re-presentación en pausa | 81 live/303 Node, integración 38; D3D11/D3D12 y 92.484 s/16 sondeos pareados/tres recuperaciones con recursos y cierre verificados |
 | U4a | Arrastre entre controles de la misma ventana | 57 live/303 Node; separador Qt +60/restore, cancelación por reflow y capacidad nativa comprobadas; integración 36 |
 | U3c | Arrastre Big Picture/ImGui real | Cuatro grupos y PNG 100%→158%, Qt=158 y restore=100; sin VM, runtime U3b intacto. Sigue arrastre entre límites/backends |

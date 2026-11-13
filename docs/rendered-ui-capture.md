@@ -1,5 +1,8 @@
 # D3D12 application presentation capture — U4b
 
+U4c adds [explicit pending-capture cancellation on window destruction](ui-capture-lifetime.md).
+The U4b backend/readback contract and its original binary-specific evidence below remain historical.
+
 `pcsx2_ui_screenshot` now captures a D3D12 DisplaySurface after ImGui renders
 and before the current swapchain buffer is rotated/presented. It retains
 D3D11 presentation capture and normal Qt widget rendering. `capture_method`

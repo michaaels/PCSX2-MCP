@@ -624,11 +624,16 @@ class Service final : public QObject
 			if (surface)
 			{
 				const QPointer<QWindow> live = surface;
+				// Scope the destruction subscription and timeout to this request,
+				// rather than retaining completed captures until a later window close.
+				const QPointer<QObject> lifetime = new QObject(this);
 				auto done = std::make_shared<bool>(false);
-				const auto requestCapture = MCPRenderedUI::Queue(reinterpret_cast<void*>(surface->winId()), [this, peer, live, done, request, width, height](MCPRenderedUI::Frame frame) mutable {
-					QTimer::singleShot(0, this, [this, peer, live, done, request, width, height, frame = std::move(frame)]() {
+				const auto requestCapture = MCPRenderedUI::Queue(reinterpret_cast<void*>(surface->winId()), [this, peer, live, lifetime, done, request, width, height](MCPRenderedUI::Frame frame) mutable {
+					QTimer::singleShot(0, this, [this, peer, live, lifetime, done, request, width, height, frame = std::move(frame)]() {
 						if (*done) return; *done = true;
-						if (!peer->socket || !live) return;
+						if (lifetime) lifetime->deleteLater();
+						if (!peer->socket) return;
+						if (!live) { Reply(peer, Failure("Capture window was destroyed before readback completed")); return; }
 						if (!frame.error.empty()) { Reply(peer, Failure(QString::fromStdString(frame.error))); return; }
 						QImage image(reinterpret_cast<const uchar*>(frame.rgba.data()), frame.width, frame.height, QImage::Format_RGBA8888);
 						if (image.width() > width || image.height() > height) image = image.scaled(width, height, Qt::KeepAspectRatio, Qt::SmoothTransformation);
@@ -637,7 +642,12 @@ class Service final : public QObject
 						Reply(peer, {{"ok", true}, {"window_id", request["window_id"]}, {"width", image.width()}, {"height", image.height()}, {"mime_type", "image/png"}, {"capture_method", QString::fromStdString(frame.capture_method)}, {"data", QString::fromLatin1(png.toBase64())}});
 					});
 				});
-				if (!requestCapture) { Reply(peer, Failure("A rendered UI capture is already pending")); return; }
+				if (!requestCapture) { lifetime->deleteLater(); Reply(peer, Failure("A rendered UI capture is already pending")); return; }
+				connect(surface, &QObject::destroyed, lifetime.data(), [this, peer, done, requestCapture, lifetime]() {
+					if (*done) return; *done = true; requestCapture->cancelled = true;
+					Reply(peer, Failure("Capture window was destroyed before readback completed"));
+					if (lifetime) lifetime->deleteLater();
+				});
 				// A paused guest may not present again by itself. The existing Qt
 				// redraw path queues presentation of its current GS frame, without
 				// resuming either guest CPU. Idle Big Picture/running VMs need no kick.
@@ -645,9 +655,10 @@ class Service final : public QObject
 					if (pending->live() && VMManager::HasValidVM() && VMManager::GetState() == VMState::Paused)
 						MTGS::PresentCurrentFrame();
 				});
-				QTimer::singleShot(4500, this, [this, peer, done, requestCapture]() {
+				QTimer::singleShot(4500, lifetime.data(), [this, peer, done, requestCapture, lifetime]() {
 					if (*done) return; *done = true; requestCapture->cancelled = true;
 					Reply(peer, Failure("Rendered UI capture timed out: requires active D3D11/D3D12 RGBA8/BGRA8 presentation; no desktop fallback"));
+					if (lifetime) lifetime->deleteLater();
 				});
 				return;
 			}
