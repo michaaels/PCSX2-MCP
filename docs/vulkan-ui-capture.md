@@ -1,5 +1,8 @@
 # Vulkan application presentation capture — U4d
 
+U4e adds [OpenGL capture](opengl-ui-capture.md); U4d's unsupported OpenGL control
+and acceptance below remain tied to its original executable.
+
 `pcsx2_ui_screenshot` captures the current Vulkan DisplaySurface, including
 ImGui, through the same seven GUI tools. It returns
 `capture_method=vulkan_present_buffer_with_imgui`. Normal Qt rendering and

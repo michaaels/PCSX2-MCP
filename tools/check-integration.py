@@ -42,13 +42,14 @@ def main():
              'pcsx2-qt/CMakeLists.txt', 'cmake/SearchForStuff.cmake', 'pcsx2/GS/Renderers/DX11/GSDevice11.cpp',
              'pcsx2/DebugTools/Breakpoints.cpp', 'pcsx2/GS/Renderers/DX12/GSDevice12.cpp',
              'pcsx2/GS/Renderers/Vulkan/GSDeviceVK.cpp', 'pcsx2/GS/Renderers/Vulkan/VKSwapChain.cpp',
-             'pcsx2/GS/Renderers/Vulkan/VKSwapChain.h']
+             'pcsx2/GS/Renderers/Vulkan/VKSwapChain.h', 'pcsx2/GS/Renderers/OpenGL/GSDeviceOGL.cpp']
     generated = ['pcsx2/DebugTools/DebugServer.cpp', 'pcsx2/DebugTools/DebugServer.h', 'pcsx2/DebugTools/DebugServerCompat.h',
                  'pcsx2-qt/MCPApplicationCapture.h', 'pcsx2-qt/MCPApplicationUI.h',
                  'common/MCPRenderedUICapture.h', 'pcsx2/GS/Renderers/DX11/MCPD3D11UICapture.inl',
                  'pcsx2/GS/Renderers/DX12/MCPD3D12UICapture.inl',
                  'pcsx2/GS/Renderers/Vulkan/MCPVulkanUICapturePrepare.inl',
-                 'pcsx2/GS/Renderers/Vulkan/MCPVulkanUICaptureComplete.inl']
+                 'pcsx2/GS/Renderers/Vulkan/MCPVulkanUICaptureComplete.inl',
+                 'pcsx2/GS/Renderers/OpenGL/MCPOpenGLUICapture.inl']
 
     def git(root, revision, filename):
         return subprocess.check_output(['git', '-C', str(root), 'show', f'{revision}:{filename}'])

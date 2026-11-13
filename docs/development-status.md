@@ -1,5 +1,17 @@
 # MCP development progress
 
+U4e (2026-11-12): capturas OpenGL del framebuffer real después de ImGui y antes
+de SwapBuffers, RGBA orientado y restauración de FBO de lectura, read-buffer y
+pixel-pack. Exige RGB8/RGBA8 normalizado, sin estéreo/multisampling. 130 grupos
+live y 303 Node pasaron; build Windows/TS e integración de 45 archivos.
+92.621 s/16 sondeos pareados, dos restore/un reset y cuatro stdio cerrados;
+pico nativo 1085.10 MiB/818 handles y crecimiento final 10.30 MiB desde baseline,
+dentro de límites. Control de guest detenido rechazado. [Contrato](opengl-ui-capture.md).
+Los cuatro backends Windows pasan captura/pausa/ImGui/cierre-recreación;
+los controles OpenGL sin soporte de U4c/U4d quedan como evidencia histórica.
+DLLs/Qt/core debug intactos. Siguen docking entre ventanas y drag-and-drop
+nativo; otros equipos/plataformas sin validar. SMS/Jellyfin/hardware separados.
+
 U4d (2026-11-12): captura Vulkan de DisplaySurface después de ImGui, con copia
 antes de presentar y lectura tras el envío normal y rotación del command buffer;
 conserva los semáforos de adquisición/presentación. Requiere RGBA8/BGRA8,

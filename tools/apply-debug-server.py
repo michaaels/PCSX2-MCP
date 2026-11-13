@@ -513,6 +513,11 @@ def main() -> None:
         '\tbool SupportsUICapture() const { return m_supports_ui_capture; }\n\n\tVkFormat GetTextureFormat() const;', str(vk_swap_h))
     breakpoint_files[vk_swap_h] = replace_once(swap_h_text, '\tVkSurfaceKHR m_surface = VK_NULL_HANDLE;',
         '\tbool m_supports_ui_capture = false;\n\tVkSurfaceKHR m_surface = VK_NULL_HANDLE;', str(vk_swap_h))
+    ogl = source / 'pcsx2/GS/Renderers/OpenGL/GSDeviceOGL.cpp'
+    ogl_text = replace_once(ogl.read_text(encoding='utf-8'), '#include "GS/Renderers/OpenGL/GSDeviceOGL.h"',
+        '#include "GS/Renderers/OpenGL/GSDeviceOGL.h"\n#include "common/MCPRenderedUICapture.h"', str(ogl))
+    breakpoint_files[ogl] = replace_once(ogl_text, 'void GSDeviceOGL::EndPresent()\n{\n\tRenderImGui();',
+        'void GSDeviceOGL::EndPresent()\n{\n\tRenderImGui();\n#include "MCPOpenGLUICapture.inl"', str(ogl))
     points = source / 'pcsx2/DebugTools/Breakpoints.cpp'
     point_text = replace_once(points.read_text(encoding='utf-8'), '#include "Breakpoints.h"',
         '#include "Breakpoints.h"\n#include "DebugServer.h"', str(points))
@@ -523,7 +528,8 @@ def main() -> None:
             ('D3D11UICapture.inl', 'pcsx2/GS/Renderers/DX11/MCPD3D11UICapture.inl'),
             ('D3D12UICapture.inl', 'pcsx2/GS/Renderers/DX12/MCPD3D12UICapture.inl'),
             ('VulkanUICapturePrepare.inl', 'pcsx2/GS/Renderers/Vulkan/MCPVulkanUICapturePrepare.inl'),
-            ('VulkanUICaptureComplete.inl', 'pcsx2/GS/Renderers/Vulkan/MCPVulkanUICaptureComplete.inl')]:
+            ('VulkanUICaptureComplete.inl', 'pcsx2/GS/Renderers/Vulkan/MCPVulkanUICaptureComplete.inl'),
+            ('OpenGLUICapture.inl', 'pcsx2/GS/Renderers/OpenGL/MCPOpenGLUICapture.inl')]:
         original = repo / 'pcsx2-plugin' / original_name
         target = source / target_name
         if not target.exists() or target.read_bytes() != original.read_bytes(): shutil.copy2(original, target)

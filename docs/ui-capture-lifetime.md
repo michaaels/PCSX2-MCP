@@ -1,5 +1,9 @@
 # Rendered capture window lifetime — U4c
 
+U4e adds [working OpenGL presentation capture](opengl-ui-capture.md). The
+unsupported OpenGL pending controls below belong to their original U4c binary;
+the current close/recreation harness expects capture on all four backends.
+
 A pending `pcsx2_ui_screenshot` now ends with
 `Capture window was destroyed before readback completed` when its actual
 DisplaySurface object is destroyed. It cancels the native request and keeps

@@ -1,5 +1,8 @@
 # Application GUI control through MCP — U1
 
+Update U4e: [OpenGL presentation capture](opengl-ui-capture.md) adds actual
+framebuffer readback with GL state restoration and upright RGBA output.
+
 Update U4d: [Vulkan presentation capture](vulkan-ui-capture.md) uses an ordered
 copy/presentation/fence readback and reports its actual backend. D3D11/D3D12
 and Qt captures remain available; original evidence below retains its scope.

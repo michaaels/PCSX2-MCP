@@ -14,7 +14,6 @@ import { PNG } from 'pngjs';
 
 assert.ok(process.argv.length === 5 || process.argv.length === 6);
 const renderer = process.argv[5] ?? 'd3d12'; assert.ok(['d3d11', 'd3d12', 'vulkan', 'opengl'].includes(renderer));
-const captureSupported = renderer !== 'opengl';
 const [executable, configured, output] = process.argv.slice(2, 5).map(p => path.resolve(p)); await fs.mkdir(output);
 const root = path.join(output, 'instance'); await fs.mkdir(path.join(root, 'inis'), { recursive: true });
 const hash = b => createHash('sha256').update(b).digest('hex');
@@ -27,7 +26,7 @@ for (const [section, key, value] of [['AutoUpdater', 'CheckAtStartup', 'false'],
 await fs.writeFile(path.join(root, 'inis/PCSX2.ini'), ini);
 async function port() { const s = createServer(); await new Promise(ok => s.listen(0, '127.0.0.1', ok)); const p = s.address().port; await new Promise(ok => s.close(ok)); return p; }
 const uiPort = await port(), debugPort = await port(); assert.notEqual(uiPort, debugPort);
-const report = { kind: 'actual_mcp_rendered_capture_window_lifetime', renderer, capture_supported: captureSupported, executable, native_sha256: hash(await fs.readFile(executable)),
+const report = { kind: 'actual_mcp_rendered_capture_window_lifetime', renderer, capture_supported: true, executable, native_sha256: hash(await fs.readFile(executable)),
   actor: 'mcp_qt_ui', data_directory: root, checks: [], rounds: [], passed: false, SMS_or_Jellyfin_involved: false, Computer_Use_used: false, physical_validation: 'not_performed' };
 const peers = []; let native, log, watchdog;
 const passed = name => { report.checks.push(name); console.log('PASS ' + name); };
@@ -65,8 +64,7 @@ async function readySurface(p) {
     const s = await surface(p), result = await raw(p, 'screenshot', { snapshot_id: s.snapshot_id, window_id: s.window_id });
     const text = JSON.stringify(result.content.filter(c => c.type === 'text'));
     if (result.isError && /Capture window was destroyed/.test(text)) { assert.ok(attempt < 4, text); continue; }
-    if (captureSupported) png(result, s.window_id);
-    else { assert.equal(result.isError, true); assert.match(text, /Rendered UI capture timed out/); }
+    png(result, s.window_id);
     const current = await surface(p);
     if (current.window_id === s.window_id) return current;
     assert.ok(attempt < 4, 'Presentation window kept changing during startup');
@@ -85,8 +83,7 @@ try {
   report.identity = (await call(reader, 'status')).identity; assert.deepEqual((await call(actor, 'status')).identity, report.identity);
   await toggle(actor); let s = await surface(reader); await delay(150); s = await snap(reader, s.window_id);
   const initialCapture = await raw(reader, 'screenshot', { snapshot_id: s.snapshot_id, window_id: s.window_id });
-  if (captureSupported) await fs.writeFile(path.join(output, 'initial.png'), png(initialCapture, s.window_id), { flag: 'wx' });
-  else { assert.equal(initialCapture.isError, true); assert.match(JSON.stringify(initialCapture.content), /Rendered UI capture timed out/); report.unsupported_control = initialCapture.content; }
+  await fs.writeFile(path.join(output, 'initial.png'), png(initialCapture, s.window_id), { flag: 'wx' });
   passed('two actual MCP stdio peers share the pinned frontend identity and the renderer-specific capture/refusal contract');
   for (let round = 0; round < 6; ++round) {
     if (round) await toggle(actor);
@@ -95,7 +92,7 @@ try {
     // Different native UI sockets: the close action is not serialized behind
     // the reader's pending screenshot. No Qt/GPU test hook delays the response.
     const capture = raw(reader, 'screenshot', { snapshot_id: s.snapshot_id, window_id: s.window_id }).then(value => ({ value }), error => ({ error: String(error) }));
-    await delay(captureSupported ? round % 3 : 100);
+    await delay(round % 3);
     const queued = await call(actor, 'action', { snapshot_id: closing.snapshot_id, control_id: action.id, action: 'trigger' });
     await surface(actor, false);
     const outcome = await capture; entry.elapsed_ms = performance.now() - started;
@@ -110,13 +107,11 @@ try {
     const retired = await raw(reader, 'screenshot', { snapshot_id: now.snapshot_id, window_id: s.window_id }); assert.equal(retired.isError, true);
     entry.state_verified = true;
   }
-  if (!captureSupported) assert.ok(report.rounds.every(r => r.state === 'native_refusal' && /Capture window was destroyed/.test(JSON.stringify(r.error))), 'Unsupported presentation leaves genuine pending requests which must cancel on actual window destruction');
   passed('six real surface-close races finish promptly with an explicit result/refusal and both original UI connections usable');
   passed('closed surfaces refuse capture under fresh snapshots without substituting another window image');
   await toggle(actor); s = await surface(reader); await delay(150); s = await snap(reader, s.window_id);
   const recreated = await raw(reader, 'screenshot', { snapshot_id: s.snapshot_id, window_id: s.window_id });
-  if (captureSupported) await fs.writeFile(path.join(output, 'recreated.png'), png(recreated, s.window_id), { flag: 'wx' });
-  else { assert.equal(recreated.isError, true); assert.match(JSON.stringify(recreated.content), /Rendered UI capture timed out/); }
+  await fs.writeFile(path.join(output, 'recreated.png'), png(recreated, s.window_id), { flag: 'wx' });
   assert.deepEqual((await call(reader, 'status')).identity, report.identity);
   await toggle(actor); await surface(actor, false);
   assert.deepEqual(await fs.readFile(path.join(configured, 'inis/PCSX2.ini')), originalINI); assert.equal(hash(await fs.readFile(executable)), report.native_sha256);
