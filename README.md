@@ -13,8 +13,9 @@
 tools inspect and operate menus, fields, tabs, models, dialogs and Big Picture,
 including before boot and after VM shutdown. [Window state/geometry](docs/ui-window-management.md)
 and [pointer drag across controls](docs/ui-cross-control-drag.md) are available. The latest GUI
-build passed 57 live groups and 303 Node tests on Windows with modified
-2.9.147. DisplaySurface capture currently supports D3D11 RGBA8/BGRA8.
+build passed 81 live groups and 303 Node tests on Windows with modified
+2.9.147. [DisplaySurface capture](docs/rendered-ui-capture.md) supports D3D11/D3D12
+RGBA8/BGRA8 and paused-frame re-presentation; D3D12 also passed bounded resource/recovery probes.
 
 Latest standalone acceptance: [real Qt breakpoint replacement during EE
 step-over](docs/inflight-gui-ownership.md), with preserved ownership and a

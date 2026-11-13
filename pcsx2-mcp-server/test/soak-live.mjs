@@ -1,4 +1,4 @@
-// Windows: node test/soak-live.mjs <PCSX2> <gs-replay fixture> <configured root> <new output> [seconds=600] [stall-control]
+// Windows: node test/soak-live.mjs <PCSX2> <gs-replay fixture> <configured root> <new output> [seconds=600] [stall-control] [ui-d3d11|ui-d3d12]
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -15,9 +15,15 @@ import { PineClient } from '../dist/pine-client.js';
 import { resources, checkResources, artifactUsage, limits } from './soak-support.mjs';
 
 assert.equal(process.platform, 'win32', 'Resource sampler currently supports Windows only');
-assert.ok(process.argv.length >= 6 && process.argv.length <= 8);
+assert.ok(process.argv.length >= 6 && process.argv.length <= 9);
 const [executable, input, configured, output] = process.argv.slice(2, 6).map(p => path.resolve(p));
-const seconds = Number(process.argv[6] ?? 600), control = process.argv[7];
+const seconds = Number(process.argv[6] ?? 600), flags = process.argv.slice(7);
+assert.equal(new Set(flags).size, flags.length); assert.ok(flags.every(f => ['stall-control', 'ui-d3d11', 'ui-d3d12'].includes(f)));
+assert.ok(flags.filter(f => f.startsWith('ui-')).length <= 1);
+const control = flags.includes('stall-control') ? 'stall-control' : undefined;
+const uiRenderer = flags.find(f => f.startsWith('ui-'))?.slice(3);
+const uiPort = Number(process.env.PCSX2_UI_PORT);
+if (uiRenderer) assert.ok(Number.isInteger(uiPort) && uiPort >= 1 && uiPort <= 65535, 'Presentation probes require an explicit per-instance PCSX2_UI_PORT');
 assert.ok(Number.isInteger(seconds) && seconds >= 30 && seconds <= 3600, 'Duration must be 30–3600 seconds');
 assert.ok(control === undefined || control === 'stall-control');
 assert.ok(control || seconds >= 75, 'Normal runs need at least 75 seconds for both recovery kinds');
@@ -25,7 +31,7 @@ await fs.mkdir(output);
 const root = path.join(output, 'instance'), fixture = path.join(output, 'fixture'), states = path.join(root, 'sstates');
 const hash = b => createHash('sha256').update(b).digest('hex');
 const report = { kind: 'duration_rendered_mcp_soak', created_at: new Date().toISOString(), seconds_requested: seconds,
-  control: control ?? null, limits, samples: [], recoveries: [], mcp_sessions: [], passed: false,
+  control: control ?? null, ui_renderer: uiRenderer ?? null, limits, samples: [], recoveries: [], mcp_sessions: [], passed: false,
   SMS_or_Jellyfin_involved: false, physical_validation: 'not_performed' };
 report.node = process.version; report.platform = process.platform;
 report.harness_sha256 = hash(await fs.readFile(fileURLToPath(import.meta.url)));
@@ -60,6 +66,12 @@ async function openMcp(port) {
   await mcp.connect(transport); report.mcp_sessions.at(-1).pid = transport.pid;
   const reply = await mcp.callTool({ name: 'pcsx2_connect', arguments: { mode: 'debug', debug_port: port } }, undefined, { timeout: 15000 });
   assert.ok(!reply.isError, JSON.stringify(reply.content));
+  if (uiRenderer) {
+    assert.notEqual(uiPort, port);
+    const ui = await call('pcsx2_ui_connect', { ui_port: uiPort, expected_process_id: child.pid, expected_data_directory: root });
+    if (report.ui_identity) assert.deepEqual(ui.identity, report.ui_identity); else report.ui_identity = ui.identity;
+    report.mcp_sessions.at(-1).ui_identity = ui.identity;
+  }
 }
 async function freePort() {
   const s = createServer(); await new Promise((ok, no) => { s.once('error', no); s.listen(0, '127.0.0.1', ok); });
@@ -84,6 +96,18 @@ async function capture(label) {
   // Only retain first, last and recovery frames; hash decoded pixels at every probe.
   const result = { png_sha256: hash(bytes), pixels_sha256: hash(png.data), width: png.width, height: png.height };
   if (label) { result.file = label + '.png'; await fs.writeFile(path.join(output, result.file), bytes, { flag: 'wx' }); }
+  if (uiRenderer) {
+    const windows = await call('pcsx2_ui_snapshot'); const surfaces = windows.windows.filter(w => w.class === 'DisplaySurface'); assert.equal(surfaces.length, 1);
+    const view = await call('pcsx2_ui_snapshot', { window_id: surfaces[0].window_id });
+    const reply = await mcp.callTool({ name: 'pcsx2_ui_screenshot', arguments: { snapshot_id: view.snapshot_id, window_id: view.window_id, width: 640, height: 480 } }, undefined, { timeout: 15000 });
+    assert.ok(!reply.isError, JSON.stringify(reply.content.filter(c => c.type === 'text')));
+    const metadata = JSON.parse(reply.content.find(c => c.type === 'text').text);
+    assert.equal(metadata.capture_method, uiRenderer + '_present_buffer_with_imgui');
+    const data = Buffer.from(reply.content.find(c => c.type === 'image').data, 'base64'), image = PNG.sync.read(data);
+    assert.ok(image.width > 0 && image.width <= 640 && image.height > 0 && image.height <= 480 && new Set(image.data).size > 8);
+    result.presentation = { capture_method: metadata.capture_method, png_sha256: hash(data), pixels_sha256: hash(image.data), width: image.width, height: image.height };
+    if (label) { result.presentation.file = label + '-ui.png'; await fs.writeFile(path.join(output, result.presentation.file), data, { flag: 'wx' }); }
+  }
   return result;
 }
 async function counter() { return inspector.readMemoryStrict(counterAddress, 4); }

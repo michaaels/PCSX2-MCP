@@ -3,6 +3,9 @@
 
 #include "common/Console.h"
 #include "Config.h"
+#include "Host.h"
+#include "MTGS.h"
+#include "VMManager.h"
 #include "common/MCPRenderedUICapture.h"
 #include <QtCore/QBuffer>
 #include <QtCore/QDateTime>
@@ -631,13 +634,20 @@ class Service final : public QObject
 						if (image.width() > width || image.height() > height) image = image.scaled(width, height, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 						QByteArray png; QBuffer buffer(&png);
 						if (image.isNull() || !buffer.open(QIODevice::WriteOnly) || !image.save(&buffer, "PNG") || png.size() > 4 * 1024 * 1024) { Reply(peer, Failure("Cannot encode bounded rendered UI PNG")); return; }
-						Reply(peer, {{"ok", true}, {"window_id", request["window_id"]}, {"width", image.width()}, {"height", image.height()}, {"mime_type", "image/png"}, {"capture_method", "d3d11_present_buffer_with_imgui"}, {"data", QString::fromLatin1(png.toBase64())}});
+						Reply(peer, {{"ok", true}, {"window_id", request["window_id"]}, {"width", image.width()}, {"height", image.height()}, {"mime_type", "image/png"}, {"capture_method", QString::fromStdString(frame.capture_method)}, {"data", QString::fromLatin1(png.toBase64())}});
 					});
 				});
 				if (!requestCapture) { Reply(peer, Failure("A rendered UI capture is already pending")); return; }
+				// A paused guest may not present again by itself. The existing Qt
+				// redraw path queues presentation of its current GS frame, without
+				// resuming either guest CPU. Idle Big Picture/running VMs need no kick.
+				Host::RunOnCPUThread([pending = requestCapture]() {
+					if (pending->live() && VMManager::HasValidVM() && VMManager::GetState() == VMState::Paused)
+						MTGS::PresentCurrentFrame();
+				});
 				QTimer::singleShot(4500, this, [this, peer, done, requestCapture]() {
 					if (*done) return; *done = true; requestCapture->cancelled = true;
-					Reply(peer, Failure("Rendered UI capture timed out: requires active D3D11 RGBA8/BGRA8 presentation; no desktop fallback"));
+					Reply(peer, Failure("Rendered UI capture timed out: requires active D3D11/D3D12 RGBA8/BGRA8 presentation; no desktop fallback"));
 				});
 				return;
 			}

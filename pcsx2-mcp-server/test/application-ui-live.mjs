@@ -1,5 +1,5 @@
 // Real MCP -> Qt widget/action -> native-state cross-checks. No Computer Use.
-// node test/application-ui-live.mjs <PCSX2> <standalone fixture> <configured root> <new output>
+// node test/application-ui-live.mjs <PCSX2> <standalone fixture> <configured root> <new output> [d3d11|d3d12]
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -13,8 +13,9 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { PNG } from 'pngjs';
 import { DebugServerClient } from '../dist/debug-server-client.js';
 
-assert.equal(process.argv.length, 6);
-const [executable, fixture, configured, output] = process.argv.slice(2).map(p => path.resolve(p));
+assert.ok(process.argv.length === 6 || process.argv.length === 7);
+const renderer = process.argv[6] ?? 'd3d11'; assert.ok(['d3d11', 'd3d12'].includes(renderer));
+const [executable, fixture, configured, output] = process.argv.slice(2, 6).map(p => path.resolve(p));
 await fs.mkdir(output);
 const root = path.join(output, 'instance'); await fs.mkdir(path.join(root, 'inis'), { recursive: true });
 const browse = path.join(output, 'browse'); await fs.mkdir(path.join(browse, 'child'), { recursive: true });
@@ -33,6 +34,7 @@ function setting(section, key, value) {
 }
 setting('UI', 'ShowAdvancedSettings', 'true'); setting('UI', 'AdvancedSettingsWarningShown', 'true'); setting('EmuCore', 'EnablePINE', 'false');
 setting('AutoUpdater', 'CheckAtStartup', 'false');
+setting('EmuCore/GS', 'Renderer', renderer === 'd3d12' ? '15' : '3');
 await fs.writeFile(path.join(root, 'inis/PCSX2.ini'), ini);
 async function freePort() { const s = createServer(); await new Promise((ok, no) => { s.once('error', no); s.listen(0, '127.0.0.1', ok); }); const p = s.address().port; await new Promise(ok => s.close(ok)); return p; }
 const uiPort = await freePort(), debugPort = await freePort(); assert.notEqual(uiPort, debugPort);
@@ -40,7 +42,7 @@ const inspector = new DebugServerClient('127.0.0.1', debugPort), mcp = new Clien
 const elf = path.join(fixture, 'standalone.elf'), elfHash = manifest.sha256['standalone.elf'];
 const report = { kind: 'real_mcp_qt_gui_control', executable, native_sha256: hash(await fs.readFile(executable)),
   elf, elf_sha256: elfHash, data_directory: root, ui_port: uiPort, debug_port: debugPort,
-  actor: 'mcp_qt_ui', started_at: new Date().toISOString(), checks: [], ui_actions: [], qt_options: [], passed: false,
+  actor: 'mcp_qt_ui', renderer, started_at: new Date().toISOString(), checks: [], ui_actions: [], qt_options: [], passed: false,
   Computer_Use_used: false, SMS_or_Jellyfin_involved: false, physical_validation: 'not_performed' };
 let native, log, transport, watchdog, lastSnapshot, watchdogExpired = false;
 const passed = name => { report.checks.push(name); console.log('PASS ' + name); };
@@ -67,16 +69,16 @@ async function action(snapshot, target, input, wait = true, expectedFailure = fa
   }
   return r.action.action_id;
 }
-async function capture(snapshot, name) {
+async function capture(snapshot, name, minimumColors = 32) {
   const r = await raw('pcsx2_ui_screenshot', { snapshot_id: snapshot.snapshot_id, window_id: snapshot.window_id });
-  assert.ok(!r.isError); const image = r.content.find(c => c.type === 'image'); assert.ok(image && image.mimeType === 'image/png');
+  assert.ok(!r.isError, r.isError ? JSON.stringify(r.content) : undefined); const image = r.content.find(c => c.type === 'image'); assert.ok(image && image.mimeType === 'image/png');
   const metadata = JSON.parse(r.content.find(c => c.type === 'text').text);
   const b = Buffer.from(image.data, 'base64'), decoded = PNG.sync.read(b);
   if (snapshot.controls.some(c => c.kind === 'surface')) {
-    assert.equal(metadata.capture_method, 'd3d11_present_buffer_with_imgui');
+    assert.equal(metadata.capture_method, renderer + '_present_buffer_with_imgui');
     const colors = new Set();
     for (let i = 0; i < decoded.data.length; i += 4) colors.add(decoded.data.readUInt32LE(i));
-    assert.ok(colors.size > 32, 'Rendered UI must contain actual varied content, not a black capture');
+    assert.ok(colors.size > minimumColors, 'Rendered UI must contain actual varied content, not a black capture');
   }
   assert.ok(decoded.width > 0 && decoded.height > 0); await fs.writeFile(path.join(output, name + '.png'), b, { flag: 'wx' });
   return { file: name + '.png', sha256: hash(b), width: decoded.width, height: decoded.height, capture_method: metadata.capture_method };
@@ -161,6 +163,9 @@ try {
   passed('blocking Qt file dialog remains controllable through MCP and genuinely boots the selected exact ELF');
   await inspector.pause(); assert.ok(!(await raw('pcsx2_connect', { mode: 'debug', debug_port: debugPort })).isError);
   await call('pcsx2_import_symbols');
+  // Let the fixture submit its first display before stopping at its very early
+  // tick function; D3D12 can otherwise legitimately have no guest texture yet.
+  await inspector.resume(); await delay(400); await inspector.pause();
   const line = (await fs.readFile(path.join(fixture, 'standalone.c'), 'utf8')).split(/\r?\n/).findIndex(v => v.includes('/* MCP_TICK:')) + 1; assert.ok(line > 0);
   const install = () => call('pcsx2_breakpoint_source', { elf, file: 'standalone.c', line, expected_sha256: elfHash });
   async function stopOnGroup(group) {
@@ -181,6 +186,16 @@ try {
   const tabs = unique(s, c => c.tabs?.some(t => t.text === 'Breakpoints'));
   await action(s, tabs, { action: 'select_index', index: tabs.tabs.find(t => t.text === 'Breakpoints').index });
   passed('GUI debugger opening and tab selection use real Qt controls on the same paused native fixture');
+  const pausedSurfaceBefore = await machine();
+  const guestReply = await raw('pcsx2_screenshot', { width: 640, height: 480 }); assert.ok(!guestReply.isError, JSON.stringify(guestReply.content.filter(c => c.type === 'text')));
+  const guestBytes = Buffer.from(guestReply.content.find(c => c.type === 'image').data, 'base64'), guestPNG = PNG.sync.read(guestBytes);
+  assert.ok(new Set(guestPNG.data).size > 8, 'Guest texture must contain actual rendered content, independently of ImGui/OSD');
+  await fs.writeFile(path.join(output, 'paused-guest-reference.png'), guestBytes, { flag: 'wx' });
+  report.paused_guest_reference = { sha256: hash(guestBytes), width: guestPNG.width, height: guestPNG.height };
+  s = await snap({ window_id: mainID }); const guestSurfaceID = s.windows.find(w => w.class === 'DisplaySurface')?.window_id; assert.ok(guestSurfaceID);
+  s = await snap({ window_id: guestSurfaceID }); report.paused_surface = await capture(s, 'paused-guest-surface', 1);
+  assert.deepEqual(await machine(), pausedSurfaceBefore);
+  passed('actual paused guest presentation is captured through the selected renderer without moving either CPU, sampled RAM or native identity');
   for (const edit of [
     { name: 'condition', expected: { has_condition: true, condition: 't0 == 0x42' } },
     { name: 'logging', expected: { instrumentation_enabled: true, log_format: 'GUI-LOG-S4' } },

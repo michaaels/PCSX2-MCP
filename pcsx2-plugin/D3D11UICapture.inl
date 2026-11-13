@@ -3,6 +3,7 @@
 if (auto request = MCPRenderedUI::Take(m_window_info.window_handle))
 {
  MCPRenderedUI::Frame frame;
+ frame.capture_method = "d3d11_present_buffer_with_imgui";
  wil::com_ptr_nothrow<ID3D11Texture2D> source, staging;
  D3D11_TEXTURE2D_DESC desc{};
  if (FAILED(m_swap_chain->GetBuffer(0, IID_PPV_ARGS(source.put())))) frame.error = "Cannot access D3D11 presentation buffer";

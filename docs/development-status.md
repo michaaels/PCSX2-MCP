@@ -1,5 +1,15 @@
 # MCP development progress
 
+U4b (2026-11-12): capturas de DisplaySurface D3D12 después de ImGui, con método
+de captura explícito; re-presentación de la textura actual al capturar en pausa,
+sin reanudar EE/IOP. Pasaron 81 grupos live, 303 Node y compilación Windows/TS;
+integración consistente en 38 archivos. D3D11/D3D12 contrastados con textura del
+guest y estado CPU/RAM/identidad. Prueba D3D12 de 92.484 s con 16 sondeos pareados
+guest/presentación, dos restore/un reset y cuatro stdio cerrados; recursos en
+límites y control negativo de falta de progreso rechazado. [Contrato](rendered-ui-capture.md).
+Siguen otros backends, docking entre ventanas y drag-and-drop nativo. No se
+acepta hardware físico ni recuperación de GPU/core colgado; SMS/Jellyfin separados.
+
 U4a (2026-11-03): arrastre entre controles de la misma ventana mediante
 `end_control_id` y `bounds_in_window`; capacidad nativa explícita para rechazar
 binarios anteriores antes de enviar. Separador Qt real movido 60 unidades y

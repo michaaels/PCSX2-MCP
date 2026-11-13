@@ -1,5 +1,15 @@
 # Plan de implementación y publicación
 
+U4b (2026-11-12): capturas de DisplaySurface D3D12 después de ImGui, con método
+de captura explícito; re-presentación de la textura actual al capturar en pausa,
+sin reanudar EE/IOP. Pasaron 81 grupos live, 303 Node y compilación Windows/TS;
+integración consistente en 38 archivos. D3D11/D3D12 contrastados con textura del
+guest y estado CPU/RAM/identidad. Prueba D3D12 de 92.484 s con 16 sondeos pareados
+guest/presentación, dos restore/un reset y cuatro stdio cerrados; recursos en
+límites y control negativo de falta de progreso rechazado. [Contrato](rendered-ui-capture.md).
+Siguen otros backends, docking entre ventanas y drag-and-drop nativo. No se
+acepta hardware físico ni recuperación de GPU/core colgado; SMS/Jellyfin separados.
+
 U4a (2026-11-03): arrastre entre controles de la misma ventana mediante
 `end_control_id` y `bounds_in_window`; capacidad nativa explícita para rechazar
 binarios anteriores antes de enviar. Separador Qt real movido 60 unidades y
@@ -275,6 +285,7 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| U4b | Captura UI D3D12 y re-presentación en pausa | 81 live/303 Node, integración 38; D3D11/D3D12 y 92.484 s/16 sondeos pareados/tres recuperaciones con recursos y cierre verificados |
 | U4a | Arrastre entre controles de la misma ventana | 57 live/303 Node; separador Qt +60/restore, cancelación por reflow y capacidad nativa comprobadas; integración 36 |
 | U3c | Arrastre Big Picture/ImGui real | Cuatro grupos y PNG 100%→158%, Qt=158 y restore=100; sin VM, runtime U3b intacto. Sigue arrastre entre límites/backends |
 | U3b | Arrastre Qt local con recibos y limpieza | 47 live/302 Node; cancelación por desconexión, rechazo de conflictos y VM pausada intacta; integración 36. Sigue cobertura específica ImGui/pantallas/backends |

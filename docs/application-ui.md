@@ -1,5 +1,10 @@
 # Application GUI control through MCP — U1
 
+Update U4b: [D3D12 presentation capture and paused-frame redraw](rendered-ui-capture.md)
+are now available alongside D3D11. Backend identity is returned in capture_method;
+81 live groups, 303 Node and bounded paired D3D12 resource/recovery probes passed.
+Earlier renderer limits below belong to their original U1 executable.
+
 Latest additions: [managed window state/geometry](ui-window-management.md) and
 [application-local asynchronous drag](ui-local-drag.md). These retain the seven-tool
 catalog; the original U1 evidence below remains tied to its own executable.

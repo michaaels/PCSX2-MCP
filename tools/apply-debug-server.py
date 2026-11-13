@@ -476,6 +476,12 @@ def main() -> None:
     dx11_text = replace_once(dx11_text, 'void GSDevice11::EndPresent()\n{\n\tRenderImGui();',
         'void GSDevice11::EndPresent()\n{\n\tRenderImGui();\n#include "MCPD3D11UICapture.inl"', str(dx11))
     breakpoint_files[dx11] = dx11_text
+    dx12 = source / 'pcsx2/GS/Renderers/DX12/GSDevice12.cpp'
+    dx12_text = replace_once(dx12.read_text(encoding='utf-8'), '#include "GS/Renderers/DX12/GSDevice12.h"',
+        '#include "GS/Renderers/DX12/GSDevice12.h"\n#include "common/MCPRenderedUICapture.h"', str(dx12))
+    dx12_text = replace_once(dx12_text, 'void GSDevice12::EndPresent()\n{\n\tRenderImGui();',
+        'void GSDevice12::EndPresent()\n{\n\tRenderImGui();\n#include "MCPD3D12UICapture.inl"', str(dx12))
+    breakpoint_files[dx12] = dx12_text
     points = source / 'pcsx2/DebugTools/Breakpoints.cpp'
     point_text = replace_once(points.read_text(encoding='utf-8'), '#include "Breakpoints.h"',
         '#include "Breakpoints.h"\n#include "DebugServer.h"', str(points))
@@ -483,7 +489,8 @@ def main() -> None:
         '\tif (resume)\n\t\tr5900Debug.resumeCpu();\n\tDebugServer::OnBreakpointConfigurationChanged();\n}', str(points))
     breakpoint_files[points] = point_text
     for original_name, target_name in [('RenderedUICapture.h', 'common/MCPRenderedUICapture.h'),
-            ('D3D11UICapture.inl', 'pcsx2/GS/Renderers/DX11/MCPD3D11UICapture.inl')]:
+            ('D3D11UICapture.inl', 'pcsx2/GS/Renderers/DX11/MCPD3D11UICapture.inl'),
+            ('D3D12UICapture.inl', 'pcsx2/GS/Renderers/DX12/MCPD3D12UICapture.inl')]:
         original = repo / 'pcsx2-plugin' / original_name
         target = source / target_name
         if not target.exists() or target.read_bytes() != original.read_bytes(): shutil.copy2(original, target)

@@ -13,7 +13,7 @@
 // Readbacks run after ImGui draws and before Present, never from desktop pixels.
 namespace MCPRenderedUI
 {
-struct Frame { int width = 0, height = 0; std::vector<std::uint32_t> rgba; std::string error; };
+struct Frame { int width = 0, height = 0; std::vector<std::uint32_t> rgba; std::string error, capture_method; };
 struct Request
 {
  void* window;
