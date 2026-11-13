@@ -482,6 +482,37 @@ def main() -> None:
     dx12_text = replace_once(dx12_text, 'void GSDevice12::EndPresent()\n{\n\tRenderImGui();',
         'void GSDevice12::EndPresent()\n{\n\tRenderImGui();\n#include "MCPD3D12UICapture.inl"', str(dx12))
     breakpoint_files[dx12] = dx12_text
+    vk = source / 'pcsx2/GS/Renderers/Vulkan/GSDeviceVK.cpp'
+    vk_text = replace_once(vk.read_text(encoding='utf-8'), '#include "GS/Renderers/Vulkan/GSDeviceVK.h"',
+        '#include "GS/Renderers/Vulkan/GSDeviceVK.h"\n#include "common/MCPRenderedUICapture.h"', str(vk))
+    vk_before = ('void GSDeviceVK::EndPresent()\n{\n\tRenderImGui();\n\n'
+        '\tEndPresentRenderPass();\n'
+        '\tm_swap_chain->GetCurrentTexture()->TransitionToLayout(GetCurrentCommandBuffer(), GSTextureVK::Layout::PresentSrc);\n'
+        '\tg_perfmon.Put(GSPerfMon::RenderPasses, 1);\n\n'
+        '\tSubmitCommandBuffer(m_swap_chain.get());\n\tMoveToNextCommandBuffer();\n\n\tInvalidateCachedState();\n}')
+    vk_after = vk_before.replace('\tEndPresentRenderPass();',
+        '\tEndPresentRenderPass();\n#include "MCPVulkanUICapturePrepare.inl"').replace('\tInvalidateCachedState();',
+        '\tInvalidateCachedState();\n#include "MCPVulkanUICaptureComplete.inl"')
+    breakpoint_files[vk] = replace_once(vk_text, vk_before, vk_after, str(vk))
+    vk_swap = source / 'pcsx2/GS/Renderers/Vulkan/VKSwapChain.cpp'
+    swap_text = replace_once(vk_swap.read_text(encoding='utf-8'), 'bool VKSwapChain::CreateSwapChain()\n{',
+        'bool VKSwapChain::CreateSwapChain()\n{\n\tm_supports_ui_capture = false;', str(vk_swap))
+    swap_text = replace_once(swap_text,
+        '\tVkImageUsageFlags image_usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;',
+        '\tVkImageUsageFlags image_usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;\n'
+        '\t// Optional MCP readback: preserve rendering when the surface cannot be copied.\n'
+        '\tif (surface_capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)\n'
+        '\t\timage_usage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;', str(vk_swap))
+    breakpoint_files[vk_swap] = replace_once(swap_text,
+        '\t// Now destroy the old swap chain, since it\'s been recreated.',
+        '\tm_supports_ui_capture = (image_usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) &&\n'
+        '\t\ttransform == VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;\n\n'
+        '\t// Now destroy the old swap chain, since it\'s been recreated.', str(vk_swap))
+    vk_swap_h = source / 'pcsx2/GS/Renderers/Vulkan/VKSwapChain.h'
+    swap_h_text = replace_once(vk_swap_h.read_text(encoding='utf-8'), '\tVkFormat GetTextureFormat() const;',
+        '\tbool SupportsUICapture() const { return m_supports_ui_capture; }\n\n\tVkFormat GetTextureFormat() const;', str(vk_swap_h))
+    breakpoint_files[vk_swap_h] = replace_once(swap_h_text, '\tVkSurfaceKHR m_surface = VK_NULL_HANDLE;',
+        '\tbool m_supports_ui_capture = false;\n\tVkSurfaceKHR m_surface = VK_NULL_HANDLE;', str(vk_swap_h))
     points = source / 'pcsx2/DebugTools/Breakpoints.cpp'
     point_text = replace_once(points.read_text(encoding='utf-8'), '#include "Breakpoints.h"',
         '#include "Breakpoints.h"\n#include "DebugServer.h"', str(points))
@@ -490,7 +521,9 @@ def main() -> None:
     breakpoint_files[points] = point_text
     for original_name, target_name in [('RenderedUICapture.h', 'common/MCPRenderedUICapture.h'),
             ('D3D11UICapture.inl', 'pcsx2/GS/Renderers/DX11/MCPD3D11UICapture.inl'),
-            ('D3D12UICapture.inl', 'pcsx2/GS/Renderers/DX12/MCPD3D12UICapture.inl')]:
+            ('D3D12UICapture.inl', 'pcsx2/GS/Renderers/DX12/MCPD3D12UICapture.inl'),
+            ('VulkanUICapturePrepare.inl', 'pcsx2/GS/Renderers/Vulkan/MCPVulkanUICapturePrepare.inl'),
+            ('VulkanUICaptureComplete.inl', 'pcsx2/GS/Renderers/Vulkan/MCPVulkanUICaptureComplete.inl')]:
         original = repo / 'pcsx2-plugin' / original_name
         target = source / target_name
         if not target.exists() or target.read_bytes() != original.read_bytes(): shutil.copy2(original, target)

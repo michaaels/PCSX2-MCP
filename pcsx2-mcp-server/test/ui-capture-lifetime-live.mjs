@@ -1,5 +1,5 @@
 // Two real MCP peers race a rendered capture with actual surface destruction.
-// node test/ui-capture-lifetime-live.mjs <PCSX2> <configured root> <new output> [d3d11|d3d12|opengl]
+// node test/ui-capture-lifetime-live.mjs <PCSX2> <configured root> <new output> [d3d11|d3d12|vulkan|opengl]
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -13,14 +13,14 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { PNG } from 'pngjs';
 
 assert.ok(process.argv.length === 5 || process.argv.length === 6);
-const renderer = process.argv[5] ?? 'd3d12'; assert.ok(['d3d11', 'd3d12', 'opengl'].includes(renderer));
+const renderer = process.argv[5] ?? 'd3d12'; assert.ok(['d3d11', 'd3d12', 'vulkan', 'opengl'].includes(renderer));
 const captureSupported = renderer !== 'opengl';
 const [executable, configured, output] = process.argv.slice(2, 5).map(p => path.resolve(p)); await fs.mkdir(output);
 const root = path.join(output, 'instance'); await fs.mkdir(path.join(root, 'inis'), { recursive: true });
 const hash = b => createHash('sha256').update(b).digest('hex');
 await fs.copyFile(fileURLToPath(import.meta.url), path.join(output, 'harness.mjs'), fs.constants.COPYFILE_EXCL);
 const originalINI = await fs.readFile(path.join(configured, 'inis/PCSX2.ini')); let ini = originalINI.toString('utf8');
-for (const [section, key, value] of [['AutoUpdater', 'CheckAtStartup', 'false'], ['EmuCore/GS', 'Renderer', renderer === 'd3d12' ? '15' : renderer === 'opengl' ? '12' : '3'], ['UI', 'FullscreenUIDefaultToGameList', 'false']]) {
+for (const [section, key, value] of [['AutoUpdater', 'CheckAtStartup', 'false'], ['EmuCore/GS', 'Renderer', { d3d11: '3', d3d12: '15', vulkan: '14', opengl: '12' }[renderer]], ['UI', 'FullscreenUIDefaultToGameList', 'false']]) {
   ini = ini.replace(new RegExp(`^${key}\\s*=.*\\r?\\n`, 'gm'), ''); const marker = new RegExp(`^\\[${section}\\]\\r?\\n`, 'm');
   ini = marker.test(ini) ? ini.replace(marker, `[${section}]\n${key} = ${value}\n`) : ini + `\n[${section}]\n${key} = ${value}\n`;
 }
@@ -57,6 +57,21 @@ function png(result, windowID) {
   const metadata = JSON.parse(result.content.find(c => c.type === 'text').text); assert.equal(metadata.window_id, windowID); assert.equal(metadata.capture_method, renderer + '_present_buffer_with_imgui');
   const bytes = Buffer.from(result.content.find(c => c.type === 'image').data, 'base64'); assert.ok(PNG.sync.read(bytes).width > 100); return bytes;
 }
+async function readySurface(p) {
+  // A visible startup QWindow can be replaced while the GS renderer opens.
+  // Establish actual presentation before the race; never count its startup
+  // replacement as the surface which the subsequent close action must destroy.
+  for (let attempt = 0; ; ++attempt) {
+    const s = await surface(p), result = await raw(p, 'screenshot', { snapshot_id: s.snapshot_id, window_id: s.window_id });
+    const text = JSON.stringify(result.content.filter(c => c.type === 'text'));
+    if (result.isError && /Capture window was destroyed/.test(text)) { assert.ok(attempt < 4, text); continue; }
+    if (captureSupported) png(result, s.window_id);
+    else { assert.equal(result.isError, true); assert.match(text, /Rendered UI capture timed out/); }
+    const current = await surface(p);
+    if (current.window_id === s.window_id) return current;
+    assert.ok(attempt < 4, 'Presentation window kept changing during startup');
+  }
+}
 try {
   log = await fs.open(path.join(output, 'native.log'), 'wx'); native = spawn(executable, ['-portable'], { cwd: path.dirname(executable), windowsHide: true,
     env: { ...process.env, PCSX2_UI_PORT: String(uiPort), PCSX2_DEBUG_PORT: String(debugPort), PCSX2_MCP_DATA_DIR: root }, stdio: ['ignore', log.fd, log.fd] });
@@ -74,8 +89,8 @@ try {
   else { assert.equal(initialCapture.isError, true); assert.match(JSON.stringify(initialCapture.content), /Rendered UI capture timed out/); report.unsupported_control = initialCapture.content; }
   passed('two actual MCP stdio peers share the pinned frontend identity and the renderer-specific capture/refusal contract');
   for (let round = 0; round < 6; ++round) {
-    if (round) { await toggle(actor); await surface(reader); await delay(100); }
-    s = await surface(reader); const closing = await snap(actor, actor.mainID), action = closing.controls.find(c => c.object_name === 'actionStartFullscreenUI'); assert.ok(action?.enabled);
+    if (round) await toggle(actor);
+    s = await readySurface(reader); const closing = await snap(actor, actor.mainID), action = closing.controls.find(c => c.object_name === 'actionStartFullscreenUI'); assert.ok(action?.enabled);
     const started = performance.now(), entry = { round, window_id: s.window_id, state: 'pending' }; report.rounds.push(entry);
     // Different native UI sockets: the close action is not serialized behind
     // the reader's pending screenshot. No Qt/GPU test hook delays the response.

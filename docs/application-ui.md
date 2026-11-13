@@ -1,5 +1,9 @@
 # Application GUI control through MCP — U1
 
+Update U4d: [Vulkan presentation capture](vulkan-ui-capture.md) uses an ordered
+copy/presentation/fence readback and reports its actual backend. D3D11/D3D12
+and Qt captures remain available; original evidence below retains its scope.
+
 Update U4b: [D3D12 presentation capture and paused-frame redraw](rendered-ui-capture.md)
 are now available alongside D3D11. Backend identity is returned in capture_method;
 81 live groups, 303 Node and bounded paired D3D12 resource/recovery probes passed.

@@ -1,5 +1,17 @@
 # MCP development progress
 
+U4d (2026-11-12): captura Vulkan de DisplaySurface después de ImGui, con copia
+antes de presentar y lectura tras el envío normal y rotación del command buffer;
+conserva los semáforos de adquisición/presentación. Requiere RGBA8/BGRA8,
+transfer-source e identidad de transformación; rechaza capacidades ausentes.
+107 grupos live y 303 Node pasaron; build Windows/TS e integración 43 archivos.
+93.266 s/16 sondeos pareados, dos restore/un reset y cuatro stdio cerrados;
+pico nativo 1208.07 MiB/722 handles y crecimiento final 0.90 MiB desde baseline,
+dentro de límites. Control de guest detenido rechazado. [Contrato](vulkan-ui-capture.md).
+Vulkan/D3D11/D3D12, pausa, ImGui y cierre/recreación probados; pilotos fallidos
+conservados. DLLs/Qt/core debug intactos. Siguen captura OpenGL, docking entre
+ventanas y drag-and-drop nativo. SMS/Jellyfin y hardware físico separados.
+
 U4c (2026-11-12): capturas pendientes se cancelan al destruir su ventana con
 error explícito, sin esperar timeout de backend ni perder la conexión. Reproducida
 espera de 4499 ms en U4b; seis controles pendientes reales respondieron en 155–166

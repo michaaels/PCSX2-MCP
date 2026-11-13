@@ -1,5 +1,5 @@
 // Real Big Picture slider drag, verified by presentation PNG + independent Qt setting.
-// node test/imgui-drag-live.mjs <PCSX2> <configured root> <new output> [d3d11|d3d12]
+// node test/imgui-drag-live.mjs <PCSX2> <configured root> <new output> [d3d11|d3d12|vulkan]
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -13,7 +13,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { PNG } from 'pngjs';
 
 assert.ok(process.argv.length === 5 || process.argv.length === 6);
-const renderer = process.argv[5] ?? 'd3d11'; assert.ok(['d3d11', 'd3d12'].includes(renderer));
+const renderer = process.argv[5] ?? 'd3d11'; assert.ok(['d3d11', 'd3d12', 'vulkan'].includes(renderer));
 const [executable, configured, output] = process.argv.slice(2, 5).map(p => path.resolve(p)); await fs.mkdir(output);
 const root = path.join(output, 'instance'); await fs.mkdir(path.join(root, 'inis'), { recursive: true });
 const hash = b => createHash('sha256').update(b).digest('hex');
@@ -21,7 +21,7 @@ const originalINI = await fs.readFile(path.join(configured, 'inis/PCSX2.ini')); 
 function setting(section, key, value) { ini = ini.replace(new RegExp(`^${key}\\s*=.*\\r?\\n`, 'gm'), ''); const marker = new RegExp(`^\\[${section}\\]\\r?\\n`, 'm'); ini = marker.test(ini) ? ini.replace(marker, `[${section}]\n${key} = ${value}\n`) : ini + `\n[${section}]\n${key} = ${value}\n`; }
 setting('AutoUpdater', 'CheckAtStartup', 'false'); setting('SPU2/Output', 'StandardVolume', '100');
 setting('UI', 'FullscreenUIDefaultToGameList', 'false'); setting('UI', 'FullscreenUITheme', 'Dark');
-setting('EmuCore/GS', 'Renderer', renderer === 'd3d12' ? '15' : '3');
+setting('EmuCore/GS', 'Renderer', { d3d11: '3', d3d12: '15', vulkan: '14' }[renderer]);
 await fs.writeFile(path.join(root, 'inis/PCSX2.ini'), ini);
 async function port() { const s = createServer(); await new Promise(ok => s.listen(0, '127.0.0.1', ok)); const p = s.address().port; await new Promise(ok => s.close(ok)); return p; }
 async function closedPort(port) { return new Promise(resolve => { const s = createConnection({ host: '127.0.0.1', port }); s.once('connect', () => { s.destroy(); resolve(false); }); s.once('error', () => { s.destroy(); resolve(true); }); s.setTimeout(1000, () => { s.destroy(); resolve(false); }); }); }
@@ -73,7 +73,12 @@ try {
   const volume = one(s, v => v.object_name === 'standardVolume' && v.visible); report.qt_volume = volume.value;
   assert.ok(volume.value > 100 && volume.value <= 200, JSON.stringify(volume));
   passed('independent actual Qt Audio Settings readback confirms the ImGui gesture changed StandardVolume above its exact baseline');
-  await action(s, volume, { action: 'set_value', value: 100 }); s = await snap(); assert.equal(one(s, v => v.object_name === 'standardVolume' && v.visible).value, 100);
+  // Audio settings can finish their initial label/layout update after the first
+  // value read. Take a fresh target after settling; the native stale-target
+  // refusal must remain enabled rather than retrying a mutation blindly.
+  await delay(150); s = await snap(); const restoreVolume = one(s, v => v.object_name === 'standardVolume' && v.visible);
+  assert.equal(restoreVolume.value, volume.value);
+  await action(s, restoreVolume, { action: 'set_value', value: 100 }); s = await snap(); assert.equal(one(s, v => v.object_name === 'standardVolume' && v.visible).value, 100);
   await action(s, one(s, v => v.parent_id === '' && v.kind === 'widget'), { action: 'close' });
   assert.equal(await closedPort(debugPort), true); assert.deepEqual((await call('status')).identity, report.identity);
   assert.deepEqual(await fs.readFile(path.join(configured, 'inis/PCSX2.ini')), originalINI); assert.equal(hash(await fs.readFile(executable)), report.native_sha256);

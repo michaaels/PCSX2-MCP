@@ -13,10 +13,10 @@
 tools inspect and operate menus, fields, tabs, models, dialogs and Big Picture,
 including before boot and after VM shutdown. [Window state/geometry](docs/ui-window-management.md)
 and [pointer drag across controls](docs/ui-cross-control-drag.md) are available. The latest GUI
-build passed 93 live groups; its unchanged Node source has 303 passed tests. Windows uses modified
-2.9.147. [DisplaySurface capture](docs/rendered-ui-capture.md) supports D3D11/D3D12
+build passed 107 live groups and 303 Node tests. Windows uses modified 2.9.147.
+[DisplaySurface capture](docs/vulkan-ui-capture.md) supports D3D11/D3D12/Vulkan
 RGBA8/BGRA8 and paused-frame re-presentation. [Window-lifetime cancellation](docs/ui-capture-lifetime.md)
-keeps pending captures responsive during close/recreation; bounded D3D12 resource/recovery probes passed.
+keeps pending captures responsive during close/recreation; bounded Vulkan resource/recovery probes passed.
 
 Latest standalone acceptance: [real Qt breakpoint replacement during EE
 step-over](docs/inflight-gui-ownership.md), with preserved ownership and a

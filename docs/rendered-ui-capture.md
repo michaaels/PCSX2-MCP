@@ -1,5 +1,6 @@
 # D3D12 application presentation capture — U4b
 
+U4d adds [Vulkan presentation capture](vulkan-ui-capture.md).
 U4c adds [explicit pending-capture cancellation on window destruction](ui-capture-lifetime.md).
 The U4b backend/readback contract and its original binary-specific evidence below remain historical.
 

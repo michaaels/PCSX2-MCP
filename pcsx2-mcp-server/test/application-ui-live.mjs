@@ -1,5 +1,5 @@
 // Real MCP -> Qt widget/action -> native-state cross-checks. No Computer Use.
-// node test/application-ui-live.mjs <PCSX2> <standalone fixture> <configured root> <new output> [d3d11|d3d12]
+// node test/application-ui-live.mjs <PCSX2> <standalone fixture> <configured root> <new output> [d3d11|d3d12|vulkan]
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -14,7 +14,7 @@ import { PNG } from 'pngjs';
 import { DebugServerClient } from '../dist/debug-server-client.js';
 
 assert.ok(process.argv.length === 6 || process.argv.length === 7);
-const renderer = process.argv[6] ?? 'd3d11'; assert.ok(['d3d11', 'd3d12'].includes(renderer));
+const renderer = process.argv[6] ?? 'd3d11'; assert.ok(['d3d11', 'd3d12', 'vulkan'].includes(renderer));
 const [executable, fixture, configured, output] = process.argv.slice(2, 6).map(p => path.resolve(p));
 await fs.mkdir(output);
 const root = path.join(output, 'instance'); await fs.mkdir(path.join(root, 'inis'), { recursive: true });
@@ -34,7 +34,7 @@ function setting(section, key, value) {
 }
 setting('UI', 'ShowAdvancedSettings', 'true'); setting('UI', 'AdvancedSettingsWarningShown', 'true'); setting('EmuCore', 'EnablePINE', 'false');
 setting('AutoUpdater', 'CheckAtStartup', 'false');
-setting('EmuCore/GS', 'Renderer', renderer === 'd3d12' ? '15' : '3');
+setting('EmuCore/GS', 'Renderer', { d3d11: '3', d3d12: '15', vulkan: '14' }[renderer]);
 await fs.writeFile(path.join(root, 'inis/PCSX2.ini'), ini);
 async function freePort() { const s = createServer(); await new Promise((ok, no) => { s.once('error', no); s.listen(0, '127.0.0.1', ok); }); const p = s.address().port; await new Promise(ok => s.close(ok)); return p; }
 const uiPort = await freePort(), debugPort = await freePort(); assert.notEqual(uiPort, debugPort);

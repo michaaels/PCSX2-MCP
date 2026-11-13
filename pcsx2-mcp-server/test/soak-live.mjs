@@ -1,4 +1,4 @@
-// Windows: node test/soak-live.mjs <PCSX2> <gs-replay fixture> <configured root> <new output> [seconds=600] [stall-control] [ui-d3d11|ui-d3d12]
+// Windows: node test/soak-live.mjs <PCSX2> <gs-replay fixture> <configured root> <new output> [seconds=600] [stall-control] [ui-d3d11|ui-d3d12|ui-vulkan]
 import assert from 'node:assert/strict';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
@@ -18,7 +18,7 @@ assert.equal(process.platform, 'win32', 'Resource sampler currently supports Win
 assert.ok(process.argv.length >= 6 && process.argv.length <= 9);
 const [executable, input, configured, output] = process.argv.slice(2, 6).map(p => path.resolve(p));
 const seconds = Number(process.argv[6] ?? 600), flags = process.argv.slice(7);
-assert.equal(new Set(flags).size, flags.length); assert.ok(flags.every(f => ['stall-control', 'ui-d3d11', 'ui-d3d12'].includes(f)));
+assert.equal(new Set(flags).size, flags.length); assert.ok(flags.every(f => ['stall-control', 'ui-d3d11', 'ui-d3d12', 'ui-vulkan'].includes(f)));
 assert.ok(flags.filter(f => f.startsWith('ui-')).length <= 1);
 const control = flags.includes('stall-control') ? 'stall-control' : undefined;
 const uiRenderer = flags.find(f => f.startsWith('ui-'))?.slice(3);
