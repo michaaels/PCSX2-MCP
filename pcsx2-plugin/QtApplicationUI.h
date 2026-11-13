@@ -7,6 +7,7 @@
 #include "MTGS.h"
 #include "VMManager.h"
 #include "common/MCPRenderedUICapture.h"
+#include "MCPApplicationDocking.h"
 #include <QtCore/QBuffer>
 #include <QtCore/QDateTime>
 #include <QtCore/QDeadlineTimer>
@@ -82,6 +83,7 @@ struct Peer
 	qint64 snapshotTime = 0;
 	QElapsedTimer snapshotAge;
 	QHash<QString, Target> targets;
+	QHash<QString, Target> dockTargets;
 	QHash<QString, QJsonObject> receipts;
 	QStringList receiptOrder;
 	QHash<QString, QPointer<QObject>> windows;
@@ -113,6 +115,7 @@ inline QJsonArray Actions(QObject* object, bool item = false)
 	if (qobject_cast<QLineEdit*>(object) || qobject_cast<QPlainTextEdit*>(object) || qobject_cast<QTextEdit*>(object)) actions.append("set_text");
 	if (qobject_cast<QComboBox*>(object) || qobject_cast<QTabBar*>(object) || qobject_cast<QTabWidget*>(object)) actions.append("select_index");
 	if (qobject_cast<QSpinBox*>(object) || qobject_cast<QDoubleSpinBox*>(object) || qobject_cast<QAbstractSlider*>(object)) actions.append("set_value");
+	if (MCPApplicationDocking::View(object)) { actions.append("set_floating"); actions.append("dock"); }
 	return actions;
 }
 
@@ -153,6 +156,7 @@ inline QJsonObject Describe(const Target& target)
 	if (auto* widget = qobject_cast<QWidget*>(object))
 	{
 		out["kind"] = "widget"; out["enabled"] = widget->isEnabled(); out["visible"] = widget->isVisible();
+		if (MCPApplicationDocking::View(widget)) out["dock"] = MCPApplicationDocking::Describe(widget);
 		out["width"] = widget->width(); out["height"] = widget->height();
 		if (auto* root = qobject_cast<QWidget*>(target.root.data()))
 		{
@@ -335,7 +339,7 @@ class Service final : public QObject
 			windows.append(QJsonObject{{"window_id", WindowID(peer, surface)}, {"class", "DisplaySurface"},
 				{"title", surface->title().left(512)}, {"visible", true}, {"minimized", surface->windowState() == Qt::WindowMinimized}, {"modal", false}, {"kind", "surface"}});
 		}
-		peer.targets.clear(); peer.snapshot = NewID(); peer.snapshotTime = Now(); peer.snapshotAge.start();
+		peer.targets.clear(); peer.dockTargets.clear(); peer.snapshot = NewID(); peer.snapshotTime = Now(); peer.snapshotAge.start();
 		QJsonArray controls;
 		QSet<QObject*> seen;
 		bool truncated = false;
@@ -390,6 +394,15 @@ class Service final : public QObject
 		if (auto* widget = qobject_cast<QWidget*>(root)) walk(widget, {}, 0);
 		else if (qobject_cast<QWindow*>(root)) { Target target; target.object = root; target.root = root; add(target, {}); }
 		QJsonArray screens;
+		QJsonArray docks;
+		for (auto* view : MCPApplicationDocking::List())
+		{
+			if (docks.size() >= 128 || docks.size() + controls.size() >= maxNodes) { truncated = true; break; }
+			Target target; target.object = view; target.root = MCPApplicationDocking::Window(view); target.observed = Describe(target);
+			const QString id = "d" + QString::number(docks.size());
+			QJsonObject row = target.observed; row["id"] = id; row["window_id"] = WindowID(peer, MCPApplicationDocking::Window(view));
+			docks.append(row); peer.dockTargets[id] = std::move(target);
+		}
 		for (auto* screen : QGuiApplication::screens())
 		{
 			if (screens.size() >= 16) break;
@@ -397,13 +410,14 @@ class Service final : public QObject
 			screens.append(QJsonObject{{"index", static_cast<int>(screens.size())}, {"available_geometry", QJsonObject{{"x", area.x()}, {"y", area.y()}, {"width", area.width()}, {"height", area.height()}}}, {"device_pixel_ratio", screen->devicePixelRatio()}});
 		}
 		return {{"ok", true}, {"snapshot_id", peer.snapshot}, {"created_at_ms", peer.snapshotTime}, {"expires_at_ms", peer.snapshotTime + 120000},
-			{"window_id", root ? WindowID(peer, root) : QString()}, {"windows", windows}, {"screens", screens}, {"controls", controls}, {"truncated", truncated}};
+			{"window_id", root ? WindowID(peer, root) : QString()}, {"windows", windows}, {"screens", screens}, {"controls", controls}, {"dock_targets", docks}, {"truncated", truncated}};
 	}
 	QString Execute(const Target& target, const QJsonObject& request, const QDeadlineTimer& expires,
 		const std::shared_ptr<Peer>& peer, const std::optional<Target>& endpoint, const std::function<void(QString)>& complete, bool& deferred)
 	{
 		if (m_drag) return "A local drag is running; wait for its release before another UI action";
 		if (!target.object || !target.root) return "Target or window was destroyed";
+		if (auto* dock = MCPApplicationDocking::View(target.object); dock && MCPApplicationDocking::Window(dock) != target.root) return "Dock panel changed window since snapshot; inspect again";
 		if (Describe(target) != target.observed) return "Target changed since snapshot; inspect again";
 		if (!target.observed["enabled"].toBool()) return "Target is disabled";
 		const QString operation = request["action"].toString();
@@ -416,6 +430,24 @@ class Service final : public QObject
 		if (QWidget* modal = QApplication::activeModalWidget(); modal && modal != target.root && (!rootWidget || !modal->isAncestorOf(rootWidget))) return "A modal window blocks this target; inspect the modal";
 		if ((widget && !widget->isVisible()) || (surface && (!surface->isVisible() || surface->windowState() == Qt::WindowMinimized))) return "Target is not visible or is minimized";
 		if (rootWidget && rootWidget->isMinimized() && operation != "window_state" && operation != "close") return "Restore this minimized application window before using its controls";
+		if (operation == "set_floating")
+		{
+			if (!request["floating"].isBool()) return "set_floating requires a boolean floating state";
+			return MCPApplicationDocking::SetFloating(MCPApplicationDocking::View(widget), request["floating"].toBool());
+		}
+		if (operation == "dock")
+		{
+			if (!endpoint || !endpoint->object || !endpoint->root) return "Dock target or window was destroyed";
+			auto* destination = MCPApplicationDocking::View(endpoint->object);
+			auto* destinationRoot = qobject_cast<QWidget*>(endpoint->root.data());
+			if (!destination || !destinationRoot || MCPApplicationDocking::Window(destination) != destinationRoot || Describe(*endpoint) != endpoint->observed)
+				return "Dock target changed since snapshot; inspect again";
+			if (!destination->isVisible() || !destination->isEnabled() || destinationRoot->isMinimized()) return "Dock target is hidden, disabled or minimized";
+			for (auto* line : destinationRoot->findChildren<QLineEdit*>())
+				if (line->isVisible() && line->echoMode() != QLineEdit::Normal) return "A redacted/authentication dialog requires user input";
+			if (QWidget* modal = QApplication::activeModalWidget(); modal && modal != destinationRoot && !modal->isAncestorOf(destinationRoot)) return "A modal window blocks the dock target";
+			return MCPApplicationDocking::Dock(MCPApplicationDocking::View(widget), destination, request["dock_location"].toString());
+		}
 		if (operation == "window_state")
 		{
 			const QString state = request["state"].toString();
@@ -605,7 +637,7 @@ class Service final : public QObject
 	void Handle(const std::shared_ptr<Peer>& peer, const QJsonObject& request)
 	{
 		const QString command = request["cmd"].toString();
-		if (command == "ui_status") { Reply(peer, {{"ok", true}, {"features", QJsonArray{"qt_ui_snapshot", "qt_ui_actions", "qt_ui_screenshot", "ui_without_vm", "qt_render_surface_input", "qt_local_drag", "qt_cross_control_drag"}}}); return; }
+		if (command == "ui_status") { Reply(peer, {{"ok", true}, {"features", QJsonArray{"qt_ui_snapshot", "qt_ui_actions", "qt_ui_screenshot", "ui_without_vm", "qt_render_surface_input", "qt_local_drag", "qt_cross_control_drag", "qt_debugger_docking"}}}); return; }
 		if (request["expected_service_id"].toString() != m_id || request["expected_process_id"].toDouble(-1) != QCoreApplication::applicationPid()) { Reply(peer, Failure("UI process/service identity mismatch")); return; }
 		if (command == "ui_snapshot") { Reply(peer, Snapshot(*peer, request)); return; }
 		if (command == "ui_action_status") { const QString id = request["action_id"].toString(); Reply(peer, peer->receipts.contains(id) ? QJsonObject{{"ok", true}, {"action", peer->receipts[id]}} : Failure("Unknown action receipt on this connection")); return; }
@@ -657,7 +689,7 @@ class Service final : public QObject
 				});
 				QTimer::singleShot(4500, lifetime.data(), [this, peer, done, requestCapture, lifetime]() {
 					if (*done) return; *done = true; requestCapture->cancelled = true;
-					Reply(peer, Failure("Rendered UI capture timed out: requires active D3D11/D3D12 RGBA8/BGRA8 presentation; no desktop fallback"));
+					Reply(peer, Failure("Rendered UI capture timed out: requires active presentation with a supported format; no desktop fallback"));
 					if (lifetime) lifetime->deleteLater();
 				});
 				return;
@@ -677,6 +709,12 @@ class Service final : public QObject
 		const QDeadlineTimer expires(std::max<qint64>(0, deadline - Now()));
 		if (!peer->targets.contains(id)) { Reply(peer, Failure("Unknown control ID in this snapshot")); return; }
 		std::optional<Target> endpoint;
+		if (request.contains("dock_target_id"))
+		{
+			const QString dockID = request["dock_target_id"].toString();
+			if (request["action"] != "dock" || !peer->dockTargets.contains(dockID)) { Reply(peer, Failure("dock_target_id requires a dock destination in this same snapshot")); return; }
+			endpoint = peer->dockTargets[dockID];
+		}
 		if (request.contains("end_control_id"))
 		{
 			const QString endID = request["end_control_id"].toString();
@@ -687,7 +725,7 @@ class Service final : public QObject
 		if (pending >= 8 || (peer->receiptOrder.size() >= 128 && (peer->receipts[peer->receiptOrder.front()]["state"] == "queued" || peer->receipts[peer->receiptOrder.front()]["state"] == "running"))) { Reply(peer, Failure("UI action receipt capacity reached")); return; }
 		while (peer->receiptOrder.size() >= 128) peer->receipts.remove(peer->receiptOrder.takeFirst());
 		const Target target = peer->targets[id]; const QString operation = NewID();
-		peer->snapshot.clear(); peer->targets.clear();
+		peer->snapshot.clear(); peer->targets.clear(); peer->dockTargets.clear();
 		peer->receipts[operation] = {{"action_id", operation}, {"state", "queued"}, {"action", request["action"]}, {"queued_at_ms", Now()}};
 		peer->receiptOrder.append(operation);
 		Reply(peer, {{"ok", true}, {"action", peer->receipts[operation]}});

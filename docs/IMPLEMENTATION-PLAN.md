@@ -1,5 +1,18 @@
 # Plan de implementación y publicación
 
+U5 (2026-11-12): docking semántico de paneles reales desde MCP: desacoplar,
+restaurar y acoplar por pestaña/izquierda/derecha/arriba/abajo, entre ventanas
+Qt incluidas flotantes. Destinos ligados al snapshot, bloqueo del diseño,
+modal y objetos/ventanas obsoletos comprobados. 11 grupos nuevos incluyen
+geometría real, orden de grupos restaurado, EE/IOP/RAM pausados intactos y
+un caso en ejecución sin pausa forzada, con recuperación a pausa estable.
+154 grupos live y 305 Node pasaron; build Windows/TS e integración 46 archivos.
+93.408 s/16 sondeos guest/presentación D3D12, dos restore/un reset y cuatro
+stdio cerrados; pico nativo 1039.99 MiB/622 handles, crecimiento final
+9.62 MiB desde baseline, dentro de límites. Control de guest detenido
+rechazado. [Contrato](ui-debugger-docking.md). DLLs/GS/core debug intactos. Sigue U6: drag-and-drop
+nativo de la aplicación; SMS/Jellyfin, otras plataformas y hardware separados.
+
 U4e (2026-11-12): capturas OpenGL del framebuffer real después de ImGui y antes
 de SwapBuffers, RGBA orientado y restauración de FBO de lectura, read-buffer y
 pixel-pack. Exige RGB8/RGBA8 normalizado, sin estéreo/multisampling. 130 grupos
@@ -128,6 +141,17 @@ incluir BIOS, credenciales, contenido privado o artefactos locales de ejecución
 Conservar autoría/revisiones de cualquier código adaptado de los forks.
 
 ## Prioridad actual: MCP independiente
+
+La siguiente entrega es **U6: drag-and-drop nativo dentro de la aplicación**.
+Implementar MIME/eventos Qt de archivos locales con recibos, identidad y
+snapshots; validar rutas y rechazos antes de mutar. Probar boot real de un ELF
+propio por drop y comprobar la identidad/CRC cargados, diálogos y limpieza.
+Completar integración/build, regresiones, recursos/recuperación y publicación
+en main con logs CI y recibo por SHA. No usar clipboard ni entrada global al SO.
+
+Las notas que siguen conservan la secuencia histórica y sus límites por binario.
+Los bloqueos antiguos de Computer Use/S4b quedaron superados por U1/U2/S4b1;
+no son el siguiente paso ni requieren restablecer Computer Use para continuar.
 
 L1R (2026-11-02): 11 grupos lifetime y 12 bindings pasaron en el binario actual
 S4a/2.9.147 con el fixture/BIOS local: cargas y registro reales, re-registro,
@@ -318,6 +342,10 @@ transcodificación ni métricas CPU/RAM del servidor que no se hayan medido.
 
 | Paso | Trabajo | Estado |
 |---|---|---|
+| U6 | Drag-and-drop nativo dentro de PCSX2 | Siguiente: MIME/eventos Qt con archivos locales, boot ELF propio y validación de identidad; sin entrada global al SO |
+| U5 | Docking semántico entre ventanas del depurador | 154 live/305 Node, 11 grupos nuevos pausados/en ejecución, integración 46; contrato y recursos en el encabezado actual |
+| U4e | Captura UI OpenGL con restauración de estado | 130 live/303 Node, integración 45; cuatro backends Windows y 92.621 s/16 sondeos pareados/tres recuperaciones |
+| U4d | Captura UI Vulkan con envío ordenado | 107 live/303 Node, integración 43; 93.266 s/16 sondeos pareados/tres recuperaciones |
 | U4c | Cancelación de captura por vida de ventana | 93 live; baseline 4499 ms, controles pendientes 155–166 ms/recreación; integración 38 y 92.676 s/16 sondeos/tres recuperaciones |
 | U4b | Captura UI D3D12 y re-presentación en pausa | 81 live/303 Node, integración 38; D3D11/D3D12 y 92.484 s/16 sondeos pareados/tres recuperaciones con recursos y cierre verificados |
 | U4a | Arrastre entre controles de la misma ventana | 57 live/303 Node; separador Qt +60/restore, cancelación por reflow y capacidad nativa comprobadas; integración 36 |

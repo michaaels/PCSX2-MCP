@@ -44,7 +44,7 @@ def main():
              'pcsx2/GS/Renderers/Vulkan/GSDeviceVK.cpp', 'pcsx2/GS/Renderers/Vulkan/VKSwapChain.cpp',
              'pcsx2/GS/Renderers/Vulkan/VKSwapChain.h', 'pcsx2/GS/Renderers/OpenGL/GSDeviceOGL.cpp']
     generated = ['pcsx2/DebugTools/DebugServer.cpp', 'pcsx2/DebugTools/DebugServer.h', 'pcsx2/DebugTools/DebugServerCompat.h',
-                 'pcsx2-qt/MCPApplicationCapture.h', 'pcsx2-qt/MCPApplicationUI.h',
+                 'pcsx2-qt/MCPApplicationCapture.h', 'pcsx2-qt/MCPApplicationUI.h', 'pcsx2-qt/MCPApplicationDocking.h',
                  'common/MCPRenderedUICapture.h', 'pcsx2/GS/Renderers/DX11/MCPD3D11UICapture.inl',
                  'pcsx2/GS/Renderers/DX12/MCPD3D12UICapture.inl',
                  'pcsx2/GS/Renderers/Vulkan/MCPVulkanUICapturePrepare.inl',

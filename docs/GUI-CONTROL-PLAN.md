@@ -1,4 +1,17 @@
-# Control de toda la GUI desde MCP — U1
+# Control de la GUI desde MCP
+
+U5 (2026-11-12): docking semántico de paneles reales desde MCP: desacoplar,
+restaurar y acoplar por pestaña/izquierda/derecha/arriba/abajo, entre ventanas
+Qt incluidas flotantes. Destinos ligados al snapshot, bloqueo del diseño,
+modal y objetos/ventanas obsoletos comprobados. 11 grupos nuevos incluyen
+geometría real, orden de grupos restaurado, EE/IOP/RAM pausados intactos y
+un caso en ejecución sin pausa forzada, con recuperación a pausa estable.
+154 grupos live y 305 Node pasaron; build Windows/TS e integración 46 archivos.
+93.408 s/16 sondeos guest/presentación D3D12, dos restore/un reset y cuatro
+stdio cerrados; pico nativo 1039.99 MiB/622 handles, crecimiento final
+9.62 MiB desde baseline, dentro de límites. Control de guest detenido
+rechazado. [Contrato](ui-debugger-docking.md). DLLs/GS/core debug intactos. Sigue U6: drag-and-drop
+nativo de la aplicación; SMS/Jellyfin, otras plataformas y hardware separados.
 
 U4e (2026-11-12): capturas OpenGL del framebuffer real después de ImGui y antes
 de SwapBuffers, RGBA orientado y restauración de FBO de lectura, read-buffer y
@@ -143,6 +156,8 @@ de captura negra/región de escritorio y la colisión inicial debug+1/PINE se
 conservan como fallidos, sin contarlos como aceptación. La GUI usa puerto
 21513 o PCSX2_UI_PORT explícito, independiente del puerto debug.
 
-U3a y U3b completan geometría/estado y arrastre local de controles. Próxima
-cobertura: docking entre ventanas, drag-and-drop nativo y otros backends de captura.
-Siguen fuera del alcance probado drag-and-drop del SO y docking entre ventanas.
+El límite D3D11 del párrafo anterior corresponde al binario histórico U1.
+U4b/U4d/U4e aceptaron D3D12/Vulkan/OpenGL; U5 añadió docking semántico entre
+ventanas. La siguiente entrega es U6: drag-and-drop nativo de archivos dentro de
+PCSX2, con MIME/eventos Qt y boot real de un fixture propio. No se ha aceptado
+drag-and-drop global del SO ni toda combinación de plataforma/layout/renderer.

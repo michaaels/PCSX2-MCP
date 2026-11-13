@@ -542,6 +542,10 @@ def main() -> None:
     original_ui = repo / 'pcsx2-plugin/QtApplicationUI.h'
     if not qt_ui.exists() or qt_ui.read_bytes() != original_ui.read_bytes():
         shutil.copy2(original_ui, qt_ui)
+    qt_docking = source / 'pcsx2-qt/MCPApplicationDocking.h'
+    original_docking = repo / 'pcsx2-plugin/QtApplicationDocking.h'
+    if not qt_docking.exists() or qt_docking.read_bytes() != original_docking.read_bytes():
+        shutil.copy2(original_docking, qt_docking)
     for name in ('DebugServer.cpp', 'DebugServer.h', 'DebugServerCompat.h'):
         original = repo / 'pcsx2-plugin' / name
         target = source / 'pcsx2/DebugTools' / name

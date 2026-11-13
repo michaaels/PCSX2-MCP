@@ -1,5 +1,18 @@
 # MCP development progress
 
+U5 (2026-11-12): docking semántico de paneles reales desde MCP: desacoplar,
+restaurar y acoplar por pestaña/izquierda/derecha/arriba/abajo, entre ventanas
+Qt incluidas flotantes. Destinos ligados al snapshot, bloqueo del diseño,
+modal y objetos/ventanas obsoletos comprobados. 11 grupos nuevos incluyen
+geometría real, orden de grupos restaurado, EE/IOP/RAM pausados intactos y
+un caso en ejecución sin pausa forzada, con recuperación a pausa estable.
+154 grupos live y 305 Node pasaron; build Windows/TS e integración 46 archivos.
+93.408 s/16 sondeos guest/presentación D3D12, dos restore/un reset y cuatro
+stdio cerrados; pico nativo 1039.99 MiB/622 handles, crecimiento final
+9.62 MiB desde baseline, dentro de límites. Control de guest detenido
+rechazado. [Contrato](ui-debugger-docking.md). DLLs/GS/core debug intactos. Sigue U6: drag-and-drop
+nativo de la aplicación; SMS/Jellyfin, otras plataformas y hardware separados.
+
 U4e (2026-11-12): capturas OpenGL del framebuffer real después de ImGui y antes
 de SwapBuffers, RGBA orientado y restauración de FBO de lectura, read-buffer y
 pixel-pack. Exige RGB8/RGBA8 normalizado, sin estéreo/multisampling. 130 grupos

@@ -107,6 +107,40 @@ test('UI snapshots enforce control bounds; screenshots reject a substituted wind
   await assert.rejects(f.client.screenshot({ snapshot_id: uuid, window_id: uuid }), /window identity mismatch/);
 });
 
+test('debugger docking gates old native peers and rejects malformed placement before sending a mutation', async () => {
+  const base = { snapshot_id: uuid, control_id: 'c1' };
+  const old = fixture(); await old.connect(); const count = old.clients[0].calls.length;
+  for (const input of [{ action: 'set_floating', floating: true }, { action: 'dock', dock_target_id: 'd1', dock_location: 'tab' }])
+    await assert.rejects(old.client.action({ ...base, ...input }), /requires native qt_debugger_docking/);
+  assert.equal(old.clients[0].calls.length, count);
+  const current = fixture(['qt_debugger_docking']); await current.connect(); const backend = current.clients[0], before = backend.calls.length;
+  for (const input of [{ action: 'set_floating' }, { action: 'dock' }, { action: 'dock', dock_target_id: 'c1', dock_location: 'tab' },
+    { action: 'dock', dock_target_id: 'd1', dock_location: 'center' }, { action: 'click', floating: true },
+    { action: 'click', dock_target_id: 'd1' }, { action: 'click', dock_location: 'left' }])
+    await assert.rejects(current.client.action({ ...base, ...input }));
+  assert.equal(backend.calls.length, before);
+  const input = { ...base, action: 'dock', dock_target_id: 'd1', dock_location: 'left' };
+  backend.handler = async (command, args) => {
+    assert.equal(command, 'ui_action');
+    for (const [key, value] of Object.entries(input)) assert.equal(args[key], value);
+    return { action: { action_id: operation, state: 'queued', action: 'dock' } };
+  };
+  assert.equal((await current.client.action(input)).action.state, 'queued');
+  assert.equal(backend.calls.length, before + 1);
+});
+
+test('dock destination metadata respects the combined snapshot limit and malformed dock handles are refused', async () => {
+  const f = fixture(['qt_debugger_docking']); await f.connect();
+  const value = { snapshot_id: uuid, created_at_ms: 1, expires_at_ms: 2, window_id: uuid, windows: [],
+    controls: [{ id: 'c0', parent_id: '', class: 'QWidget', kind: 'widget', actions: [] }], truncated: false,
+    dock_targets: [{ id: 'd0', window_id: uuid, class: 'DockWidget', dock: { unique_name: 'registers', title: 'Registers',
+      floating: false, in_main_window: true, in_floating_window: false, has_previous_location: true, layout_locked: false, group: ['registers'] } }] };
+  f.clients[0].handler = async () => value;
+  await assert.rejects(f.client.snapshot({ max_nodes: 1 }), /combined control\/dock bounds/);
+  assert.equal((await f.client.snapshot({ max_nodes: 2 })).dock_targets[0].dock.unique_name, 'registers');
+  value.dock_targets[0].id = 'foreign'; await assert.rejects(f.client.snapshot({ max_nodes: 2 }));
+});
+
 test('seven GUI MCP tools expose independent connection, bounded schemas and honest error channels', async () => {
   const registered = new Map(), f = fixture();
   const close = registerApplicationUITools({ tool: (name, description, shape, handler) => { assert.ok(!registered.has(name)); registered.set(name, { shape, handler }); } }, f.client);

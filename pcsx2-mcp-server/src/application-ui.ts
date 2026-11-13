@@ -17,13 +17,15 @@ export const uiSnapshotOptions = z.object({ window_id: id.optional(), max_nodes:
   max_depth: z.number().int().min(1).max(32).default(16), max_items: z.number().int().min(0).max(512).default(128) });
 export const uiActionOptions = z.object({ snapshot_id: id, control_id: z.string().regex(/^c\d{1,4}$/),
   action: z.enum(['trigger', 'click', 'close', 'set_checked', 'set_check_state', 'set_text', 'select_index', 'set_value', 'focus', 'key',
-    'select', 'edit_text', 'expand', 'collapse', 'mouse', 'drag', 'wheel', 'context_menu', 'window_state', 'set_geometry']),
+    'select', 'edit_text', 'expand', 'collapse', 'mouse', 'drag', 'wheel', 'context_menu', 'window_state', 'set_geometry', 'set_floating', 'dock']),
   text: z.string().max(16384).refine(value => Buffer.byteLength(value, 'utf8') <= 16384, 'Text exceeds 16384 UTF-8 bytes').optional(),
   checked: z.boolean().optional(), check_state: z.number().int().min(0).max(2).optional(), index: z.number().int().min(0).max(1000000).optional(), value: z.number().finite().optional(),
   key: z.string().min(1).max(64).optional(), x: z.number().int().min(0).max(65535).optional(),
   y: z.number().int().min(0).max(65535).optional(), button: z.enum(['left', 'right', 'middle']).optional(),
   end_x: z.number().int().min(0).max(65535).optional(), end_y: z.number().int().min(0).max(65535).optional(),
   end_control_id: z.string().regex(/^c\d{1,4}$/).optional(),
+  floating: z.boolean().optional(), dock_target_id: z.string().regex(/^d\d{1,3}$/).optional(),
+  dock_location: z.enum(['tab', 'left', 'right', 'top', 'bottom']).optional(),
   duration_ms: z.number().int().min(50).max(1000).optional(),
   delta_x: z.number().int().min(-1200).max(1200).optional(), delta_y: z.number().int().min(-1200).max(1200).optional(),
   double_click: z.boolean().optional(), state: z.enum(['normal', 'minimized', 'maximized']).optional(),
@@ -88,17 +90,27 @@ export class ApplicationUIClient {
       windows: z.array(z.object({ window_id: id, title: z.string(), class: z.string() }).passthrough()).max(129),
       controls: z.array(z.object({ id: z.string().regex(/^c\d{1,4}$/), parent_id: z.string(), class: z.string(),
         kind: z.enum(['widget', 'action', 'model_item', 'surface']), actions: z.array(z.string()).max(20) }).passthrough()).max(options.max_nodes),
-      truncated: z.boolean(), identity: uiIdentity }).passthrough().parse(response);
+      dock_targets: z.array(z.object({ id: z.string().regex(/^d\d{1,3}$/), window_id: id, class: z.string(),
+        dock: z.object({ unique_name: z.string().max(256), title: z.string().max(512), floating: z.boolean(),
+          in_main_window: z.boolean(), in_floating_window: z.boolean(), has_previous_location: z.boolean(),
+          layout_locked: z.boolean(), group: z.array(z.string().max(256)).max(128) }).strict() }).passthrough()).max(128).default([]),
+      truncated: z.boolean(), identity: uiIdentity }).passthrough()
+      .refine(value => value.controls.length + value.dock_targets.length <= options.max_nodes, 'Snapshot exceeds combined control/dock bounds').parse(response);
   }
 
   async action(input: unknown) {
     const options = uiActionOptions.parse(input);
+    if ((options.dock_target_id !== undefined || options.dock_location !== undefined) && options.action !== 'dock') throw new Error('Dock target/location requires dock');
+    if (options.floating !== undefined && options.action !== 'set_floating') throw new Error('floating requires set_floating');
+    if ((options.action === 'dock' || options.action === 'set_floating') && this.identity && !this.features.has('qt_debugger_docking'))
+      throw new Error('Debugger docking requires native qt_debugger_docking support; update/restart the PCSX2 integration');
     if (options.end_control_id !== undefined && options.action !== 'drag') throw new Error('end_control_id requires drag');
     if (options.end_control_id !== undefined && this.identity && !this.features.has('qt_cross_control_drag'))
       throw new Error('Cross-control drag requires native qt_cross_control_drag support; update/restart the PCSX2 integration');
     const required: Record<string, string[]> = { set_text: ['text'], edit_text: ['text'], set_checked: ['checked'], set_check_state: ['check_state'],
       select_index: ['index'], set_value: ['value'], key: ['key'], wheel: ['x', 'y', 'delta_y'],
-      drag: ['x', 'y', 'end_x', 'end_y', 'duration_ms'], window_state: ['state'], set_geometry: ['geometry'] };
+      drag: ['x', 'y', 'end_x', 'end_y', 'duration_ms'], window_state: ['state'], set_geometry: ['geometry'],
+      set_floating: ['floating'], dock: ['dock_target_id', 'dock_location'] };
     for (const field of required[options.action] ?? []) if (!(field in options)) throw new Error(`${options.action} requires ${field}`);
     if (options.action === 'key' && options.text && options.text.length > 32) throw new Error('Key text exceeds 32 characters');
     const response = await this.request('ui_action', { ...options, deadline_ms: Date.now() + 4000 });

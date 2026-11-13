@@ -1,5 +1,8 @@
 # Application GUI control through MCP — U1
 
+Update U5: [semantic debugger docking](ui-debugger-docking.md) operates actual
+panels across windows, with snapshot-scoped destinations and layout-lock checks.
+
 Update U4e: [OpenGL presentation capture](opengl-ui-capture.md) adds actual
 framebuffer readback with GL state restoration and upright RGBA output.
 

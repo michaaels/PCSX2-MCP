@@ -12,11 +12,12 @@
 [Control the application GUI through MCP](docs/application-ui.md): seven new
 tools inspect and operate menus, fields, tabs, models, dialogs and Big Picture,
 including before boot and after VM shutdown. [Window state/geometry](docs/ui-window-management.md)
-and [pointer drag across controls](docs/ui-cross-control-drag.md) are available. The latest GUI
-build passed 130 live groups and 303 Node tests. Windows uses modified 2.9.147.
+and [pointer drag across controls](docs/ui-cross-control-drag.md) are available.
+[Debugger docking](docs/ui-debugger-docking.md) detaches/restores panels and places them relative to other panels, including floating windows. The latest GUI
+build passed 154 live groups and 305 Node tests. Windows uses modified 2.9.147.
 [DisplaySurface capture](docs/opengl-ui-capture.md) supports D3D11/D3D12/Vulkan
 and OpenGL, with ImGui and paused-frame re-presentation. [Window-lifetime cancellation](docs/ui-capture-lifetime.md)
-keeps pending captures responsive during close/recreation; bounded OpenGL resource/recovery probes passed.
+keeps pending captures responsive during close/recreation; bounded D3D12 resource/recovery probes passed on the latest GUI build.
 
 Latest standalone acceptance: [real Qt breakpoint replacement during EE
 step-over](docs/inflight-gui-ownership.md), with preserved ownership and a
